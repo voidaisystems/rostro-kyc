@@ -1,39 +1,55 @@
-# Rostro — Autonomous KYC Document Agent
+# Rostro (واثق) — Universal Iraqi Document Intelligence & KYC Agent
 
 > **Agentic AI Challenge Iraq — Build Stage**  
 > Organized by **ZainCash** in cooperation with **The Leaders of the AI Intelligence** & supported by **Young Arab Leaders**  
 > **Topic 05:** KYC Document Agent  
-> **Target Ecosystem:** Iraqi Digital Wallets & Merchant Onboarding (ZainCash, Qi Card)
+> **Target Ecosystem:** Iraqi Digital Wallets, Citizen KYC & Merchant Onboarding (ZainCash, Qi Card)
 
 ---
 
 ## 🎯 Executive Summary
-Customer and merchant onboarding in Iraqi fintech currently suffers from significant back-office bottlenecks. Compliance officers manually verify smartphone photos of Iraqi National Cards (*البطاقة الوطنية الموحدة*), Residence Cards (*بطاقة السكن*), and Chamber of Commerce Business Licenses (*إجازة ممارسة المهنة / غرفة التجارة*). Submissions frequently feature camera tilt, specular flash glare, Arabic cursive handwriting (*خط الرقعة*), and dialectal onomastic spelling variations.
+Customer and merchant onboarding in Iraqi fintech requires verifying a broad spectrum of federal Iraqi and Kurdistan Region (KRG) documents across multiple scripts (Arabic, Kurdish Sorani, and English), generations, and layouts. Rather than hardcoding a single 3-document check, **Rostro (واثق)** is a **Universal Iraqi Document Intelligence Platform** built around a centralized, startup-validated **Universal Document Registry (`44` document types across Categories `A–H`)** and a **10-Stage Shared Processing Pipeline**:
 
-**Rostro ** is an autonomous multimodal KYC verification agent that:
-1. **Gates Capture Quality:** Detects blur, specular glare, and boundary truncation before heavy processing.
-2. **Extracts via Multimodal VLM:** Uses Google Gemini (Gemini 3 Flash / Flash-Lite) to extract Arabic and Kurdish document fields with spatial bounding-box coordinates.
-3. **Enforces "Blank and Flagged Beats Invented":** Never hallucinates missing or occluded fields; returns explicit nulls with calibrated confidence.
-4. **Applies Deterministic Validators:** Validates ICAO Doc 9303 TD1 Modulo-10 checksums on National ID numbers, cross-checks dates, and normalizes Iraqi 4-part names.
-5. **Empowers Human Reviewers:** Provides a 1-screen Compliance Reviewer Cockpit where clean files are auto-passed, and ambiguous edge cases are briefed in seconds.
+`Upload → Quality Gate → Classification → Preprocessing → Extraction → Normalization → Validation → Risk Assessment → Decision Routing → Audit`
+
+Key engineering capabilities:
+1. **Universal Document Registry (Categories A–H):** Covers Identity & Civil Status (`A`), Residence & Address (`B`), Travel & Immigration (`C`), Driving & Vehicle (`D`), Business & Merchant Onboarding (`E`), Education/Employment/Income (`F`), Financial Evidence (`G`), and Legal/Authorizations (`H`). See the full [Document Coverage Matrix](docs/DOCUMENT_COVERAGE_MATRIX.md).
+2. **Universal Classification & Unknown-Document Fallback:** Identifies document category, specific type, side, languages (`ar`, `ku`, `en`), issuing authority, and support status. When an unrecognized or unconfigured document is uploaded, Rostro **never forces it into a wrong category**—it preserves the evidence, runs a generic layout key-value fallback, ranks candidate categories, marks `UNSUPPORTED_OR_UNCERTAIN_CLASSIFICATION`, and routes to `HUMAN_REVIEW` so an officer can classify or register it.
+3. **Document-Specific Preprocessing & Deterministic Rules:** Applies `ID_CARD_LANDSCAPE` vs. `A4_PORTRAIT` geometry rules (never rotating upright A4 certificates sideways) and runs only the validators configured for that document type (ICAO Doc 9303 TD1 3x30 MRZ on National IDs, TD3 2x44 MRZ on Passports, 23-char CBI IBAN on Bank Statements, 17-char Chassis VIN on Vehicle Registrations).
+4. **9 Independently Inspectable Signals:** Explicitly separates `image_quality`, `text_extraction_confidence`, `classification_confidence`, `field_completeness`, `data_consistency`, `duplicate_detection`, `authenticity_indicators`, `external_authoritative_verification` (`EXTERNAL_VERIFICATION_UNAVAILABLE`), and `final_policy_decision`.
+5. **Entity Relationship Graph & Legal Representative Linking:** Distinguishes individuals, legal business entities, household heads, and authorized representatives linked via Notarized Power of Attorney (`IRQ_POWER_OF_ATTORNEY`), and enforces the policy that supporting documents (Education/Employment/Utility) cannot independently establish primary identity.
 
 ---
 
-## 🏛️ System Architecture
+## 🗂️ Universal Iraqi Document Categories (A–H)
+
+| Code | Category ID | Category Name | Registered | TESTED | CONFIGURED | REGISTERED |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: |
+| **A** | `IDENTITY_CIVIL` | Identity & Civil Status Documents (وثائق الهوية والأحوال المدنية) | 9 | 3 | 2 | 4 |
+| **B** | `RESIDENCE_ADDRESS` | Residence, Address & Household Documents (وثائق السكن والعنوان والأسرة) | 5 | 4 | 1 | 0 |
+| **C** | `TRAVEL_IMMIGRATION` | Travel, Residency & Immigration Documents (وثائق السفر والإقامة والتأشيرات) | 3 | 2 | 1 | 0 |
+| **D** | `DRIVING_VEHICLE` | Driving, Vehicle & Transport Documents (وثائق القيادة والمركبات والنقل) | 4 | 2 | 1 | 1 |
+| **E** | `BUSINESS_MERCHANT` | Business & Merchant Onboarding Documents (وثائق التجار والشركات والأعمال) | 10 | 4 | 2 | 4 |
+| **F** | `EDUCATION_EMPLOYMENT_INCOME` | Education, Employment & Income Documents (وثائق التعليم والتوظيف والدخل) | 5 | 2 | 1 | 2 |
+| **G** | `FINANCIAL_EVIDENCE` | Financial & Supporting Evidence (الأدلة والوثائق المالية والمصرفية) | 4 | 1 | 0 | 3 |
+| **H** | `LEGAL_AUTHORIZATION` | Legal, Judicial & Authorization Documents (الوثائق القانونية والعدلية والتخويلات) | 4 | 2 | 0 | 2 |
+| **Total** | **8 Categories** | **[Full Coverage Matrix →](docs/DOCUMENT_COVERAGE_MATRIX.md)** | **44** | **20** | **8** | **16** |
+
+---
+
+## 🏛️ 10-Stage Shared Processing Architecture
 
 ```mermaid
 flowchart TD
-    A["Uploaded Document Photos\n(National ID, Business License, Residence Card)"] --> B["Stage 1: Pre-Flight Image Normalizer\n(EXIF orientation, boundary validation, quality gate)"]
-    B -->|"Unusable / Severe Glare"| C["Retake Request\n(Contextual Iraqi Arabic guidance)"]
-    B -->|"Acceptable"| D["Stage 2: Multimodal VLM Extraction\n(Gemini 3 Flash with strict JSON Schema)"]
-    D --> E["Stage 3: Deterministic Forensic & Syntax Validators\n(ICAO Doc 9303 TD1 Modulo-10 math, date logic)"]
-    E --> F["Stage 4: Iraqi Onomastic Normalizer\n(Token weighting, compound names, Kurdish transliteration)"]
-    F --> G["Stage 5: Cross-Document Consistency Engine\n(Name reconciliation, TIN reference, expiry audit)"]
-    G --> H{"Stage 6: Decision Routing"}
-    H -->|"High Confidence (≥88%) & Clean Matches"| I["AUTO_PASS Lane\n(Instant wallet activation)"]
-    H -->|"Minor Ambiguity / Expired License"| J["Human Reviewer Cockpit\n(Itemized briefing + visual bounding box highlights)"]
-    I --> K["Tamper-Proof Audit Record\n(Central Bank of Iraq Law No. 78 compliance)"]
-    J --> K
+    A["1. Upload & 2. Quality Gate\n(Blur, Specular Glare, Boundary Completeness)"] -->|"Severe Glare / Unreadable Required Field"| R["RETAKE_REQUESTED\n(Zero-Hallucination Null + Retake Guidance)"]
+    A -->|"Acceptable"| B["3. Universal Document Classifier\n(44 Registered Iraqi Types across Categories A–H)"]
+    B -->|"Unrecognized / Confidence < 0.65"| U["Unknown-Document Fallback\n(Generic Key-Value OCR + Candidate Ranking → HUMAN_REVIEW)"]
+    B -->|"Classified"| C["4. Document-Specific Preprocessor\n(ID_CARD_LANDSCAPE vs A4_PORTRAIT vs PASSPORT_BOOKLET)"]
+    C --> D["5. Schema Extraction & 6. Multi-Script Normalizer\n(Arabic, Kurdish Sorani, Numerals, Gregorian/Hijri Dates)"]
+    D --> E["7. Deterministic Validators\n(ICAO 9303 TD1/TD3 MRZ, 12-Digit ID, 23-Char IBAN, 17-Char VIN)"]
+    E --> F["8. Entity Relationship Graph & Cross-Document Reconciliation\n(Patronymic Lineage, KRG Governorate Alignment, POA Representative Linking)"]
+    F --> G["9. 9-Signal Risk Assessment & Policy Routing\n(Primary Identity Policy, Duplicate Detection, Expiry Audit)"]
+    G --> H["10. Hash-Chained Audit Trail\n(CBI Electronic Transactions Law No. 78 of 2012)"]
 ```
 
 ---
@@ -42,48 +58,40 @@ flowchart TD
 
 | Rule / Clearance Check | Implementation in Rostro |
 | :--- | :--- |
-| **Commit History Spanning Build** | Continuous commit history tracking all architecture iterations, validators, and evaluation scripts. |
-| **100% Synthetic Data** | Strictly **zero real customer records or personal IDs used**. All test documents are synthetic specimens generated with fake names, addresses, and deliberate visual degradations. |
-| **Deterministic Rule Supremacy** | Regula ICAO Doc 9303 TD1 Modulo-10 checksums and Central Bank expiry rules govern verification. Decision tiers are bound by explicit deterministic logic, not arbitrary LLM verdicts. |
-| **Calibrated Confidence** | Every extracted field outputs an explicit confidence score reflecting optical clarity and syntax validity. Low confidence triggers human escalation. |
-| **Documented Failure Modes** | Distinct failure modes (specular flash glare, expired commercial licenses, dialectal name token drift) are safely detected and routed to human review. |
+| **Commit History Spanning Build** | Continuous modular commit history tracking registry, pipeline, synthetic corpus, UI, and test suite. |
+| **100% Synthetic Data** | Strictly **zero real customer records or personal IDs used**. All 14 multi-document cases are fictional synthetic specimens marked with `SPECIMEN / عينة تركيبية`. |
+| **Deterministic Rule Supremacy** | ICAO Doc 9303 TD1/TD3 Modulo-10 checksums, IBAN/VIN validators, and Central Bank expiry rules govern verification. |
+| **9 Separated Signals & Honesty** | Explicitly separates image quality, OCR confidence, classification, completeness, consistency, duplicates, internal MRZ checks, and `EXTERNAL_VERIFICATION_UNAVAILABLE`. |
+| **Unknown Document Handling** | Mandatory capability: unrecognized documents trigger generic layout extraction, candidate category ranking, and human review/registration. |
 | **Full Disclosure** | Complete disclosure of models, libraries, and coding assistants used throughout development. |
-
----
-
-## 🛠️ Stack & Technologies
-
-* **Backend & Extraction Engine:** Node.js / Python FastAPI.
-* **Multimodal Vision:** Google Gemini 3 Flash / Gemini 2.5 Flash (`thinkingBudget: 0`) with structured JSON schema output.
-* **Forensics & Math:** Regula ICAO Doc 9303 TD1 Modulo-10 checksum algorithm (cyclic weights $[7, 3, 1]$).
-* **NLP & Dialect Intelligence:** Custom Iraqi onomastic normalizer handling compound names (`عبد_الزهرة`), honorific stripping (`الشيخ`), and Arabic-Indic numerals (`٠-٩`).
-* **Compliance Cockpit:** High-DPI canvas UI for visual document inspection, per-field bounding box overlays, and 1-click decision logging.
-* **Audit & Integrity:** Cryptographic audit digests inspired by Central Bank of Iraq Electronic Transactions Law No. 78 of 2012.
 
 ---
 
 ## 🚀 Quickstart
 
 ### Prerequisites
-* Node.js 18+ (or Python 3.11+)
-* Gemini API Key from Google AI Studio
+* Node.js 18+
+* Optional: Gemini API Key from Google AI Studio (for live image upload extraction)
 
 ### 1. Setup Environment
 ```bash
 cp .env.example .env
-# Add your GEMINI_API_KEY inside .env
+# Optional: Add GEMINI_API_KEY inside .env for live image upload OCR
 ```
 
-### 2. Install Dependencies & Run
+### 2. Run the Server
 ```bash
-npm install
 npm start
 ```
 
-### 3. Open the Cockpit
-Visit `http://localhost:8080` to launch the **Compliance Reviewer Cockpit** and explore pre-configured synthetic Iraqi merchant scenarios or upload sample test images.
+### 3. Open the Compliance Cockpit
+Visit `http://localhost:8080` to explore:
+- All **14 synthetic multi-document scenarios** across Categories `A–H`
+- Interactive **Document Coverage Matrix (`44` Iraqi document types)**
+- **9 Separated Verification Signals** & **Universal Field Table**
+- **Unknown Document Registration** workflow
 
-### 4. Run Automated Test Benchmark
+### 4. Run the Automated Verification Suite (55 Assertions)
 ```bash
 node backend/tests/test_hybrid_server.js
 ```
@@ -92,6 +100,6 @@ node backend/tests/test_hybrid_server.js
 
 ## 📜 Full Disclosure of AI Usage & Tools
 In compliance with the official challenge guidelines:
-* **Models:** Google Gemini 3 Flash / Gemini 2.5 Flash (via Google AI Studio).
-* **AI Coding Assistants:** Antigravity / Gemini 3.8 Flash for pair programming, test set synthesis, and architecture documentation.
-* **Libraries:** Express / Node.js native crypto, PDFKit, Canvas, OpenCV.js.
+* **Models:** Google Gemini 2.5 Flash / Gemini 3 Flash (via Google AI Studio).
+* **AI Coding Assistants:** Antigravity for pair programming, universal registry architecture, synthetic test corpus generation, and automated verification suite.
+* **Libraries:** Node.js native HTTP & `crypto` modules, HTML5 Canvas.

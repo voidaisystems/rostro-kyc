@@ -173,25 +173,56 @@ const SCENARIOS = [
   }
 ];
 
+let ACTIVE_SCENARIOS = SCENARIOS;
 let currentScenarioIndex = 0;
-let currentDocTab = "national_card";
+let currentDocIndex = 0;
+let currentDocTab = 0;
+let currentEvalData = null;
 
 // Initialize on page load
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const keyInput = document.getElementById("geminiApiKeyInput");
   if (keyInput) {
     keyInput.value = localStorage.getItem('gemini_api_key') || "";
   }
 
-  populateScenarioDropdown();
-  loadSelectedScenario();
-});
+  // Fallback for browsers without native <dialog closedby="any"> support (modern-web-guidance: light-dismiss-a-dialog)
+  if (typeof HTMLDialogElement !== 'undefined' && !('closedBy' in HTMLDialogElement.prototype)) {
+    document.querySelectorAll('dialog[closedby="any"]').forEach((dialog) => {
+      dialog.addEventListener('click', (event) => {
+        if (event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const isDialogContent = (
+          rect.top <= event.clientY &&
+          event.clientY <= rect.top + rect.height &&
+          rect.left <= event.clientX &&
+          event.clientX <= rect.left + rect.width
+        );
+        if (isDialogContent) return;
+        dialog.close();
+      });
+    });
+  }
 
+  // Load all 14 multi-category scenarios from server if running
+  try {
+    const res = await fetch('/api/v1/kyc/scenarios');
+    if (res.ok) {
+      const serverScenarios = await res.json();
+      if (Array.isArray(serverScenarios) && serverScenarios.length > 0) {
+        ACTIVE_SCENARIOS = serverScenarios;
+      }
+    }
+  } catch (_) {}
+
+  populateScenarioDropdown();
+  await loadSelectedScenario();
+});
 
 function populateScenarioDropdown() {
   const select = document.getElementById("scenarioSelect");
   select.innerHTML = "";
-  SCENARIOS.forEach((sc, idx) => {
+  ACTIVE_SCENARIOS.forEach((sc, idx) => {
     const opt = document.createElement("option");
     opt.value = idx;
     opt.innerText = sc.scenario_name_ar;
@@ -199,298 +230,242 @@ function populateScenarioDropdown() {
   });
 }
 
-function loadSelectedScenario() {
+async function loadSelectedScenario() {
   const select = document.getElementById("scenarioSelect");
-  currentScenarioIndex = parseInt(select.value, 10);
-  reevaluateCurrentScenario();
+  currentScenarioIndex = parseInt(select.value, 10) || 0;
+  currentDocIndex = 0;
+  await reevaluateCurrentScenario();
 }
 
-function switchDocTab(tabName) {
-  currentDocTab = tabName;
-  document.querySelectorAll(".doc-tab").forEach(tab => {
-    tab.classList.remove("active");
-  });
-  if (event && event.target) {
-    event.target.classList.add("active");
-  }
+function renderDocumentTabs(docs = []) {
+  const container = document.getElementById("docTabsContainer");
+  if (!container) return;
 
+  const uploadedTab = document.getElementById("tabUploadedImg");
+  const isUploadedVisible = uploadedTab && uploadedTab.style.display !== "none";
+
+  container.innerHTML = "";
+  docs.forEach((doc, idx) => {
+    const btn = document.createElement("button");
+    btn.className = `doc-tab ${idx === currentDocIndex && currentDocTab !== 'uploaded_doc' ? 'active' : ''}`;
+    btn.innerText = `${idx + 1}. ${doc.classification?.canonical_name_ar || doc.doc_id}`;
+    btn.onclick = () => switchDocTab(idx);
+    container.appendChild(btn);
+  });
+
+  const upBtn = document.createElement("button");
+  upBtn.id = "tabUploadedImg";
+  upBtn.className = `doc-tab ${currentDocTab === 'uploaded_doc' ? 'active' : ''}`;
+  upBtn.style.display = isUploadedVisible ? "inline-block" : "none";
+  upBtn.innerText = "المستند المرفوع 🖼️";
+  upBtn.onclick = () => switchDocTab('uploaded_doc');
+  container.appendChild(upBtn);
+}
+
+function switchDocTab(tabOrIdx) {
+  currentDocTab = tabOrIdx;
   const simDoc = document.getElementById("simulatedDoc");
   const uplDoc = document.getElementById("uploadedDocContainer");
 
-  if (tabName === 'uploaded_doc') {
+  if (tabOrIdx === 'uploaded_doc') {
     if (simDoc) simDoc.style.display = 'none';
     if (uplDoc) uplDoc.style.display = 'block';
   } else {
+    currentDocIndex = typeof tabOrIdx === 'number' ? tabOrIdx : 0;
     if (simDoc) simDoc.style.display = 'flex';
     if (uplDoc) uplDoc.style.display = 'none';
-    renderDocumentVisual(SCENARIOS[currentScenarioIndex]);
-  }
-}
-
-function reevaluateCurrentScenario() {
-  const scenario = SCENARIOS[currentScenarioIndex];
-  
-  // Update Header Info
-  document.getElementById("dossierTradeName").innerText = scenario.merchant_trade_name;
-  document.getElementById("dossierAppId").innerText = `KYC-${Math.floor(10000 + Math.random() * 90000)}`;
-
-  // Evaluate Client-Side Logic
-  const evalResult = evaluateKYC(scenario);
-
-  // Render Visual Document
-  renderDocumentVisual(scenario);
-
-  // Render Cross-Check Matrix
-  renderMatrix(evalResult.crossChecks);
-
-  // Render Fields Table
-  renderFieldsTable(evalResult.fields);
-
-  // Render Reviewer Dossier
-  renderDossier(evalResult);
-}
-
-// -------------------------------------------------------------
-// Client-Side Iraqi Normalization & Evaluation Engine
-// -------------------------------------------------------------
-function normalizeArabic(text) {
-  if (!text) return "";
-  return text
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, "") // Diacritics & Tatweel
-    .replace(/[أإآٱ]/g, "ا")
-    .replace(/[ىئ]/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function compareIraqiNames(nameA, nameB) {
-  const normA = normalizeArabic(nameA);
-  const normB = normalizeArabic(nameB);
-
-  if (normA === normB) return 1.0;
-  if (!normA || !normB) return 0.0;
-
-  // Tokenize
-  const tokA = normA.split(" ");
-  const tokB = normB.split(" ");
-
-  // Handle common prefixes
-  const cleanA = tokA.map(t => t.replace(/^ال_|^ال/, ""));
-  const cleanB = tokB.map(t => t.replace(/^ال_|^ال/, ""));
-
-  let matchWeight = 0.0;
-  let totalWeight = 0.0;
-  const weights = [0.40, 0.30, 0.20, 0.10];
-
-  const minLen = Math.min(cleanA.length, cleanB.length);
-  for (let i = 0; i < minLen; i++) {
-    const w = weights[i] || 0.05;
-    totalWeight += w;
-    if (cleanA[i] === cleanB[i]) {
-      matchWeight += w;
-    } else {
-      // Partial character match
-      const sim = 1.0 - (Math.abs(cleanA[i].length - cleanB[i].length) / Math.max(cleanA[i].length, cleanB[i].length));
-      matchWeight += sim * w * 0.5;
+    if (currentEvalData && Array.isArray(currentEvalData.documents)) {
+      renderDocumentTabs(currentEvalData.documents);
+      renderDocumentVisualFromPipeline(currentEvalData.documents[currentDocIndex]);
     }
   }
-
-  if (cleanA.length !== cleanB.length) {
-    matchWeight += (1.0 - totalWeight) * 0.75;
-  }
-
-  return Math.min(1.0, Math.round(matchWeight * 100) / 100);
 }
 
-function evaluateKYC(scenario) {
-  const nat = scenario.national_card;
-  const lic = scenario.business_license;
-  const tax = scenario.tax_card;
+async function reevaluateCurrentScenario() {
+  const scenario = ACTIVE_SCENARIOS[currentScenarioIndex];
+  if (!scenario) return;
 
-  const crossChecks = [];
-  const flags = [];
-  const fields = [];
-
-  // Check 1: Name Nat vs Lic
-  const simNL = compareIraqiNames(nat.full_name_ar, lic.owner_name);
-  crossChecks.push({
-    title: "تطابق اسم المالك (الهوية الوطنية vs إجازة الممارسة)",
-    status: simNL >= 0.85 ? "pass" : "mismatch",
-    scoreText: `${Math.round(simNL * 100)}%`,
-    details: simNL >= 0.85 
-      ? `تطابق دلالي ممتاز للاسم بعد معالجة الألقاب والهمزات (${nat.full_name_ar} ↔ ${lic.owner_name})`
-      : `تعارض في الاسم: الهوية تذكر (${nat.full_name_ar}) والإجازة تذكر (${lic.owner_name})`
-  });
-  if (simNL < 0.85) flags.push(`تعارض اسم المالك (${Math.round(simNL * 100)}%)`);
-
-  // Check 2: Tax Name Match
-  const simNT = compareIraqiNames(nat.full_name_ar, tax.taxpayer_name);
-  crossChecks.push({
-    title: "تطابق اسم المكلف (الهوية الوطنية vs البطاقة الضريبية)",
-    status: simNT >= 0.85 ? "pass" : "mismatch",
-    scoreText: `${Math.round(simNT * 100)}%`,
-    details: simNT >= 0.85 ? "بيانات المكلف الضريبي مطابقة تماماً للمستند الوطني" : "اختلاف اسم المكلف في الهيئة العامة للضرائب"
-  });
-  if (simNT < 0.85) flags.push("تعارض اسم المكلف الضريبي");
-
-  // Check 3: National ID Number
-  const idMatch = nat.national_id_number === tax.national_id_reference;
-  crossChecks.push({
-    title: "تطابق الرقم الوطني الموحد عبر السجلات الرسمية",
-    status: idMatch ? "pass" : "mismatch",
-    scoreText: idMatch ? "100%" : "0%",
-    details: idMatch 
-      ? `الرقم الموحد (${nat.national_id_number}) مطابق بين سجل الأحوال والضريبة`
-      : `تعارض رقم الهوية (${nat.national_id_number}) مع المرجع الضريبي (${tax.national_id_reference})`
-  });
-  if (!idMatch) flags.push("تعارض في الرقم الوطني الموحد");
-
-  // Check 4: License Expiry
-  let isLicExpired = false;
-  let licStatus = "pass";
-  let licDetails = "";
-
-  if (lic.occluded_exp || !lic.expiry_date) {
-    licStatus = "unverifiable";
-    licDetails = "⚠️ تاريخ نفاذ الإجازة غير مقروء نظراً لانعكاس فلاش الكاميرا على المستند";
-    flags.push("انعكاس ضوء فلاش (Specular Glare) على تاريخ النفاذ");
-  } else {
-    const expDate = new Date(lic.expiry_date);
-    const today = new Date();
-    if (expDate < today) {
-      isLicExpired = true;
-      licStatus = "mismatch";
-      licDetails = `❌ إجازة غرفة التجارة منتهية الصلاحية بتاريخ ${lic.expiry_date}`;
-      flags.push("إجازة ممارسة المهنة منتهية الصلاحية رسمياً");
-    } else {
-      licStatus = "pass";
-      licDetails = `✅ الإجازة سارية المفعول حتى ${lic.expiry_date}`;
+  try {
+    const res = await fetch('/api/v1/kyc/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scenario)
+    });
+    if (res.ok) {
+      currentEvalData = await res.json();
+      renderFullPipelineResult(currentEvalData);
+      return;
     }
+  } catch (e) {
+    console.warn("Falling back to client-side evaluation:", e.message);
+  }
+}
+
+function renderFullPipelineResult(evalData) {
+  document.getElementById("dossierTradeName").innerText = evalData.merchant_trade_name;
+  document.getElementById("dossierAppId").innerText = evalData.application_id;
+
+  // 1. Render Multi-Document Tabs & Active Specimen
+  const docs = evalData.documents || [];
+  renderDocumentTabs(docs);
+  if (docs.length > 0) {
+    renderDocumentVisualFromPipeline(docs[currentDocIndex] || docs[0]);
   }
 
-  crossChecks.push({
-    title: "صلاحية إجازة ممارسة المهنة (غرفة التجارة)",
-    status: licStatus,
-    scoreText: licStatus === "pass" ? "سارية" : (licStatus === "mismatch" ? "منتهية" : "محجوبة"),
-    details: licDetails
-  });
+  // 2. Render 9 Separated Verification Signals
+  renderSeparatedSignals(evalData.separated_signals);
 
-  // Calculate Average Confidence
-  let confSum = (nat.clarity_score + lic.clarity_score + tax.clarity_score) / 3;
-  if (lic.occluded_exp) confSum = 0.62;
-  const overallConf = Math.round(confSum * 100);
+  // 3. Render Cross-Document Consistency Matrix
+  const countBadge = document.getElementById("crossCheckCountBadge");
+  if (countBadge) countBadge.innerText = `${(evalData.cross_checks || []).length} فحوصات متقاطعة وحتمية`;
+  renderMatrix(evalData.cross_checks || []);
 
-  // Field Level Breakdowns
-  fields.push({ name: "الاسم الكامل (الوطنية)", val: nat.full_name_ar, conf: `${Math.round(nat.clarity_score * 100)}%`, ok: true });
-  fields.push({ name: "الرقم الوطني الموحد", val: nat.national_id_number, conf: "98%", ok: true });
-  fields.push({ name: "اسم مالك المنشأة (الإجازة)", val: lic.owner_name, conf: `${Math.round(lic.clarity_score * 100)}%`, ok: simNL >= 0.85 });
-  fields.push({ 
-    name: "تاريخ نفاذ إجازة التجارة", 
-    val: lic.expiry_date || "[محجوب - انعكاس ضوئي]", 
-    conf: lic.occluded_exp ? "18%" : "93%", 
-    ok: !lic.occluded_exp && !isLicExpired 
-  });
-  fields.push({ name: "الرقم الضريبي (TIN)", val: tax.tax_id_number, conf: "95%", ok: true });
+  // 4. Render Universal Field Table
+  renderUniversalFieldsTable(evalData.universal_fields || []);
 
-  // Final Decision Rationale
-  let recDecision = "AUTO_PASS";
-  let badgeText = "اعتماد تلقائي فوري ✅";
-  let rationale = "تم التحقق من كافة المستندات بنجاح. لا توجد أي تعارضات أو بيانات منتهية.";
+  // 5. Render Reviewer Dossier & Unknown Document Action
+  const recDecision = evalData.reviewer_dossier?.recommended_decision || "HUMAN_REVIEW";
+  let badgeText = "مراجعة ضابط الامتثال ⚠️";
+  if (recDecision === "AUTO_PASS") badgeText = "اعتماد تلقائي فوري ✅";
+  else if (recDecision === "RETAKE_REQUESTED") badgeText = "إعادة التقاط (حجب ضوئي) 📸";
+  else if (recDecision === "POLICY_ESCALATION") badgeText = "تصعيد سياسة الهوية الأساسية 🛡️";
 
-  if (simNL < 0.85 || !idMatch) {
-    recDecision = "REJECT";
-    badgeText = "شبهة تعارض (تدقيق بشري) ⚠️";
-    rationale = `تم اكتشاف تعارض صريح في هوية التاجر أو السجلات الضريبية. يتطلب الملف قراراً من ضابط الامتثال.`;
-  } else if (isLicExpired) {
-    recDecision = "MANUAL_REVIEW";
-    badgeText = "إجازة منتهية ⚠️";
-    rationale = `البيانات مطابقة بنسبة عالية، لكن إجازة غرفة التجارة منتهية الصلاحية رسمياً. يرجى طلب وصل التجديد.`;
-  } else if (lic.occluded_exp) {
-    recDecision = "MANUAL_REVIEW";
-    badgeText = "حقل محجوب بالضوء ⚠️";
-    rationale = `تم تفعيل سياسة (Blank & Flagged): حجب الفلاش تاريخ النفاذ، فامتنع النظام عن اختلاق تاريخ عشوائي وأحال الملف للتدقيق.`;
-  }
-
-  return {
-    crossChecks,
-    flags,
-    fields,
-    overallConf,
-    recDecision,
+  renderDossier({
+    overallConf: evalData.confidence_percentage || Math.round((evalData.overall_confidence || 0.9) * 100),
     badgeText,
-    rationale
-  };
+    recDecision,
+    rationale: evalData.reviewer_dossier?.rationale_ar || "",
+    flags: evalData.reviewer_dossier?.identified_flags || []
+  });
+
+  // Show/Hide Unknown Document Registration Button
+  const unkWrap = document.getElementById("registerUnknownDocWrap");
+  const hasUnknownDoc = docs.some(d => d.classification?.doc_type_id === "UNKNOWN_DOCUMENT");
+  if (unkWrap) {
+    unkWrap.style.display = hasUnknownDoc ? "block" : "none";
+  }
 }
 
-// -------------------------------------------------------------
-// UI Rendering Functions
-// -------------------------------------------------------------
-function renderDocumentVisual(scenario) {
+function renderSeparatedSignals(signals) {
+  const grid = document.getElementById("separatedSignalsGrid");
+  if (!grid || !signals) return;
+
+  const items = [
+    {
+      label: "1. جودة الصورة",
+      val: `${Math.round((signals.image_quality?.score || 0) * 100)}% (${signals.image_quality?.status})`,
+      ok: signals.image_quality?.status === "PASS"
+    },
+    {
+      label: "2. ثقة الاستخراج OCR",
+      val: `${Math.round((signals.text_extraction_confidence?.score || 0) * 100)}% (${signals.text_extraction_confidence?.status})`,
+      ok: signals.text_extraction_confidence?.score >= 0.80
+    },
+    {
+      label: "3. ثقة التصنيف",
+      val: `${Math.round((signals.classification_confidence?.score || 0) * 100)}% (${signals.classification_confidence?.status})`,
+      ok: signals.classification_confidence?.status === "CLASSIFIED"
+    },
+    {
+      label: "4. اكتمال الحقول",
+      val: `${Math.round((signals.field_completeness?.score || 0) * 100)}% (${signals.field_completeness?.status})`,
+      ok: signals.field_completeness?.status === "COMPLETE"
+    },
+    {
+      label: "5. اتساق البيانات",
+      val: `${Math.round((signals.data_consistency?.score || 0) * 100)}% (${signals.data_consistency?.status})`,
+      ok: signals.data_consistency?.status !== "CONFLICT_DETECTED"
+    },
+    {
+      label: "6. كشف التكرار",
+      val: signals.duplicate_detection?.status || "UNIQUE",
+      ok: !signals.duplicate_detection?.is_duplicate
+    },
+    {
+      label: "7. مؤشرات الأصالة/MRZ",
+      val: signals.authenticity_indicators?.status || "CONSISTENT",
+      ok: signals.authenticity_indicators?.status !== "STRUCTURAL_CHECKSUM_WARNING"
+    },
+    {
+      label: "8. التحقق الحكومي الخارجي",
+      val: signals.external_authoritative_verification?.status || "UNAVAILABLE",
+      ok: false,
+      neutral: true
+    },
+    {
+      label: "9. قرار السياسة النهائي",
+      val: signals.final_policy_decision?.decision_tier || "HUMAN_REVIEW",
+      ok: signals.final_policy_decision?.decision_tier === "AUTO_PASS"
+    }
+  ];
+
+  grid.innerHTML = items.map(item => {
+    const borderCol = item.neutral ? "#f59e0b" : (item.ok ? "#10b981" : "#ef4444");
+    const textCol = item.neutral ? "#fbbf24" : (item.ok ? "#34d399" : "#f87171");
+    return `
+      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-right: 3px solid ${borderCol}; border-radius: 6px; padding: 6px 8px;">
+        <div style="font-size: 0.68rem; color: #94a3b8;">${item.label}</div>
+        <div style="font-size: 0.74rem; font-weight: 700; color: ${textCol}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.val}">${item.val}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderDocumentVisualFromPipeline(doc) {
+  if (!doc) return;
   const grid = document.getElementById("docFieldsGrid");
   grid.innerHTML = "";
 
   const glare = document.getElementById("glareOverlay");
   const strip = document.getElementById("docHeaderStrip");
   const watermark = document.getElementById("docWatermark");
+  const metaBar = document.getElementById("docClassificationMeta");
 
-  let fieldsToRender = [];
-  let isGlared = false;
+  const cls = doc.classification || {};
+  const pre = doc.preprocessing || {};
+  const qScore = Math.round((doc.image_quality?.quality_score || 0.95) * 100);
 
-  if (currentDocTab === "national_card") {
-    strip.innerText = "جمهورية العراق — البطاقة الوطنية الموحدة";
-    watermark.innerText = "وزارة الداخلية";
-    document.getElementById("docClarityBadge").innerText = `وضوح المستند: ${Math.round(scenario.national_card.clarity_score * 100)}%`;
-    fieldsToRender = [
-      { label: "الرقم الوطني:", val: scenario.national_card.national_id_number, conf: "98%" },
-      { label: "الاسم الكامل:", val: scenario.national_card.full_name_ar, conf: "96%" },
-      { label: "اسم الأم:", val: scenario.national_card.mother_name_ar, conf: "94%" },
-      { label: "تاريخ الولادة:", val: scenario.national_card.date_of_birth, conf: "95%" },
-      { label: "تاريخ النفاذ:", val: scenario.national_card.expiry_date, conf: "93%" }
-    ];
-  } else if (currentDocTab === "business_license") {
-    strip.innerText = "اتحاد الغرف التجارية العراقية — إجازة ممارسة المهنة";
-    watermark.innerText = "غرفة تجارة بغداد";
-    document.getElementById("docClarityBadge").innerText = `وضوح المستند: ${Math.round(scenario.business_license.clarity_score * 100)}%`;
-    isGlared = scenario.business_license.occluded_exp === true;
-    fieldsToRender = [
-      { label: "رقم الإجازة:", val: scenario.business_license.license_number, conf: "94%" },
-      { label: "الاسم التجاري:", val: scenario.business_license.commercial_trade_name, conf: "96%" },
-      { label: "اسم المالك:", val: scenario.business_license.owner_name, conf: "95%" },
-      { label: "الدرجة التجارية:", val: scenario.business_license.commercial_class, conf: "95%" },
-      { 
-        label: "تاريخ النفاذ:", 
-        val: scenario.business_license.expiry_date || "[غير مقروء - حجب ضوئي]", 
-        conf: isGlared ? "18%" : "92%",
-        occluded: isGlared
-      }
-    ];
-  } else {
-    strip.innerText = "الهيئة العامة للضرائب — هوية المكلف الضريبي";
-    watermark.innerText = "وزارة المالية";
-    document.getElementById("docClarityBadge").innerText = `وضوح المستند: ${Math.round(scenario.tax_card.clarity_score * 100)}%`;
-    fieldsToRender = [
-      { label: "الرقم الضريبي (TIN):", val: scenario.tax_card.tax_id_number, conf: "96%" },
-      { label: "اسم المكلف:", val: scenario.tax_card.taxpayer_name, conf: "95%" },
-      { label: "الرقم الموحد:", val: scenario.tax_card.national_id_reference, conf: "96%" },
-      { label: "الفرع المالي:", val: scenario.tax_card.tax_branch, conf: "94%" },
-      { label: "الموقف المالي:", val: scenario.tax_card.tax_year_status, conf: "97%" }
-    ];
+  strip.innerText = `${cls.canonical_name_ar || "وثيقة عراقية"} (${cls.doc_type_id || "DOC"})`;
+  watermark.innerText = `SPECIMEN / عينة تركيبية — ${cls.issuing_authority_ar || "جمهورية العراق"}`;
+  document.getElementById("docClarityBadge").innerText = `وضوح المستند: ${qScore}% | اللغات: ${(cls.detected_languages || ["ar"]).join("+").toUpperCase()}`;
+
+  if (metaBar) {
+    const statusColor = cls.support_status === "TESTED" ? "#34d399" : (cls.support_status === "UNSUPPORTED_OR_UNCERTAIN_CLASSIFICATION" ? "#f87171" : "#fbbf24");
+    metaBar.innerHTML = `
+      <span>🏷️ الفئة: <strong>${cls.category_name_ar || cls.document_category}</strong></span>
+      <span>📐 التوجيه: <strong>${pre.preprocessing_policy || "STANDARD"} (${pre.applied_rotation_deg || 0}°)</strong></span>
+      <span>🛡️ حالة السجل: <strong style="color:${statusColor}">${cls.support_status}</strong></span>
+    `;
   }
 
+  const isGlared = (doc.image_quality?.quality_flags || []).includes("SPECULAR_FLASH_GLARE_DETECTED");
   glare.style.display = isGlared ? "flex" : "none";
 
-  fieldsToRender.forEach(f => {
+  (doc.fields || []).forEach(f => {
+    const isOccluded = f.original_value === null;
     const bbox = document.createElement("div");
-    bbox.className = `doc-field-bbox ${f.occluded ? 'occluded' : ''}`;
+    bbox.className = `doc-field-bbox ${isOccluded ? 'occluded' : ''}`;
+    const displayVal = f.reviewer_correction || f.original_value || "[فارغ / محجوب — Zero Hallucination]";
     bbox.innerHTML = `
-      <span><strong>${f.label}</strong> ${f.val}</span>
-      <span style="font-size: 0.72rem; color: var(--blue-accent);">ثقة: ${f.conf}</span>
+      <div>
+        <strong>${f.label_ar}:</strong> <span>${displayVal}</span>
+        ${f.normalized_value && f.normalized_value !== String(f.original_value) ? `<div style="font-size:0.68rem; color:#94a3b8;">مُطبَّع: ${f.normalized_value}</div>` : ''}
+      </div>
+      <span style="font-size: 0.72rem; color: var(--blue-accent);">ثقة: ${Math.round((f.confidence || 0) * 100)}%</span>
     `;
     bbox.addEventListener("mouseenter", () => bbox.classList.add("highlight"));
     bbox.addEventListener("mouseleave", () => bbox.classList.remove("highlight"));
     grid.appendChild(bbox);
   });
+
+  // If unknown document, show candidate categories ranked by classifier
+  if (cls.doc_type_id === "UNKNOWN_DOCUMENT" && Array.isArray(cls.candidate_categories) && cls.candidate_categories.length > 0) {
+    const candBox = document.createElement("div");
+    candBox.style.cssText = "margin-top:8px; padding:8px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:6px; font-size:0.75rem;";
+    candBox.innerHTML = `<strong>🔎 الفئات المرشحة الأقرب (Candidate Categories):</strong><br>` +
+      cls.candidate_categories.map(c => `• ${c.canonical_name_ar} (${c.doc_type_id}) — ثقة: ${Math.round(c.confidence * 100)}%`).join("<br>");
+    grid.appendChild(candBox);
+  }
 }
 
 function renderMatrix(checks) {
@@ -500,10 +475,10 @@ function renderMatrix(checks) {
   checks.forEach(c => {
     const title = c.title || c.name || "فحص المطابقة الدلالية";
     const details = c.details || c.note || "";
-    const isOk = c.status === "MATCH" || c.status === "VALID" || c.ok;
+    const isOk = ["MATCH", "EXACT_MATCH", "NORMALIZED_MATCH", "LINKED_VIA_POA", "VALID", "PASS"].includes(c.status) || c.ok;
     const statusClass = isOk ? "MATCH" : (c.status === "EXPIRED" ? "EXPIRED" : "MISMATCH");
     const scoreVal = c.score !== undefined ? c.score : (c.pct ? c.pct / 100 : 0.95);
-    const scoreText = c.scoreText || `${Math.round(scoreVal * 100)}%`;
+    const scoreText = c.scoreText || `${c.status} (${Math.round(scoreVal * 100)}%)`;
 
     const card = document.createElement("div");
     card.className = `check-card ${statusClass}`;
@@ -518,6 +493,38 @@ function renderMatrix(checks) {
   });
 }
 
+function renderUniversalFieldsTable(fields) {
+  const tbody = document.getElementById("fieldsTableBody");
+  tbody.innerHTML = "";
+
+  fields.forEach((f, idx) => {
+    const tr = document.createElement("tr");
+    const isOk = f.validation_status === "VALID";
+    const origVal = f.reviewer_correction ? `${f.reviewer_correction} ✏️` : (f.original_value !== null && f.original_value !== undefined ? f.original_value : '<span style="color:#f87171">[null — محجوب]</span>');
+    const normVal = f.normalized_value || "—";
+    const confPct = `${Math.round((f.confidence || 0) * 100)}%`;
+    const rulesStr = (f.applied_rules || []).join(", ") || "SYNTAX";
+
+    tr.innerHTML = `
+      <td>
+        <strong>${f.label_ar || f.name}</strong>
+        <div style="font-size: 0.68rem; color: #94a3b8;">${f.doc_type_id || ''} • ${f.document_side || 'FRONT'}</div>
+      </td>
+      <td style="font-family: monospace;">${origVal}</td>
+      <td style="font-family: monospace; color: #38bdf8;">${normVal}</td>
+      <td><strong>${confPct}</strong></td>
+      <td>
+        ${isOk
+          ? `<span style="color: var(--success-green);">VALID ✅</span>`
+          : `<span style="color: var(--danger-crimson);" title="${f.explanation || ''}">${f.validation_status || 'FLAGGED'} ⚠️</span>`
+        }
+        <div style="font-size: 0.65rem; color: #94a3b8;">${rulesStr}</div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 function renderFieldsTable(fields) {
   const tbody = document.getElementById("fieldsTableBody");
   tbody.innerHTML = "";
@@ -527,6 +534,7 @@ function renderFieldsTable(fields) {
     tr.innerHTML = `
       <td>${f.name}</td>
       <td style="font-family: monospace;">${f.val}</td>
+      <td style="font-family: monospace; color: #38bdf8;">${f.val}</td>
       <td><strong>${f.conf}</strong></td>
       <td>${f.ok ? '<span style="color: var(--success-green);">سليم ✅</span>' : '<span style="color: var(--danger-crimson);">تنبيه ⚠️</span>'}</td>
     `;
@@ -563,11 +571,107 @@ function renderDossier(res) {
   }
 }
 
+async function openCoverageMatrixModal() {
+  const modal = document.getElementById("coverageModal");
+  const body = document.getElementById("coverageModalBody");
+  body.innerHTML = `<p style="padding: 16px;">⏳ جاري تحميل مصفوفة تغطية الوثائق العراقية من السجل الموحد...</p>`;
+  if (modal.showModal) modal.showModal();
+  else modal.setAttribute("open", "");
+
+  try {
+    const res = await fetch('/api/v1/kyc/coverage-matrix');
+    const data = await res.json();
+    const s = data.summary;
+
+    const catCards = Object.entries(s.by_category).map(([key, c]) => `
+      <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 10px;">
+        <div style="font-size: 0.78rem; font-weight: 800; color: #38bdf8;">الفئة ${c.code}: ${c.name_ar}</div>
+        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px;">الإجمالي: <strong>${c.total}</strong> | TESTED: <strong style="color:#34d399">${c.tested}</strong> | CONFIGURED: <strong style="color:#fbbf24">${c.configured}</strong> | REGISTERED: <strong>${c.registered}</strong></div>
+      </div>
+    `).join("");
+
+    const rowsHtml = data.matrix.map((row, i) => {
+      const stColor = row.support_status === "TESTED" ? "#34d399" : (row.support_status === "CONFIGURED" ? "#fbbf24" : "#94a3b8");
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="font-family: monospace; font-size: 0.74rem; color: #38bdf8;">${row.doc_type_id}</td>
+          <td><strong>${row.canonical_name_ar}</strong><div style="font-size:0.68rem; color:#94a3b8;">${row.canonical_name_en}</div></td>
+          <td>${row.category_name_ar}</td>
+          <td>${row.supported_languages.join("/").toUpperCase()}</td>
+          <td>${row.preprocessing_policy}</td>
+          <td><strong style="color:${stColor}">${row.support_status}</strong></td>
+          <td style="font-size:0.68rem; color:#fbbf24;">${row.external_verification_status}</td>
+        </tr>
+      `;
+    }).join("");
+
+    body.innerHTML = `
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: rgba(16, 185, 129, 0.12); border: 1px solid #10b981; border-radius: 8px; font-size: 0.82rem;">
+        ✅ <strong>إصدار السجل: ${s.registry_version}</strong> — إجمالي الوثائق العراقية المسجلة: <strong>${s.total_types}</strong> نوعاً عبر 8 فئات (A–H) |
+        مختبرة آلياً (TESTED): <strong>${s.by_status.TESTED}</strong> | مهيأة (CONFIGURED): <strong>${s.by_status.CONFIGURED}</strong> | مسجلة (REGISTERED): <strong>${s.by_status.REGISTERED}</strong>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px;">
+        ${catCards}
+      </div>
+      <div class="fields-table-container" style="max-height: 420px; overflow-y: auto;">
+        <table class="fields-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>المعرف (ID)</th>
+              <th>اسم الوثيقة (عربي / إنجليزي)</th>
+              <th>الفئة</th>
+              <th>اللغات</th>
+              <th>التوجيه</th>
+              <th>حالة الدعم</th>
+              <th>التحقق الخارجي</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `<p style="color:#f87171;">تعذر تحميل مصفوفة التغطية: ${err.message}</p>`;
+  }
+}
+
+async function promptRegisterUnknownDoc() {
+  const doc = currentEvalData?.documents?.find(d => d.classification?.doc_type_id === "UNKNOWN_DOCUMENT") || currentEvalData?.documents?.[0];
+  const defaultAr = doc?.classification?.canonical_name_ar || "وصل استلام محصول الحنطة التسويقي";
+  const nameAr = prompt("أدخل الاسم الرسمي للوثيقة بالعربية لتسجيلها في السجل الموحد:", defaultAr);
+  if (!nameAr) return;
+  const codeId = prompt("أدخل المعرف البرمجي للوثيقة (doc_type_id):", "IRQ_AGRI_GRAIN_RECEIPT");
+  if (!codeId) return;
+
+  try {
+    const res = await fetch('/api/v1/kyc/register-candidate-type', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_type_id: codeId,
+        canonical_name_ar: nameAr,
+        canonical_name_en: codeId.replace(/_/g, " "),
+        category: "FINANCIAL_EVIDENCE"
+      })
+    });
+    const out = await res.json();
+    if (res.ok) {
+      alert(`✅ تم تسجيل الوثيقة [${out.entry.doc_type_id} — ${out.entry.canonical_name_ar}] بنجاح في السجل العراقي الموحد بحالة REGISTERED!`);
+      openCoverageMatrixModal();
+    } else {
+      alert(`خطأ: ${out.message}`);
+    }
+  } catch (e) {
+    alert(`تعذر التسجيل: ${e.message}`);
+  }
+}
+
 function recordHumanDecision(decision) {
-  const scenario = SCENARIOS[currentScenarioIndex];
+  const scenario = ACTIVE_SCENARIOS[currentScenarioIndex];
   const appId = document.getElementById("dossierAppId").innerText || "KYC-88410";
 
-  // Post to local server API asynchronously
   fetch('/api/v1/kyc/decision', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -580,11 +684,11 @@ function recordHumanDecision(decision) {
   }).catch(e => console.log('Offline mode / local storage sync'));
 
   if (decision === "APPROVED") {
-    alert(`✅ تم اعتماد التاجر (${scenario.merchant_trade_name}) وتفعيل المحفظة فوراً.\nتم تسجيل توقيع ضابط الامتثال في سجل التدقيق وفق القانون رقم 78 لسنة 2012.`);
+    alert(`✅ تم اعتماد المعاملة (${scenario.merchant_trade_name}) وتفعيل الحساب.\nتم تسجيل توقيع ضابط الامتثال في سجل التدقيق المتسلسل (Hash-Chained Audit) وفق القانون رقم 78 لسنة 2012.`);
   } else if (decision === "RETAKE_REQUESTED") {
-    alert(`📸 تم إرسال إشعار فوري للتاجر عبر تطبيق زين كاش:\n"يرجى إعادة تصوير إجازة ممارسة المهنة بزاوية مستوية مع تجنب ضوء الفلاش."`);
+    alert(`📸 تم إرسال إشعار فوري للعميل لإعادة التقاط الوثيقة المحجوبة بالضوء.`);
   } else {
-    alert(`❌ تم رفض المعاملة وإدراج الحالة ضمن تقرير الاشتباه الأمني الداخلي.`);
+    alert(`❌ تم رفض المعاملة وتوثيق أسباب التعارض في سجل التدقيق الرقابي.`);
   }
 }
 

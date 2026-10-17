@@ -3,81 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>روسترو (Rostro) — المنصة الشاملة لذكاء المستندات العراقية | زين كاش</title>
+  <title>روسترو (Rostro) — المنصة المؤسسية لتدقيق الوثائق العراقية والامتثال | زين كاش</title>
   <link rel="stylesheet" href="styles.css">
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Header Bar -->
+  <!-- Row 1: Institutional Masthead -->
   <header class="navbar">
     <div class="brand">
-      <div class="logo-shield">🛡️</div>
+      <div class="brand-monogram">R</div>
       <div class="brand-text">
-        <h1>روسترو <span>(Rostro)</span></h1>
-        <p>المنصة الشاملة لذكاء المستندات العراقية والتحقق المتعدد الفئات (A–H) | زين كاش</p>
+        <h1>روسترو <span>ROSTRO</span></h1>
+        <p>المنصة المؤسسية لتصنيف وتدقيق الوثائق العراقية (الفئات A–H) | إدارة المخاطر والامتثال</p>
       </div>
     </div>
-    <div class="header-controls">
-      <div class="scenario-selector-wrap">
-        <label for="scenarioSelect">📌 سيناريو الاختبار (14 حالة / الفئات A–H):</label>
+    <nav class="header-actions" aria-label="أدوات النظام">
+      <button class="btn-nav btn-primary-cta" onclick="openUploadModal()">رفع وفحص مستندات</button>
+      <button class="btn-nav" onclick="openCoverageMatrixModal()">مصفوفة الوثائق (44 نوعاً)</button>
+      <button class="btn-nav" onclick="openCameraSimModal()">فاحص جودة الالتقاط</button>
+      <button class="btn-nav" onclick="openAuditModal()">سجل التدقيق القانوني</button>
+      <a href="/blueprint" target="_blank" class="btn-nav">المعمارية الهندسية</a>
+      <a href="/phase3_masterplan.pdf" target="_blank" class="btn-nav">وثيقة المرحلة 3</a>
+    </nav>
+  </header>
+
+  <!-- Row 2: Case Control Bar & Institutional KPI Strip -->
+  <section class="control-ribbon" aria-label="شريط التحكم والمؤشرات">
+    <div class="scenario-control-group">
+      <label for="scenarioSelect">ملف الاختبار القياسي (14 حالة / الفئات A–H):</label>
+      <div class="scenario-select-row">
         <select id="scenarioSelect" onchange="loadSelectedScenario()">
           <!-- Populated dynamically via app.js -->
         </select>
+        <button class="btn-evaluate" onclick="reevaluateCurrentScenario()">إعادة الفحص</button>
       </div>
-      <button class="btn-tool" onclick="openCoverageMatrixModal()" style="background: rgba(245, 158, 11, 0.22); border-color: #f59e0b; color: #fbbf24; font-weight: bold;">🗂️ مصفوفة تغطية الوثائق (44 نوعاً | A–H)</button>
-      <a href="/phase3_masterplan.pdf" target="_blank" class="btn-tool" style="background: rgba(16, 185, 129, 0.25); border-color: #10b981; color: #34d399; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: bold;">🚀 خطة المرحلة 3</a>
-      <a href="/blueprint" target="_blank" class="btn-tool" style="background: rgba(14, 165, 233, 0.2); border-color: #38bdf8; color: #38bdf8; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: bold;">📐 المعمارية A-Z</a>
-      <button class="btn-tool btn-upload-cta" onclick="openUploadModal()">📤 رفع مستندات حقيقية (Upload Images)</button>
-      <button class="btn-tool" onclick="openCameraSimModal()">📸 فاحص الكاميرا الحي (On-Device Wasm)</button>
-      <button class="btn-tool" onclick="openAuditModal()">📜 سجل التدقيق المشفر (CBI Non-Repudiation)</button>
-      <button class="btn-refresh" onclick="reevaluateCurrentScenario()">⚡ إعادة التقييم</button>
     </div>
-  </header>
 
-  <!-- Metric Quick Ribbon -->
-  <div class="metrics-ribbon">
-    <div class="metric-card">
-      <span class="metric-label">السجل العراقي الموحد</span>
-      <span class="metric-value" id="metricRegistryCount">44 وثيقة (8 فئات)</span>
-      <span class="metric-sub">20 TESTED • 8 CONFIGURED • 16 REGISTERED</span>
+    <div class="metrics-strip">
+      <div class="metric-item">
+        <span class="metric-label">السجل العراقي الموحد</span>
+        <strong class="metric-value" id="metricRegistryCount">44 وثيقة (8 فئات)</strong>
+        <span class="metric-sub">20 TESTED · 8 CONFIGURED · 16 REGISTERED</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">خط المعالجة القياسي</span>
+        <strong class="metric-value">10 مراحل حتمية</strong>
+        <span class="metric-sub">تصنيف شامل + مسار للوثائق غير المسجلة</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">مؤشرات التقييم المستقلة</span>
+        <strong class="metric-value">9 إشارات رقابية</strong>
+        <span class="metric-sub">جودة · ثقة · تصنيف · اكتمال · اتساق · تكرار</span>
+      </div>
+      <div class="metric-item">
+        <span class="metric-label">الربط الحكومي الخارجي</span>
+        <strong class="metric-value status-offline">غير متصل حالياً</strong>
+        <span class="metric-sub">EXTERNAL_VERIFICATION_UNAVAILABLE</span>
+      </div>
     </div>
-    <div class="metric-card">
-      <span class="metric-label">خط الأنابيب الموحد</span>
-      <span class="metric-value">10 مراحل</span>
-      <span class="metric-sub">تصنيف شامل + Fallback للوثائق غير المعروفة</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-label">الإشارات الرقابية المفصولة</span>
-      <span class="metric-value">9 إشارات</span>
-      <span class="metric-sub">جودة • ثقة • تصنيف • اكتمال • اتساق • تكرار</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-label">التحقق الحكومي الخارجي</span>
-      <span class="metric-value" style="font-size: 0.95rem; color: #fbbf24;">غير متصل حالياً</span>
-      <span class="metric-sub">EXTERNAL_VERIFICATION_UNAVAILABLE</span>
-    </div>
-  </div>
+  </section>
 
-  <!-- Main 3-Pane Reviewer Cockpit Layout -->
+  <!-- Main 3-Pane Reviewer Workstation Layout -->
   <main class="cockpit-container">
     
-    <!-- LEFT PANE: Document Visual Canvas & Dynamic Multi-Document Tabs -->
+    <!-- PANE 1 (Right in RTL): Document Visual Stage & Multi-Document Tabs -->
     <section class="pane doc-pane">
-      <div class="pane-header" style="flex-wrap: wrap; gap: 8px;">
-        <h2>📸 معاينة حزمة المستندات ومربعات الاستخراج</h2>
-        <div class="doc-tabs" id="docTabsContainer" style="display: flex; flex-wrap: wrap; gap: 6px;">
-          <button class="doc-tab active" onclick="switchDocTab(0)">البطاقة الوطنية</button>
-          <button class="doc-tab" id="tabUploadedImg" onclick="switchDocTab('uploaded_doc')" style="display: none;">المستند المرفوع 🖼️</button>
+      <div class="pane-header">
+        <div>
+          <span class="pane-step">القسم 01</span>
+          <h2>معاينة الوثائق وتحديد الحقول</h2>
+        </div>
+      </div>
+
+      <div class="doc-tabs-bar">
+        <div class="doc-tabs" id="docTabsContainer">
+          <button class="doc-tab active" onclick="switchDocTab(0)">1. البطاقة الوطنية</button>
+          <button class="doc-tab" id="tabUploadedImg" onclick="switchDocTab('uploaded_doc')" style="display: none;">المستند المرفوع</button>
         </div>
       </div>
 
       <div class="doc-viewer-canvas" id="docViewerCanvas">
-        <!-- Canvas Toolbar for Rotating and Adjusting Real Uploaded Images -->
-        <div class="doc-canvas-toolbar" id="docCanvasToolbar" style="display: none; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); margin-bottom: 8px; border-radius: 8px;">
-          <span style="font-size: 0.78rem; font-weight: 600; color: var(--blue-accent);">🔄 أدوات ضبط وتوجيه المستند:</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn-tool" style="padding: 4px 10px; font-size: 0.78rem;" onclick="rotateUploadedDoc(-90)">⟲ تدوير 90° يسار</button>
-            <button class="btn-tool" style="padding: 4px 10px; font-size: 0.78rem;" onclick="rotateUploadedDoc(90)">⟳ تدوير 90° يمين</button>
+        <!-- Horizontal Toolbar for Rotating and Adjusting Real Uploaded Images -->
+        <div class="doc-canvas-toolbar" id="docCanvasToolbar" style="display: none;">
+          <span class="toolbar-label">ضبط اتجاه الوثيقة المرفوعة:</span>
+          <div class="toolbar-actions">
+            <button class="btn-toolbar" onclick="rotateUploadedDoc(-90)">تدوير 90° يسار</button>
+            <button class="btn-toolbar" onclick="rotateUploadedDoc(90)">تدوير 90° يمين</button>
+            <button class="btn-toolbar" onclick="toggleBoundingBoxes()">إظهار / إخفاء التحديد</button>
           </div>
         </div>
 
@@ -87,11 +99,11 @@
           <div class="real-bbox-layer" id="realBboxLayer"></div>
         </div>
 
-        <!-- Interactive Document Graphic with Bounding Boxes -->
+        <!-- Structured Specimen Document Sheet -->
         <div class="simulated-document" id="simulatedDoc">
           <div class="doc-watermark" id="docWatermark">SPECIMEN / عينة تركيبية</div>
           <div class="doc-header-strip" id="docHeaderStrip">البطاقة الوطنية الموحدة</div>
-          <div id="docClassificationMeta" style="font-size: 0.74rem; color: #94a3b8; background: rgba(15, 23, 42, 0.65); padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between;">
+          <div id="docClassificationMeta" class="doc-meta-strip">
             <!-- Populated by app.js with doc_type_id, category, side, languages, and preprocessing policy -->
           </div>
           
@@ -101,70 +113,83 @@
 
           <div class="glare-overlay" id="glareOverlay" style="display: none;">
             <div class="glare-hotspot"></div>
-            <span class="glare-tag">⚠️ انعكاس ضوء فلاش (Specular Glare) - تم حجب القراءة الآلية</span>
+            <span class="glare-tag">تنبيه بصري: انعكاس ضوء فلاش يحجب القراءة الآلية للحقل</span>
           </div>
         </div>
       </div>
 
       <div class="doc-metadata-bar">
-        <span id="docClarityBadge" class="badge">وضوح المستند: 95%</span>
-        <span class="doc-hint">💡 عينة تركيبية موسومة بـ SPECIMEN — حرّك المؤشر لتظليل الحقول</span>
+        <span id="docClarityBadge" class="badge badge-neutral">وضوح المستند: 95%</span>
+        <span class="doc-hint">عينة اختبار تركيبية موسومة بـ SPECIMEN — حرّك المؤشر فوق الحقول للمعاينة</span>
       </div>
     </section>
 
-    <!-- CENTER PANE: 9 Separated Signals + Cross-Document Semantic Consistency Matrix -->
+    <!-- PANE 2 (Center): 9 Separated Signals + Cross-Document Consistency Matrix + Universal Table -->
     <section class="pane matrix-pane">
       <div class="pane-header">
-        <h2>🔍 الإشارات الرقابية الـ 9 ومصفوفة المطابقة المتقاطعة</h2>
+        <div>
+          <span class="pane-step">القسم 02</span>
+          <h2>الإشارات الرقابية الـ 9 ومصفوفة المطابقة المتقاطعة</h2>
+        </div>
         <span class="badge badge-neutral" id="crossCheckCountBadge">4 فحوصات متقاطعة</span>
       </div>
 
-      <!-- 9 Separated Verification Signals Strip -->
-      <div id="separatedSignalsGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px;">
-        <!-- Populated dynamically via app.js -->
-      </div>
+      <div class="pane-scroll-body">
+        <!-- 9 Separated Verification Signals Strip -->
+        <div id="separatedSignalsGrid" class="signals-grid">
+          <!-- Populated dynamically via app.js -->
+        </div>
 
-      <div class="matrix-list" id="matrixList">
-        <!-- Populated dynamically via app.js -->
-      </div>
+        <div class="matrix-list" id="matrixList">
+          <!-- Populated dynamically via app.js -->
+        </div>
 
-      <div class="extracted-data-summary">
-        <h3>📋 جدول الحقول الموحد (الأصلي، المُطبَّع، الثقة، وقواعد التحقق):</h3>
-        <div class="fields-table-container">
-          <table class="fields-table" id="fieldsTable">
-            <thead>
-              <tr>
-                <th>الحقل والوثيقة</th>
-                <th>القيمة الأصلية</th>
-                <th>القيمة المُطبَّعة</th>
-                <th>الثقة</th>
-                <th>الحالة والقواعد</th>
-              </tr>
-            </thead>
-            <tbody id="fieldsTableBody">
-              <!-- Populated by app.js -->
-            </tbody>
-          </table>
+        <div class="extracted-data-summary">
+          <div class="section-subheader">
+            <h3>جدول الحقول الموحد (النص الأصلي، القيمة المُطبَّعة، الثقة، وقواعد التحقق)</h3>
+          </div>
+          <div class="fields-table-container">
+            <table class="fields-table" id="fieldsTable">
+              <thead>
+                <tr>
+                  <th>الحقل والوثيقة</th>
+                  <th>القيمة الأصلية</th>
+                  <th>القيمة المُطبَّعة</th>
+                  <th>الثقة</th>
+                  <th>الحالة والقواعد</th>
+                </tr>
+              </thead>
+              <tbody id="fieldsTableBody">
+                <!-- Populated by app.js -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- RIGHT PANE: Human Reviewer Dossier & Decision Cockpit -->
+    <!-- PANE 3 (Left in RTL): Compliance Officer Dossier & Decision Panel -->
     <section class="pane decision-pane">
       <div class="pane-header">
-        <h2>📋 ملف قرار ضابط الامتثال</h2>
+        <div>
+          <span class="pane-step">القسم 03</span>
+          <h2>ملف قرار ضابط الامتثال</h2>
+        </div>
         <span class="badge badge-eval" id="evaluationStatusBadge">جاري التقييم...</span>
       </div>
 
       <div class="dossier-card">
         <div class="merchant-badge-header">
-          <span class="trade-title" id="dossierTradeName">شركة الرافدين للتجارة</span>
+          <div>
+            <span class="field-caption">اسم التاجر / الكيان القانوني</span>
+            <h3 class="trade-title" id="dossierTradeName">شركة الرافدين للتجارة</h3>
+          </div>
           <span class="app-id-pill" id="dossierAppId">KYC-88410</span>
         </div>
 
         <div class="confidence-meter-container">
           <div class="meter-label">
-            <span>معدل الثقة العام للملف:</span>
+            <span>مؤشر الثقة والاكتمال للملف:</span>
             <strong id="dossierConfidencePct">94%</strong>
           </div>
           <div class="meter-bar">
@@ -173,58 +198,57 @@
         </div>
 
         <div class="rationale-box" id="dossierRationaleBox">
-          <div class="rationale-title">💡 توصية وكيل الذكاء الاصطناعي (AI Agent):</div>
+          <div class="rationale-title">ملخص التقييم ومبررات التوجيه الرقابي:</div>
           <p id="dossierRationaleText">
             جميع البيانات مطابقة وموثوقة بنسبة 100%. تم التحقق من سريان التراخيص الرسمية وتطابق الاسم الرباعي الموثق.
           </p>
         </div>
 
         <div class="flags-section" id="dossierFlagsSection">
-          <h4>الملاحظات والمؤشرات المكتشفة:</h4>
+          <h4>الملاحظات والمؤشرات المسجلة:</h4>
           <ul class="flags-list" id="dossierFlagsList">
             <!-- Flags rendered by app.js -->
           </ul>
         </div>
 
         <!-- Unknown Document Classification / Registration Action -->
-        <div id="registerUnknownDocWrap" style="display: none; margin: 10px 0; padding: 10px; background: rgba(245, 158, 11, 0.14); border: 1px dashed #f59e0b; border-radius: 8px;">
-          <div style="font-size: 0.8rem; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">🆕 وثيقة غير مهيأة في السجل الموحد (UNKNOWN_DOCUMENT):</div>
-          <button class="btn-tool" style="width: 100%; background: #f59e0b; color: #0f172a; font-weight: 800; border: none; padding: 8px;" onclick="promptRegisterUnknownDoc()">
-            ➕ تصنيف وتسجيل هذا النوع في سجل الوثائق العراقي
+        <div id="registerUnknownDocWrap" class="unknown-doc-alert" style="display: none;">
+          <div class="unknown-doc-title">وثيقة غير مهيأة في السجل الموحد (UNKNOWN_DOCUMENT):</div>
+          <button class="btn-register-unknown" onclick="promptRegisterUnknownDoc()">
+            تصنيف وتسجيل هذا النوع في سجل الوثائق العراقي
           </button>
         </div>
 
         <!-- Human Decision Buttons -->
         <div class="decision-actions">
           <button class="btn-decision btn-approve" onclick="recordHumanDecision('APPROVED')">
-            ✅ اعتماد التاجر وتفعيل المحفظة
+            اعتماد الملف وتفعيل الحساب التجاري
           </button>
           <button class="btn-decision btn-retake" onclick="recordHumanDecision('RETAKE_REQUESTED')">
-            📸 طلب إعادة التقاط المستند (تنبيه للزبون)
+            طلب إعادة التقاط الوثيقة (إشعار للعميل)
           </button>
           <button class="btn-decision btn-reject" onclick="recordHumanDecision('REJECTED')">
-            ❌ رفض المعاملة (شبهة تعارض بيانات)
+            رفض المعاملة (تعارض جوهري في البيانات)
           </button>
         </div>
       </div>
 
       <!-- Audit Non-Repudiation Footer -->
       <div class="audit-footer">
-        <span>🔒 تدقيق متوافق مع تعليمات البنك المركزي العراقي وقانون التوقيع الإلكتروني رقم 78 لسنة 2012</span>
+        <span>سجل تدقيق متوافق مع تعليمات البنك المركزي العراقي وقانون التوقيع الإلكتروني والمعاملات الإلكترونية رقم 78 لسنة 2012</span>
       </div>
     </section>
 
   </main>
 
-  <!-- Modern Native Dialog: Universal Iraqi Document Coverage Matrix (Categories A-H) -->
-  <dialog id="coverageModal" class="modern-dialog" closedby="any" aria-labelledby="coverageModalTitle" style="max-width: 980px; width: 94%;">
+  <!-- Native Dialog: Universal Iraqi Document Coverage Matrix (Categories A-H) -->
+  <dialog id="coverageModal" class="modern-dialog" closedby="any" aria-labelledby="coverageModalTitle" style="max-width: 1020px; width: 95%;">
     <div class="dialog-content">
       <div class="dialog-header">
         <div class="dialog-title-wrap">
-          <span class="dialog-icon">🗂️</span>
           <h3 id="coverageModalTitle">مصفوفة تغطية السجل الشامل للوثائق العراقية (Universal Document Registry — الفئات A–H)</h3>
         </div>
-        <button class="btn-dialog-close" onclick="document.getElementById('coverageModal').close()">✕</button>
+        <button class="btn-dialog-close" onclick="document.getElementById('coverageModal').close()" aria-label="إغلاق">×</button>
       </div>
       <div class="dialog-body" id="coverageModalBody" style="max-height: 75vh; overflow-y: auto;">
         <!-- Populated dynamically via app.js -->
@@ -232,15 +256,14 @@
     </div>
   </dialog>
 
-  <!-- Modern Native Dialog: Cryptographic Audit Trail -->
-  <dialog id="auditModal" class="modern-dialog" closedby="any" onclick="if (event.target === this) this.close()">
+  <!-- Native Dialog: Cryptographic Audit Trail -->
+  <dialog id="auditModal" class="modern-dialog" closedby="any" aria-labelledby="auditModalTitle">
     <div class="dialog-content">
       <div class="dialog-header">
         <div class="dialog-title-wrap">
-          <span class="dialog-icon">🔒</span>
-          <h3>سجل التدقيق المشفر وعدم الإنكار (CBI Non-Repudiation Audit)</h3>
+          <h3 id="auditModalTitle">سجل التدقيق المشفر وعدم الإنكار (CBI Non-Repudiation Audit)</h3>
         </div>
-        <button class="btn-dialog-close" onclick="document.getElementById('auditModal').close()">✕</button>
+        <button class="btn-dialog-close" onclick="document.getElementById('auditModal').close()" aria-label="إغلاق">×</button>
       </div>
       <div class="dialog-body" id="auditModalBody">
         <!-- Rendered by app.js -->
@@ -248,19 +271,18 @@
     </div>
   </dialog>
 
-  <!-- Modern Native Dialog: Merchant Onboarding Camera Pre-filter Simulator -->
-  <dialog id="cameraSimModal" class="modern-dialog" closedby="any" onclick="if (event.target === this) this.close()">
+  <!-- Native Dialog: Merchant Onboarding Camera Pre-filter Simulator -->
+  <dialog id="cameraSimModal" class="modern-dialog" closedby="any" aria-labelledby="cameraSimModalTitle">
     <div class="dialog-content">
       <div class="dialog-header">
         <div class="dialog-title-wrap">
-          <span class="dialog-icon">📸</span>
-          <h3>محاكي الفحص اللحظي للكاميرا (On-Device Wasm Pre-Filter)</h3>
+          <h3 id="cameraSimModalTitle">محاكي الفحص المسبق لجودة الالتقاط (On-Device Pre-Filter)</h3>
         </div>
-        <button class="btn-dialog-close" onclick="document.getElementById('cameraSimModal').close()">✕</button>
+        <button class="btn-dialog-close" onclick="document.getElementById('cameraSimModal').close()" aria-label="إغلاق">×</button>
       </div>
       <div class="dialog-body">
         <p class="dialog-desc">
-          تقنية الويب الحديثة لفحص جودة الصورة على متصفح التاجر مباشرة قبل إرسال البيانات للذكاء الاصطناعي (توفر 75% من تكاليف الاستهلاك وحزم الإنترنت):
+          فحص جودة الصورة محلياً قبل إرسالها للخادم للتأكد من خلوها من الاهتزاز أو انعكاس الفلاش الضوئي:
         </p>
         <div class="cam-sim-grid">
           <div class="cam-canvas-box">
@@ -270,19 +292,19 @@
             </div>
           </div>
           <div class="cam-controls">
-            <h4>محاكاة العوامل البيئية لصور المحلات:</h4>
+            <h4>معايير اختبار بيئة التصوير:</h4>
             <div class="slider-group">
-              <label>مستوى الاهتزاز والتشويش (Blur / Laplacian):</label>
+              <label for="camBlurSlider">مستوى الاهتزاز والتشويش (Blur / Laplacian):</label>
               <input type="range" id="camBlurSlider" min="0" max="100" value="10" oninput="runCameraFilterSim()">
               <span id="camBlurVal">10%</span>
             </div>
             <div class="slider-group">
-              <label>انعكاس ضوء الفلاش (Specular Glare):</label>
+              <label for="camGlareSlider">انعكاس ضوء الفلاش (Specular Glare):</label>
               <input type="range" id="camGlareSlider" min="0" max="100" value="5" oninput="runCameraFilterSim()">
               <span id="camGlareVal">5%</span>
             </div>
             <div class="cam-feedback-alert" id="camFeedbackAlert">
-              ✅ الصورة نقية ومستوفية للشروط. جاهزة للرفع والمعالجة الآلية.
+              الصورة نقية ومستوفية للشروط. جاهزة للرفع والمعالجة.
             </div>
           </div>
         </div>
@@ -290,82 +312,82 @@
     </div>
   </dialog>
 
-  <!-- Modern Native Dialog: Real Document Upload & Evaluation -->
-  <dialog id="uploadModal" class="modern-dialog" closedby="any" style="max-width: 780px;" onclick="if (event.target === this) this.close()">
+  <!-- Native Dialog: Real Document Upload & Evaluation -->
+  <dialog id="uploadModal" class="modern-dialog" closedby="any" aria-labelledby="uploadModalTitle" style="max-width: 820px; width: 95%;">
     <div class="dialog-content">
       <div class="dialog-header">
         <div class="dialog-title-wrap">
-          <span class="dialog-icon">📤</span>
-          <h3>رفع مستندات حقيقية للتحقق الذكي (Upload Real Documents)</h3>
+          <h3 id="uploadModalTitle">رفع وفحص حزمة الوثائق الرسمية</h3>
         </div>
-        <button class="btn-dialog-close" onclick="document.getElementById('uploadModal').close()">✕</button>
+        <button class="btn-dialog-close" onclick="document.getElementById('uploadModal').close()" aria-label="إغلاق">×</button>
       </div>
       <div class="dialog-body">
         <p class="dialog-desc">
-          يمكنك رفع صور حقيقية لأي وثيقة عراقية ضمن الفئات الثمان (A–H). سيقوم محرك <strong>Gemini 2.5 Flash</strong> وخط الأنابيب الموحد بتصنيف الوثيقة (أو تفعيل مسار Rostro Fallback للوثائق غير المهيأة)، وفحص الجودة، واستخراج الحقول بمربعات الإحاطة:
+          ارفع صور الوثائق العراقية ضمن الفئات الثمان (A–H) لتصنيفها وفحص جودتها واستخراج حقولها ومطابقتها عبر خط المعالجة الموحد:
         </p>
 
-        <div class="merchant-input-group" style="margin-bottom: 12px;">
-          <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">اسم النشاط التجاري / التاجر:</label>
-          <input type="text" id="merchantTradeNameInput" value="شركة النخيل للتجارة والمقاولات" style="width: 100%; padding: 10px 14px; background: var(--bg-card); color: #fff; border: 1px solid var(--border-color); border-radius: 8px; font-family: var(--font-family); font-size: 0.9rem;">
-        </div>
+        <div class="form-row-grid">
+          <div class="merchant-input-group">
+            <label for="merchantTradeNameInput">اسم النشاط التجاري / صاحب المعاملة:</label>
+            <input type="text" id="merchantTradeNameInput" value="شركة حجازي للتجارة العامة والمقاولات">
+          </div>
 
-        <div class="api-key-input-group" style="margin-bottom: 16px; background: rgba(56, 189, 248, 0.08); border: 1px solid var(--blue-accent); border-radius: 8px; padding: 10px 14px;">
-          <label style="font-size: 0.82rem; font-weight: 700; color: var(--blue-accent); display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span>🔑 مفتاح Google Gemini API Key (لتفعيل استخراج Gemini 2.5 Flash المباشر):</span>
-            <span style="font-size: 0.72rem; font-weight: normal; color: var(--text-muted);">اختياري / يُحفظ محلياً</span>
-          </label>
-          <input type="password" id="geminiApiKeyInput" placeholder="أدخل مفتاح AIzaSy... للقراءة اللحظية من الصورة عبر الذكاء الاصطناعي" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); color: #fff; border: 1px solid var(--border-color); border-radius: 6px; font-family: monospace; font-size: 0.82rem;">
+          <div class="api-key-input-group">
+            <label for="geminiApiKeyInput">
+              <span>مفتاح خدمة الرؤية البصرية (Gemini API Key — اختياري):</span>
+            </label>
+            <input type="password" id="geminiApiKeyInput" placeholder="AIzaSy... (في حال تركه فارغاً يتم استخدام محرك العينات الحتمي)">
+          </div>
         </div>
 
         <div class="upload-dropzones-grid">
-          <!-- Dropzone 1: Primary Identity / Any Document -->
+          <!-- Dropzone 1: Primary Identity -->
           <div class="dropzone-card" id="dzNatCard">
             <div class="dz-header">
-              <span class="dz-icon">🪪</span>
-              <strong>وثيقة الهوية / أي وثيقة عراقية</strong>
+              <span class="dz-num">01</span>
+              <strong>وثيقة الهوية / البطاقة الوطنية</strong>
             </div>
             <div class="dz-preview-box" id="previewBoxNatCard" onclick="document.getElementById('fileNatCard').click()">
-              <span class="dz-placeholder">اضغط لاختيار صورة أو اسحب الملف هنا</span>
-              <img id="imgThumbNatCard" src="" style="display: none; max-width: 100%; max-height: 120px; border-radius: 6px;">
+              <span class="dz-placeholder">انقر لاختيار ملف صورة من جهازك</span>
+              <img id="imgThumbNatCard" src="" alt="معاينة الهوية" style="display: none; max-width: 100%; max-height: 120px; border-radius: 4px;">
             </div>
             <input type="file" id="fileNatCard" accept="image/*" style="display: none;" onchange="handleFileSelect('national_card', event)">
-            <div class="dz-quality-status" id="qualityNatCard">في انتظار الرفع...</div>
+            <div class="dz-quality-status" id="qualityNatCard">بانتظار إرفاق الوثيقة</div>
           </div>
 
           <!-- Dropzone 2: License / Business -->
           <div class="dropzone-card" id="dzLicense">
             <div class="dz-header">
-              <span class="dz-icon">📜</span>
-              <strong>وثيقة تجارية / سكن / وكالة</strong>
+              <span class="dz-num">02</span>
+              <strong>إجازة تجارة / تأسيس شركة / وكالة</strong>
             </div>
             <div class="dz-preview-box" id="previewBoxLicense" onclick="document.getElementById('fileLicense').click()">
-              <span class="dz-placeholder">اضغط لاختيار صورة أو اسحب الملف هنا</span>
-              <img id="imgThumbLicense" src="" style="display: none; max-width: 100%; max-height: 120px; border-radius: 6px;">
+              <span class="dz-placeholder">انقر لاختيار ملف صورة من جهازك</span>
+              <img id="imgThumbLicense" src="" alt="معاينة الإجازة" style="display: none; max-width: 100%; max-height: 120px; border-radius: 4px;">
             </div>
             <input type="file" id="fileLicense" accept="image/*" style="display: none;" onchange="handleFileSelect('license', event)">
-            <div class="dz-quality-status" id="qualityLicense">في انتظار الرفع...</div>
+            <div class="dz-quality-status" id="qualityLicense">بانتظار إرفاق الوثيقة</div>
           </div>
 
-          <!-- Dropzone 3: Supporting / Financial -->
+          <!-- Dropzone 3: Supporting / Residence -->
           <div class="dropzone-card" id="dzTaxCard">
             <div class="dz-header">
-              <span class="dz-icon">💼</span>
-              <strong>وثيقة ضريبية / مالية / ساندة</strong>
+              <span class="dz-num">03</span>
+              <strong>بطاقة السكن / هوية ضريبية / ساندة</strong>
             </div>
             <div class="dz-preview-box" id="previewBoxTaxCard" onclick="document.getElementById('fileTaxCard').click()">
-              <span class="dz-placeholder">اضغط لاختيار صورة أو اسحب الملف هنا</span>
-              <img id="imgThumbTaxCard" src="" style="display: none; max-width: 100%; max-height: 120px; border-radius: 6px;">
+              <span class="dz-placeholder">انقر لاختيار ملف صورة من جهازك</span>
+              <img id="imgThumbTaxCard" src="" alt="معاينة السكن" style="display: none; max-width: 100%; max-height: 120px; border-radius: 4px;">
             </div>
             <input type="file" id="fileTaxCard" accept="image/*" style="display: none;" onchange="handleFileSelect('tax_card', event)">
-            <div class="dz-quality-status" id="qualityTaxCard">في انتظار الرفع...</div>
+            <div class="dz-quality-status" id="qualityTaxCard">بانتظار إرفاق الوثيقة</div>
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border-color);">
-          <button class="btn-tool" onclick="loadSampleImagesIntoUpload()">📥 تجربة تحميل عينات صور تجريبية</button>
-          <button class="btn-decision btn-approve" id="btnRunUploadEval" onclick="submitUploadedDocuments()" style="padding: 12px 24px; font-size: 0.95rem;">
-            ⚡ بدء التحقق الآلي واستخراج البيانات
+        <div class="dialog-footer-bar">
+          <button class="btn-secondary-action" onclick="loadSampleImagesIntoUpload()">تحميل الوثائق التركيبية الثلاث (Faker Specimens)</button>
+          <button class="btn-decision btn-approve" id="btnRunUploadEval" onclick="submitUploadedDocuments()">
+            بدء الفحص واستخراج الحقول
           </button>
         </div>
       </div>

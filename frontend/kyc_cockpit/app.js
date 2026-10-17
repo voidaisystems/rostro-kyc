@@ -257,7 +257,7 @@ function renderDocumentTabs(docs = []) {
   upBtn.id = "tabUploadedImg";
   upBtn.className = `doc-tab ${currentDocTab === 'uploaded_doc' ? 'active' : ''}`;
   upBtn.style.display = isUploadedVisible ? "inline-block" : "none";
-  upBtn.innerText = "المستند المرفوع 🖼️";
+  upBtn.innerText = "المستند المرفوع";
   upBtn.onclick = () => switchDocTab('uploaded_doc');
   container.appendChild(upBtn);
 }
@@ -266,14 +266,20 @@ function switchDocTab(tabOrIdx) {
   currentDocTab = tabOrIdx;
   const simDoc = document.getElementById("simulatedDoc");
   const uplDoc = document.getElementById("uploadedDocContainer");
+  const toolbar = document.getElementById("docCanvasToolbar");
 
   if (tabOrIdx === 'uploaded_doc') {
     if (simDoc) simDoc.style.display = 'none';
     if (uplDoc) uplDoc.style.display = 'block';
+    if (toolbar) toolbar.style.display = 'flex';
+    if (currentEvalData && Array.isArray(currentEvalData.documents)) {
+      renderDocumentTabs(currentEvalData.documents);
+    }
   } else {
     currentDocIndex = typeof tabOrIdx === 'number' ? tabOrIdx : 0;
     if (simDoc) simDoc.style.display = 'flex';
     if (uplDoc) uplDoc.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
     if (currentEvalData && Array.isArray(currentEvalData.documents)) {
       renderDocumentTabs(currentEvalData.documents);
       renderDocumentVisualFromPipeline(currentEvalData.documents[currentDocIndex]);
@@ -308,7 +314,7 @@ function renderFullPipelineResult(evalData) {
   // 1. Render Multi-Document Tabs & Active Specimen
   const docs = evalData.documents || [];
   renderDocumentTabs(docs);
-  if (docs.length > 0) {
+  if (docs.length > 0 && currentDocTab !== 'uploaded_doc') {
     renderDocumentVisualFromPipeline(docs[currentDocIndex] || docs[0]);
   }
 
@@ -325,10 +331,10 @@ function renderFullPipelineResult(evalData) {
 
   // 5. Render Reviewer Dossier & Unknown Document Action
   const recDecision = evalData.reviewer_dossier?.recommended_decision || "HUMAN_REVIEW";
-  let badgeText = "مراجعة ضابط الامتثال ⚠️";
-  if (recDecision === "AUTO_PASS") badgeText = "اعتماد تلقائي فوري ✅";
-  else if (recDecision === "RETAKE_REQUESTED") badgeText = "إعادة التقاط (حجب ضوئي) 📸";
-  else if (recDecision === "POLICY_ESCALATION") badgeText = "تصعيد سياسة الهوية الأساسية 🛡️";
+  let badgeText = "مراجعة ضابط الامتثال";
+  if (recDecision === "AUTO_PASS") badgeText = "اعتماد تلقائي فوري";
+  else if (recDecision === "RETAKE_REQUESTED") badgeText = "إعادة التقاط (حجب ضوئي)";
+  else if (recDecision === "POLICY_ESCALATION") badgeText = "تصعيد سياسة الهوية الأساسية";
 
   renderDossier({
     overallConf: evalData.confidence_percentage || Math.round((evalData.overall_confidence || 0.9) * 100),
@@ -352,60 +358,59 @@ function renderSeparatedSignals(signals) {
 
   const items = [
     {
-      label: "1. جودة الصورة",
+      label: "01. جودة الصورة",
       val: `${Math.round((signals.image_quality?.score || 0) * 100)}% (${signals.image_quality?.status})`,
       ok: signals.image_quality?.status === "PASS"
     },
     {
-      label: "2. ثقة الاستخراج OCR",
+      label: "02. ثقة الاستخراج OCR",
       val: `${Math.round((signals.text_extraction_confidence?.score || 0) * 100)}% (${signals.text_extraction_confidence?.status})`,
       ok: signals.text_extraction_confidence?.score >= 0.80
     },
     {
-      label: "3. ثقة التصنيف",
+      label: "03. ثقة التصنيف",
       val: `${Math.round((signals.classification_confidence?.score || 0) * 100)}% (${signals.classification_confidence?.status})`,
       ok: signals.classification_confidence?.status === "CLASSIFIED"
     },
     {
-      label: "4. اكتمال الحقول",
+      label: "04. اكتمال الحقول",
       val: `${Math.round((signals.field_completeness?.score || 0) * 100)}% (${signals.field_completeness?.status})`,
       ok: signals.field_completeness?.status === "COMPLETE"
     },
     {
-      label: "5. اتساق البيانات",
+      label: "05. اتساق البيانات",
       val: `${Math.round((signals.data_consistency?.score || 0) * 100)}% (${signals.data_consistency?.status})`,
       ok: signals.data_consistency?.status !== "CONFLICT_DETECTED"
     },
     {
-      label: "6. كشف التكرار",
+      label: "06. كشف التكرار",
       val: signals.duplicate_detection?.status || "UNIQUE",
       ok: !signals.duplicate_detection?.is_duplicate
     },
     {
-      label: "7. مؤشرات الأصالة/MRZ",
+      label: "07. مؤشرات الأصالة / MRZ",
       val: signals.authenticity_indicators?.status || "CONSISTENT",
       ok: signals.authenticity_indicators?.status !== "STRUCTURAL_CHECKSUM_WARNING"
     },
     {
-      label: "8. التحقق الحكومي الخارجي",
+      label: "08. التحقق الحكومي الخارجي",
       val: signals.external_authoritative_verification?.status || "UNAVAILABLE",
       ok: false,
       neutral: true
     },
     {
-      label: "9. قرار السياسة النهائي",
+      label: "09. قرار السياسة النهائي",
       val: signals.final_policy_decision?.decision_tier || "HUMAN_REVIEW",
       ok: signals.final_policy_decision?.decision_tier === "AUTO_PASS"
     }
   ];
 
   grid.innerHTML = items.map(item => {
-    const borderCol = item.neutral ? "#f59e0b" : (item.ok ? "#10b981" : "#ef4444");
-    const textCol = item.neutral ? "#fbbf24" : (item.ok ? "#34d399" : "#f87171");
+    const stateClass = item.neutral ? "signal-warn" : (item.ok ? "signal-ok" : "signal-fail");
     return `
-      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-right: 3px solid ${borderCol}; border-radius: 6px; padding: 6px 8px;">
-        <div style="font-size: 0.68rem; color: #94a3b8;">${item.label}</div>
-        <div style="font-size: 0.74rem; font-weight: 700; color: ${textCol}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.val}">${item.val}</div>
+      <div class="signal-card ${stateClass}">
+        <div class="signal-label">${item.label}</div>
+        <div class="signal-val" title="${item.val}">${item.val}</div>
       </div>
     `;
   }).join("");
@@ -430,11 +435,11 @@ function renderDocumentVisualFromPipeline(doc) {
   document.getElementById("docClarityBadge").innerText = `وضوح المستند: ${qScore}% | اللغات: ${(cls.detected_languages || ["ar"]).join("+").toUpperCase()}`;
 
   if (metaBar) {
-    const statusColor = cls.support_status === "TESTED" ? "#34d399" : (cls.support_status === "UNSUPPORTED_OR_UNCERTAIN_CLASSIFICATION" ? "#f87171" : "#fbbf24");
+    const statusColor = cls.support_status === "TESTED" ? "#166534" : (cls.support_status === "UNSUPPORTED_OR_UNCERTAIN_CLASSIFICATION" ? "#991b1b" : "#92400e");
     metaBar.innerHTML = `
-      <span>🏷️ الفئة: <strong>${cls.category_name_ar || cls.document_category}</strong></span>
-      <span>📐 التوجيه: <strong>${pre.preprocessing_policy || "STANDARD"} (${pre.applied_rotation_deg || 0}°)</strong></span>
-      <span>🛡️ حالة السجل: <strong style="color:${statusColor}">${cls.support_status}</strong></span>
+      <span>الفئة: <strong>${cls.category_name_ar || cls.document_category}</strong></span>
+      <span>التوجيه: <strong>${pre.preprocessing_policy || "STANDARD"} (${pre.applied_rotation_deg || 0}°)</strong></span>
+      <span>حالة السجل: <strong style="color:${statusColor}">${cls.support_status}</strong></span>
     `;
   }
 
@@ -449,9 +454,9 @@ function renderDocumentVisualFromPipeline(doc) {
     bbox.innerHTML = `
       <div>
         <strong>${f.label_ar}:</strong> <span>${displayVal}</span>
-        ${f.normalized_value && f.normalized_value !== String(f.original_value) ? `<div style="font-size:0.68rem; color:#94a3b8;">مُطبَّع: ${f.normalized_value}</div>` : ''}
+        ${f.normalized_value && f.normalized_value !== String(f.original_value) ? `<div style="font-size:0.7rem; color:#64748b;">مُطبَّع: ${f.normalized_value}</div>` : ''}
       </div>
-      <span style="font-size: 0.72rem; color: var(--blue-accent);">ثقة: ${Math.round((f.confidence || 0) * 100)}%</span>
+      <span style="font-size: 0.72rem; font-family: var(--font-mono); font-weight: 600; color: var(--brand-navy);">ثقة: ${Math.round((f.confidence || 0) * 100)}%</span>
     `;
     bbox.addEventListener("mouseenter", () => bbox.classList.add("highlight"));
     bbox.addEventListener("mouseleave", () => bbox.classList.remove("highlight"));
@@ -461,8 +466,8 @@ function renderDocumentVisualFromPipeline(doc) {
   // If unknown document, show candidate categories ranked by classifier
   if (cls.doc_type_id === "UNKNOWN_DOCUMENT" && Array.isArray(cls.candidate_categories) && cls.candidate_categories.length > 0) {
     const candBox = document.createElement("div");
-    candBox.style.cssText = "margin-top:8px; padding:8px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:6px; font-size:0.75rem;";
-    candBox.innerHTML = `<strong>🔎 الفئات المرشحة الأقرب (Candidate Categories):</strong><br>` +
+    candBox.style.cssText = "margin-top:8px; padding:10px; background:#fef3c7; border:1px solid #fcd34d; color:#92400e; border-radius:4px; font-size:0.76rem;";
+    candBox.innerHTML = `<strong>الفئات المرشحة الأقرب (Candidate Categories):</strong><br>` +
       cls.candidate_categories.map(c => `• ${c.canonical_name_ar} (${c.doc_type_id}) — ثقة: ${Math.round(c.confidence * 100)}%`).join("<br>");
     grid.appendChild(candBox);
   }
@@ -497,10 +502,10 @@ function renderUniversalFieldsTable(fields) {
   const tbody = document.getElementById("fieldsTableBody");
   tbody.innerHTML = "";
 
-  fields.forEach((f, idx) => {
+  fields.forEach((f) => {
     const tr = document.createElement("tr");
     const isOk = f.validation_status === "VALID";
-    const origVal = f.reviewer_correction ? `${f.reviewer_correction} ✏️` : (f.original_value !== null && f.original_value !== undefined ? f.original_value : '<span style="color:#f87171">[null — محجوب]</span>');
+    const origVal = f.reviewer_correction ? `${f.reviewer_correction} [معدّل]` : (f.original_value !== null && f.original_value !== undefined ? f.original_value : '<span style="color:var(--status-fail-text)">[null — محجوب]</span>');
     const normVal = f.normalized_value || "—";
     const confPct = `${Math.round((f.confidence || 0) * 100)}%`;
     const rulesStr = (f.applied_rules || []).join(", ") || "SYNTAX";
@@ -508,17 +513,17 @@ function renderUniversalFieldsTable(fields) {
     tr.innerHTML = `
       <td>
         <strong>${f.label_ar || f.name}</strong>
-        <div style="font-size: 0.68rem; color: #94a3b8;">${f.doc_type_id || ''} • ${f.document_side || 'FRONT'}</div>
+        <div style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">${f.doc_type_id || ''} · ${f.document_side || 'FRONT'}</div>
       </td>
-      <td style="font-family: monospace;">${origVal}</td>
-      <td style="font-family: monospace; color: #38bdf8;">${normVal}</td>
-      <td><strong>${confPct}</strong></td>
+      <td style="font-family: var(--font-mono);">${origVal}</td>
+      <td style="font-family: var(--font-mono); color: var(--brand-navy); font-weight: 500;">${normVal}</td>
+      <td style="font-family: var(--font-mono);"><strong>${confPct}</strong></td>
       <td>
         ${isOk
-          ? `<span style="color: var(--success-green);">VALID ✅</span>`
-          : `<span style="color: var(--danger-crimson);" title="${f.explanation || ''}">${f.validation_status || 'FLAGGED'} ⚠️</span>`
+          ? `<span style="color: var(--status-pass-text); font-weight: 700; font-family: var(--font-mono);">VALID</span>`
+          : `<span style="color: var(--status-fail-text); font-weight: 700; font-family: var(--font-mono);" title="${f.explanation || ''}">${f.validation_status || 'FLAGGED'}</span>`
         }
-        <div style="font-size: 0.65rem; color: #94a3b8;">${rulesStr}</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted); font-family: var(--font-mono);">${rulesStr}</div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -532,11 +537,11 @@ function renderFieldsTable(fields) {
   fields.forEach(f => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${f.name}</td>
-      <td style="font-family: monospace;">${f.val}</td>
-      <td style="font-family: monospace; color: #38bdf8;">${f.val}</td>
-      <td><strong>${f.conf}</strong></td>
-      <td>${f.ok ? '<span style="color: var(--success-green);">سليم ✅</span>' : '<span style="color: var(--danger-crimson);">تنبيه ⚠️</span>'}</td>
+      <td><strong>${f.name}</strong></td>
+      <td style="font-family: var(--font-mono);">${f.val}</td>
+      <td style="font-family: var(--font-mono); color: var(--brand-navy);">${f.val}</td>
+      <td style="font-family: var(--font-mono);"><strong>${f.conf}</strong></td>
+      <td>${f.ok ? '<span style="color: var(--status-pass-text); font-weight: 700;">VALID</span>' : '<span style="color: var(--status-fail-text); font-weight: 700;">REVIEW</span>'}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -549,11 +554,13 @@ function renderDossier(res) {
   const badge = document.getElementById("evaluationStatusBadge");
   badge.innerText = res.badgeText;
   if (res.recDecision === "AUTO_PASS") {
-    badge.style.backgroundColor = "var(--success-green)";
-    badge.style.color = "#fff";
+    badge.style.backgroundColor = "var(--status-pass-bg)";
+    badge.style.color = "var(--status-pass-text)";
+    badge.style.borderColor = "var(--status-pass-border)";
   } else {
-    badge.style.backgroundColor = "var(--warning-amber)";
-    badge.style.color = "#0f172a";
+    badge.style.backgroundColor = "var(--status-warn-bg)";
+    badge.style.color = "var(--status-warn-text)";
+    badge.style.borderColor = "var(--status-warn-border)";
   }
 
   document.getElementById("dossierRationaleText").innerText = res.rationale;
@@ -561,11 +568,11 @@ function renderDossier(res) {
   const flagsList = document.getElementById("dossierFlagsList");
   flagsList.innerHTML = "";
   if (res.flags.length === 0) {
-    flagsList.innerHTML = `<li style="border-right-color: var(--success-green); background: rgba(16,185,129,0.1); color: var(--success-green);">لا توجد أي مخاطر أو تعارضات مكتشفة (ملف نظيف).</li>`;
+    flagsList.innerHTML = `<li class="clean-flag">لا توجد أي مخاطر أو تعارضات مسجلة (ملف مستوفٍ للشروط).</li>`;
   } else {
     res.flags.forEach(flag => {
       const li = document.createElement("li");
-      li.innerText = `⚠️ ${flag}`;
+      li.innerText = flag;
       flagsList.appendChild(li);
     });
   }
@@ -574,7 +581,7 @@ function renderDossier(res) {
 async function openCoverageMatrixModal() {
   const modal = document.getElementById("coverageModal");
   const body = document.getElementById("coverageModalBody");
-  body.innerHTML = `<p style="padding: 16px;">⏳ جاري تحميل مصفوفة تغطية الوثائق العراقية من السجل الموحد...</p>`;
+  body.innerHTML = `<p style="padding: 16px;">جاري تحميل مصفوفة تغطية الوثائق العراقية من السجل الموحد...</p>`;
   if (modal.showModal) modal.showModal();
   else modal.setAttribute("open", "");
 
@@ -584,31 +591,31 @@ async function openCoverageMatrixModal() {
     const s = data.summary;
 
     const catCards = Object.entries(s.by_category).map(([key, c]) => `
-      <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 10px;">
-        <div style="font-size: 0.78rem; font-weight: 800; color: #38bdf8;">الفئة ${c.code}: ${c.name_ar}</div>
-        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px;">الإجمالي: <strong>${c.total}</strong> | TESTED: <strong style="color:#34d399">${c.tested}</strong> | CONFIGURED: <strong style="color:#fbbf24">${c.configured}</strong> | REGISTERED: <strong>${c.registered}</strong></div>
+      <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); border-radius: 4px; padding: 10px;">
+        <div style="font-size: 0.78rem; font-weight: 700; color: var(--brand-navy);">الفئة ${c.code}: ${c.name_ar}</div>
+        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px;">الإجمالي: <strong>${c.total}</strong> | TESTED: <strong style="color:var(--status-pass-text)">${c.tested}</strong> | CONFIGURED: <strong style="color:var(--status-warn-text)">${c.configured}</strong> | REGISTERED: <strong>${c.registered}</strong></div>
       </div>
     `).join("");
 
     const rowsHtml = data.matrix.map((row, i) => {
-      const stColor = row.support_status === "TESTED" ? "#34d399" : (row.support_status === "CONFIGURED" ? "#fbbf24" : "#94a3b8");
+      const stColor = row.support_status === "TESTED" ? "var(--status-pass-text)" : (row.support_status === "CONFIGURED" ? "var(--status-warn-text)" : "var(--text-secondary)");
       return `
         <tr>
           <td>${i + 1}</td>
-          <td style="font-family: monospace; font-size: 0.74rem; color: #38bdf8;">${row.doc_type_id}</td>
-          <td><strong>${row.canonical_name_ar}</strong><div style="font-size:0.68rem; color:#94a3b8;">${row.canonical_name_en}</div></td>
+          <td style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--brand-navy);">${row.doc_type_id}</td>
+          <td><strong>${row.canonical_name_ar}</strong><div style="font-size:0.68rem; color:var(--text-muted);">${row.canonical_name_en}</div></td>
           <td>${row.category_name_ar}</td>
-          <td>${row.supported_languages.join("/").toUpperCase()}</td>
-          <td>${row.preprocessing_policy}</td>
-          <td><strong style="color:${stColor}">${row.support_status}</strong></td>
-          <td style="font-size:0.68rem; color:#fbbf24;">${row.external_verification_status}</td>
+          <td style="font-family: var(--font-mono);">${row.supported_languages.join("/").toUpperCase()}</td>
+          <td style="font-family: var(--font-mono);">${row.preprocessing_policy}</td>
+          <td><strong style="color:${stColor}; font-family: var(--font-mono);">${row.support_status}</strong></td>
+          <td style="font-size:0.68rem; color:var(--status-warn-text); font-family: var(--font-mono);">${row.external_verification_status}</td>
         </tr>
       `;
     }).join("");
 
     body.innerHTML = `
-      <div style="margin-bottom: 12px; padding: 10px 14px; background: rgba(16, 185, 129, 0.12); border: 1px solid #10b981; border-radius: 8px; font-size: 0.82rem;">
-        ✅ <strong>إصدار السجل: ${s.registry_version}</strong> — إجمالي الوثائق العراقية المسجلة: <strong>${s.total_types}</strong> نوعاً عبر 8 فئات (A–H) |
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: var(--status-pass-bg); border: 1px solid var(--status-pass-border); color: var(--status-pass-text); border-radius: 4px; font-size: 0.82rem;">
+        <strong>إصدار السجل: ${s.registry_version}</strong> — إجمالي الوثائق العراقية المسجلة: <strong>${s.total_types}</strong> نوعاً عبر 8 فئات (A–H) |
         مختبرة آلياً (TESTED): <strong>${s.by_status.TESTED}</strong> | مهيأة (CONFIGURED): <strong>${s.by_status.CONFIGURED}</strong> | مسجلة (REGISTERED): <strong>${s.by_status.REGISTERED}</strong>
       </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px;">
@@ -633,7 +640,7 @@ async function openCoverageMatrixModal() {
       </div>
     `;
   } catch (err) {
-    body.innerHTML = `<p style="color:#f87171;">تعذر تحميل مصفوفة التغطية: ${err.message}</p>`;
+    body.innerHTML = `<p style="color:var(--status-fail-text);">تعذر تحميل مصفوفة التغطية: ${err.message}</p>`;
   }
 }
 
@@ -658,7 +665,7 @@ async function promptRegisterUnknownDoc() {
     });
     const out = await res.json();
     if (res.ok) {
-      alert(`✅ تم تسجيل الوثيقة [${out.entry.doc_type_id} — ${out.entry.canonical_name_ar}] بنجاح في السجل العراقي الموحد بحالة REGISTERED!`);
+      alert(`تم تسجيل الوثيقة [${out.entry.doc_type_id} — ${out.entry.canonical_name_ar}] بنجاح في السجل العراقي الموحد بحالة REGISTERED.`);
       openCoverageMatrixModal();
     } else {
       alert(`خطأ: ${out.message}`);
@@ -681,14 +688,14 @@ function recordHumanDecision(decision) {
       reviewer_id: "OFFICER_REVIEWER_01",
       notes: `قرار ضابط الامتثال: ${decision} للتاجر ${scenario.merchant_trade_name}`
     })
-  }).catch(e => console.log('Offline mode / local storage sync'));
+  }).catch(() => {});
 
   if (decision === "APPROVED") {
-    alert(`✅ تم اعتماد المعاملة (${scenario.merchant_trade_name}) وتفعيل الحساب.\nتم تسجيل توقيع ضابط الامتثال في سجل التدقيق المتسلسل (Hash-Chained Audit) وفق القانون رقم 78 لسنة 2012.`);
+    alert(`تم اعتماد المعاملة (${scenario.merchant_trade_name}) وتفعيل الحساب.\nتم تسجيل توقيع ضابط الامتثال في سجل التدقيق المتسلسل (Hash-Chained Audit) وفق القانون رقم 78 لسنة 2012.`);
   } else if (decision === "RETAKE_REQUESTED") {
-    alert(`📸 تم إرسال إشعار فوري للعميل لإعادة التقاط الوثيقة المحجوبة بالضوء.`);
+    alert(`تم إرسال إشعار فوري للعميل لإعادة التقاط الوثيقة المحجوبة بالضوء.`);
   } else {
-    alert(`❌ تم رفض المعاملة وتوثيق أسباب التعارض في سجل التدقيق الرقابي.`);
+    alert(`تم رفض المعاملة وتوثيق أسباب التعارض في سجل التدقيق الرقابي.`);
   }
 }
 
@@ -697,12 +704,11 @@ function recordHumanDecision(decision) {
 // =====================================================================
 
 function openAuditModal() {
-  const scenario = SCENARIOS[currentScenarioIndex];
+  const scenario = ACTIVE_SCENARIOS[currentScenarioIndex] || SCENARIOS[0];
   const appId = document.getElementById("dossierAppId").innerText || "KYC-88410";
   const now = new Date().toISOString();
   
-  // Deterministic cryptographic hash simulation (SHA-256 equivalent)
-  const auditString = `${appId}|${scenario.merchant_trade_name}|${scenario.national_card.national_id}|${now}`;
+  const auditString = `${appId}|${scenario.merchant_trade_name}|${now}`;
   let hashVal = 0;
   for (let i = 0; i < auditString.length; i++) {
     hashVal = ((hashVal << 5) - hashVal) + auditString.charCodeAt(i);
@@ -714,15 +720,15 @@ function openAuditModal() {
   body.innerHTML = `
     <div class="audit-entry-box">
       <div><span class="hash-label">رقم الطلب (Application ID):</span> ${appId}</div>
-      <div><span class="hash-label">اسم التاجر:</span> ${scenario.merchant_trade_name}</div>
+      <div><span class="hash-label">اسم التاجر / الكيان:</span> ${scenario.merchant_trade_name}</div>
       <div><span class="hash-label">التوقيت الموحد (UTC):</span> ${now}</div>
-      <div><span class="hash-label">محرك الذكاء الاصطناعي:</span> Google Antigravity SDK (Agentic Multi-Subagent Pipeline)</div>
+      <div><span class="hash-label">نظام المعالجة:</span> Rostro 10-Stage Universal Document Pipeline</div>
       <div><span class="hash-label">البصمة الرقمية المشفرة (SHA-256 Audit Digest):</span></div>
       <div class="hash-val">${hexHash}</div>
     </div>
-    <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid var(--blue-accent); border-radius: 8px; padding: 12px; font-size: 0.82rem; line-height: 1.6;">
-      ⚖️ <strong>الحجية القانونية أمام البنك المركزي العراقي والقضاء:</strong><br>
-      هذا السجل موثق بالبصمة الرقمية غير القابلة للتراجع (Non-Repudiation Receipt) استناداً إلى أحكام قانون التوقيع الإلكتروني والمعاملات الإلكترونية العراقي رقم (78) لسنة 2012، وضوابط الامتثال لمكافحة غسل الأموال وتمويل الإرهاب لسنة 2023.
+    <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); border-right: 3px solid var(--brand-navy); border-radius: 4px; padding: 12px; font-size: 0.82rem; line-height: 1.6; color: var(--text-secondary);">
+      <strong style="color: var(--text-primary);">الحجية القانونية أمام البنك المركزي العراقي والقضاء:</strong><br>
+      هذا السجل موثق بالبصمة الرقمية غير القابلة للإنكار (Non-Repudiation Receipt) استناداً إلى أحكام قانون التوقيع الإلكتروني والمعاملات الإلكترونية العراقي رقم (78) لسنة 2012، وضوابط الامتثال لمكافحة غسل الأموال وتمويل الإرهاب.
     </div>
   `;
 
@@ -770,29 +776,29 @@ function runCameraFilterSim() {
 
   // Draw Card Frame
   ctx.fillStyle = "#f8fafc";
-  ctx.strokeStyle = "#38bdf8";
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#1e3a8a";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(40, 25, 260, 165, 10);
+  ctx.roundRect(40, 25, 260, 165, 6);
   ctx.fill();
   ctx.stroke();
 
   // Card Header Band
-  ctx.fillStyle = "#0284c7";
+  ctx.fillStyle = "#0f172a";
   ctx.fillRect(40, 25, 260, 32);
 
   // Text inside card
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 11px Cairo, sans-serif";
+  ctx.font = "bold 11px IBM Plex Sans Arabic, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("جمهورية العراق - البطاقة الوطنية الموحدة", 170, 46);
 
   // Photo Box
   ctx.fillStyle = "#cbd5e1";
   ctx.fillRect(52, 68, 50, 65);
-  ctx.fillStyle = "#64748b";
-  ctx.font = "16px sans-serif";
-  ctx.fillText("👤", 77, 106);
+  ctx.fillStyle = "#475569";
+  ctx.font = "bold 9px monospace";
+  ctx.fillText("PHOTO", 77, 104);
 
   // Document Fields Lines
   ctx.fillStyle = "#1e293b";
@@ -830,20 +836,20 @@ function runCameraFilterSim() {
   const alertBox = document.getElementById("camFeedbackAlert");
 
   if (glareVal > 40) {
-    hud.innerText = "⚠️ انعكاس ضوء فلاش شديد";
-    hud.style.color = "var(--danger-crimson)";
+    hud.innerText = "انعكاس ضوء فلاش شديد";
+    hud.style.color = "#fca5a5";
     alertBox.className = "cam-feedback-alert danger";
-    alertBox.innerText = "❌ تم حظر الإرسال تلقائياً: انعكاس ضوء فلاش شديد يحجب قراءة الرقم الوطني. يرجى إطفاء الفلاش أو تغيير زاوية التصوير.";
+    alertBox.innerText = "تم حظر الإرسال تلقائياً: انعكاس ضوء فلاش شديد يحجب قراءة الرقم الوطني. يرجى إطفاء الفلاش أو تغيير زاوية التصوير.";
   } else if (blurVal > 40) {
-    hud.innerText = "⚠️ تشويش واهتزاز (Blur Detected)";
-    hud.style.color = "var(--warning-amber)";
+    hud.innerText = "تشويش واهتزاز (Blur Detected)";
+    hud.style.color = "#fcd34d";
     alertBox.className = "cam-feedback-alert warning";
-    alertBox.innerText = "⚠️ جودة الصورة ضعيفة (حركة أثناء الالتقاط). يرجى تثبيت الهاتف جيداً والتقاط صورة ثابتة.";
+    alertBox.innerText = "جودة الصورة ضعيفة (حركة أثناء الالتقاط). يرجى تثبيت الكاميرا والتقاط صورة واضحة.";
   } else {
-    hud.innerText = "✅ جودة مثالية (Clear & Valid)";
-    hud.style.color = "var(--success-green)";
+    hud.innerText = "جودة مثالية (Clear & Valid)";
+    hud.style.color = "#86efac";
     alertBox.className = "cam-feedback-alert";
-    alertBox.innerText = "✅ الصورة واضحة ومستوفية للشروط. مسموح برفعها إلى خادم التحقق الآلي فوراً.";
+    alertBox.innerText = "الصورة واضحة ومستوفية للشروط. مسموح برفعها إلى خادم التحقق الآلي.";
   }
 }
 
@@ -875,7 +881,6 @@ function handleFileSelect(docType, event) {
     const dataUrl = e.target.result;
     window.UPLOADED_DOCUMENT_FILES[docType] = dataUrl;
 
-    // Update Thumbnail & Status
     if (docType === 'national_card') {
       const thumb = document.getElementById("imgThumbNatCard");
       thumb.src = dataUrl;
@@ -883,7 +888,7 @@ function handleFileSelect(docType, event) {
       document.querySelector("#previewBoxNatCard .dz-placeholder").style.display = "none";
       const q = document.getElementById("qualityNatCard");
       q.className = "dz-quality-status ok";
-      q.innerText = "✅ جاهز للمعالجة (صورة نقية)";
+      q.innerText = "جاهز للمعالجة (تم إرفاق الملف)";
     } else if (docType === 'license') {
       const thumb = document.getElementById("imgThumbLicense");
       thumb.src = dataUrl;
@@ -891,7 +896,7 @@ function handleFileSelect(docType, event) {
       document.querySelector("#previewBoxLicense .dz-placeholder").style.display = "none";
       const q = document.getElementById("qualityLicense");
       q.className = "dz-quality-status ok";
-      q.innerText = "✅ جاهز للمعالجة (صورة نقية)";
+      q.innerText = "جاهز للمعالجة (تم إرفاق الملف)";
     } else if (docType === 'tax_card') {
       const thumb = document.getElementById("imgThumbTaxCard");
       thumb.src = dataUrl;
@@ -899,7 +904,7 @@ function handleFileSelect(docType, event) {
       document.querySelector("#previewBoxTaxCard .dz-placeholder").style.display = "none";
       const q = document.getElementById("qualityTaxCard");
       q.className = "dz-quality-status ok";
-      q.innerText = "✅ جاهز للمعالجة (صورة نقية)";
+      q.innerText = "جاهز للمعالجة (تم إرفاق الملف)";
     }
   };
   reader.readAsDataURL(file);
@@ -937,21 +942,21 @@ async function loadSampleImagesIntoUpload() {
     t1.style.display = "block";
     document.querySelector("#previewBoxNatCard .dz-placeholder").style.display = "none";
     document.getElementById("qualityNatCard").className = "dz-quality-status ok";
-    document.getElementById("qualityNatCard").innerText = "✅ البطاقة الوطنية الموحدة (Faker Specimen)";
+    document.getElementById("qualityNatCard").innerText = "البطاقة الوطنية الموحدة (Faker Specimen)";
 
     const t2 = document.getElementById("imgThumbLicense");
     t2.src = licData;
     t2.style.display = "block";
     document.querySelector("#previewBoxLicense .dz-placeholder").style.display = "none";
     document.getElementById("qualityLicense").className = "dz-quality-status ok";
-    document.getElementById("qualityLicense").innerText = "✅ إجازة غرفة تجارة بغداد (Faker Specimen)";
+    document.getElementById("qualityLicense").innerText = "إجازة غرفة تجارة بغداد (Faker Specimen)";
 
     const t3 = document.getElementById("imgThumbTaxCard");
     t3.src = resData;
     t3.style.display = "block";
     document.querySelector("#previewBoxTaxCard .dz-placeholder").style.display = "none";
     document.getElementById("qualityTaxCard").className = "dz-quality-status ok";
-    document.getElementById("qualityTaxCard").innerText = "✅ بطاقة السكن العراقية (Faker Specimen)";
+    document.getElementById("qualityTaxCard").innerText = "بطاقة السكن العراقية (Faker Specimen)";
   } catch (err) {
     console.warn("Faker specimen fetch error:", err);
   }
@@ -967,14 +972,13 @@ async function submitUploadedDocuments() {
   }
 
   btn.disabled = true;
-  btn.innerText = "⏳ جاري الفحص واستخراج البيانات بواسطة Gemini 2.5 Flash...";
+  btn.innerText = "جاري الفحص واستخراج الحقول...";
 
   const apiKeyInput = document.getElementById("geminiApiKeyInput");
   const apiKey = (apiKeyInput ? apiKeyInput.value.trim() : "") || localStorage.getItem('gemini_api_key') || "";
   if (apiKey) {
     localStorage.setItem('gemini_api_key', apiKey);
   }
-
 
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -992,14 +996,20 @@ async function submitUploadedDocuments() {
 
     if (!res.ok) throw new Error("فشل الاتصال بخادم التقييم");
     const evalData = await res.json();
+    currentEvalData = evalData;
 
     // 1. Update Reviewer Cockpit Header
     document.getElementById("dossierTradeName").innerText = evalData.merchant_trade_name;
     document.getElementById("dossierAppId").innerText = evalData.application_id;
 
-    // 2. Render Matrix & Dossier
-    renderMatrix(evalData.cross_checks.map(c => ({
-      title: c.name,
+    // 2. Render 9 Separated Signals if available
+    if (evalData.separated_signals) {
+      renderSeparatedSignals(evalData.separated_signals);
+    }
+
+    // 3. Render Matrix & Dossier
+    renderMatrix((evalData.cross_checks || []).map(c => ({
+      title: c.title || c.name,
       details: c.details,
       status: c.status,
       score: c.score,
@@ -1007,21 +1017,18 @@ async function submitUploadedDocuments() {
     })));
 
     renderDossier({
-      overallConf: evalData.confidence_percentage || Math.round(evalData.overall_confidence * 100),
-      badgeText: evalData.status === "APPROVED_AUTOMATIC" ? "معتمد تلقائياً" : "يتطلب تدقيق بشري",
+      overallConf: evalData.confidence_percentage || Math.round((evalData.overall_confidence || 0.92) * 100),
+      badgeText: evalData.status === "APPROVED_AUTOMATIC" ? "اعتماد تلقائي فوري" : "مراجعة ضابط الامتثال",
       recDecision: evalData.reviewer_dossier.recommended_decision,
       rationale: evalData.reviewer_dossier.rationale_ar,
       flags: evalData.reviewer_dossier.identified_flags || []
     });
 
-    // 3. Render Real Extracted Fields in Table (100% Dynamic from Gemini 2.5 Flash)
-    if (Array.isArray(evalData.dynamic_fields_list) && evalData.dynamic_fields_list.length > 0) {
+    // 4. Render Universal Fields Table or Dynamic Fields
+    if (Array.isArray(evalData.universal_fields) && evalData.universal_fields.length > 0) {
+      renderUniversalFieldsTable(evalData.universal_fields);
+    } else if (Array.isArray(evalData.dynamic_fields_list) && evalData.dynamic_fields_list.length > 0) {
       renderFieldsTable(evalData.dynamic_fields_list);
-    } else {
-      const ext = evalData.extracted_fields || {};
-      renderFieldsTable([
-        { name: "نوع المستند", val: evalData.document_type_ar || "مستند رسمي", conf: "95%", ok: true }
-      ]);
     }
 
     // Update document title strip
@@ -1030,10 +1037,12 @@ async function submitUploadedDocuments() {
       headerStrip.innerText = evalData.document_type_ar;
     }
 
-    // 4. Show Uploaded Image Tab & Activate Display
+    // 5. Show Uploaded Image Tab & Activate Display
     const tabUploaded = document.getElementById("tabUploadedImg");
-    tabUploaded.style.display = "inline-block";
-    tabUploaded.click();
+    if (tabUploaded) {
+      tabUploaded.style.display = "inline-block";
+      switchDocTab('uploaded_doc');
+    }
 
     const primaryImageSrc = evalData.upright_image || window.UPLOADED_DOCUMENT_FILES.national_card || window.UPLOADED_DOCUMENT_FILES.license || window.UPLOADED_DOCUMENT_FILES.tax_card;
     const realImg = document.getElementById("realUploadedImage");
@@ -1043,31 +1052,34 @@ async function submitUploadedDocuments() {
       window.UPLOADED_DOCUMENT_FILES.national_card = evalData.upright_image;
     }
 
-    // 5. Activate Canvas Rotation Toolbar
+    // 6. Activate Canvas Rotation Toolbar
     const toolbar = document.getElementById("docCanvasToolbar");
     if (toolbar) toolbar.style.display = "flex";
 
-    // 6. Render Dynamic Bounding Boxes over Real Image
+    // 7. Render Dynamic Bounding Boxes over Real Image
     cachedUploadedBoundingBoxes = evalData.uploaded_bounding_boxes || [];
     renderRealUploadedBoundingBoxes(cachedUploadedBoundingBoxes);
 
-    // 7. Close Modal
+    // 8. Close Modal
     document.getElementById("uploadModal").close();
-
-    const docType = evalData.document_type_ar || "المستند";
-    const nameStr = evalData.detected_primary_name ? `\n👤 الاسم: ${evalData.detected_primary_name}` : "";
-    const idStr = evalData.detected_primary_id ? `\n🔢 الرقم: ${evalData.detected_primary_id}` : "";
-    alert(`🎉 تم قراءة وفحص [${docType}] بنجاح بواسطة Gemini 2.5 Flash!${nameStr}${idStr}\n📊 نسبة الثقة: ${evalData.confidence_percentage}%`);
   } catch (err) {
     console.error(err);
     alert(`حدث خطأ أثناء فحص المستند: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.innerText = "⚡ بدء التحقق الآلي واستخراج البيانات";
+    btn.innerText = "بدء الفحص واستخراج الحقول";
   }
 }
 
 let cachedUploadedBoundingBoxes = [];
+let showBoundingBoxes = true;
+
+function toggleBoundingBoxes() {
+  const layer = document.getElementById("realBboxLayer");
+  if (!layer) return;
+  showBoundingBoxes = !showBoundingBoxes;
+  layer.style.display = showBoundingBoxes ? "block" : "none";
+}
 
 function rotateUploadedDoc(deg) {
   const img = document.getElementById("realUploadedImage");
@@ -1096,7 +1108,6 @@ function rotateUploadedDoc(deg) {
       window.UPLOADED_DOCUMENT_FILES.national_card = rotatedData;
     }
 
-    // Transform cached bounding boxes for the new 90° rotation
     if (deg === 90) {
       cachedUploadedBoundingBoxes = cachedUploadedBoundingBoxes.map(b => {
         if (!b.box_2d) return b;
@@ -1147,15 +1158,29 @@ function renderRealUploadedBoundingBoxes(bboxes) {
   }
 
   cachedUploadedBoundingBoxes.forEach(box => {
+    let top = box.top;
+    let left = box.left;
+    let width = box.width;
+    let height = box.height;
+
+    if ((!top || !left) && Array.isArray(box.box_2d) && box.box_2d.length === 4) {
+      const [ymin, xmin, ymax, xmax] = box.box_2d;
+      top = (ymin / 10).toFixed(1) + "%";
+      left = (xmin / 10).toFixed(1) + "%";
+      height = Math.max(3.0, (ymax - ymin) / 10).toFixed(1) + "%";
+      width = Math.max(5.0, (xmax - xmin) / 10).toFixed(1) + "%";
+    }
+
     const div = document.createElement("div");
     div.className = "real-bbox";
-    div.style.top = box.top;
-    div.style.left = box.left;
-    div.style.width = box.width;
-    div.style.height = box.height;
-    div.setAttribute("data-label", box.label);
+    div.style.top = top;
+    div.style.left = left;
+    div.style.width = width;
+    div.style.height = height;
+    div.setAttribute("data-label", `${box.label}${box.value ? ': ' + box.value : ''}`);
     layer.appendChild(div);
   });
 }
+
 
 

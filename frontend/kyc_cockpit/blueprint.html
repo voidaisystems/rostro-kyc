@@ -2,359 +2,541 @@
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
-  <title>Rostro (روسترو) — Complete End-to-End System Architecture Blueprint</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rostro (روسترو) — Institutional System Architecture Blueprint</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    @keyframes pulseGlow {
-      0%, 100% { opacity: 0.3; transform: scale(1); }
-      50% { opacity: 0.6; transform: scale(1.05); }
+    :root {
+      color-scheme: light;
+      --bg-page: #f3f4f6;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-masthead: #111827;
+      --text-primary: #111827;
+      --text-secondary: #374151;
+      --text-muted: #64748b;
+      --border-default: #cbd5e1;
+      --border-strong: #94a3b8;
+      --brand-navy: #1e3a8a;
     }
-    .step-active {
-      border-color: #38bdf8 !important;
-      background: rgba(56, 189, 248, 0.12) !important;
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+      min-height: 100vh;
+      line-height: 1.55;
+    }
+    .masthead {
+      background-color: var(--bg-masthead);
+      color: #ffffff;
+      padding: 16px 28px;
+      border-bottom: 1px solid #1f2937;
+    }
+    .masthead-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .monogram {
+      width: 38px;
+      height: 38px;
+      background: #ffffff;
+      color: #111827;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    .masthead h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .masthead p {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+    .masthead-badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill-link, .pill-tag {
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 4px;
+      text-decoration: none;
+      border: 1px solid #374151;
+      background: #1f2937;
+      color: #f3f4f6;
+    }
+    .pill-link:hover {
+      background: #374151;
+      color: #ffffff;
+    }
+    .container {
+      max-width: 1180px;
+      margin: 24px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .section-cap {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .step-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-left: 3px solid var(--border-strong);
+      border-radius: 4px;
+      padding: 12px 14px;
+      cursor: pointer;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+    .step-card:hover {
+      background: var(--bg-subtle);
+      border-color: var(--border-strong);
+    }
+    .step-card.step-active {
+      border-color: var(--brand-navy);
+      border-left: 4px solid var(--brand-navy);
+      background: #eff6ff;
+    }
+    .step-num {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: #111827;
+      color: #ffffff;
+      padding: 3px 7px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .step-card.step-active .step-num {
+      background: var(--brand-navy);
+    }
+    .step-info { flex: 1; min-width: 0; }
+    .step-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-top h3 {
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .step-top span {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+    .step-info p {
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      margin-top: 3px;
+    }
+    .inspector {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+    .inspector-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-default);
+      margin-bottom: 18px;
+    }
+    .step-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--brand-navy);
+      text-transform: uppercase;
+    }
+    .inspector-header h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+    .tech-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.74rem;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .block-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .block-card h4 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--brand-navy);
+      margin-bottom: 6px;
+    }
+    .block-card p {
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+    }
+    .io-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 640px) {
+      .io-grid { grid-template-columns: 1fr; }
+    }
+    .io-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      padding: 12px;
+    }
+    .io-box span {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .io-box p {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+    }
+    .nav-footer {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-default);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .btn-step {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      padding: 7px 14px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-step.primary {
+      background: var(--brand-navy);
+      border-color: var(--brand-navy);
+      color: #ffffff;
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans p-4 md:p-6 min-h-screen">
+<body>
 
-  <!-- Header Header -->
-  <div class="max-w-6xl mx-auto mb-8 border-b border-slate-800 pb-6">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3">
-          <span class="text-3xl">🛡️</span>
-          <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-            Wathiq <span class="text-sky-400">(روسترو)</span> — Complete System Blueprint
-          </h1>
-          <span class="px-2.5 py-0.5 text-xs font-bold rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30">
-            Phase 2 Finalist Deck
-          </span>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand-row">
+        <div class="monogram">R</div>
+        <div>
+          <h1>Rostro (روسترو) — Institutional System Architecture</h1>
+          <p>Universal Iraqi Document Intelligence Platform (Categories A–H) | Compliance & Risk Engineering</p>
         </div>
-        <p class="text-slate-400 text-sm mt-1">
-          Autonomous Zero-Hallucination KYC Document Agent for Iraqi Digital Wallets (ZainCash / Qi Card)
+      </div>
+      <div class="masthead-badges">
+        <a href="/" class="pill-link">Return to Reviewer Workstation</a>
+        <a href="/wathiq_23_features.pdf" target="_blank" class="pill-link">Technical Reference PDF</a>
+        <span class="pill-tag">CBI Law No. 78 of 2012</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="step-list">
+      <div class="section-cap">Pipeline Execution Stages (01 — 07)</div>
+
+      <div onclick="selectStep(1)" id="stepBtn-1" class="step-card step-active">
+        <div class="step-num">01</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Edge Quality Gate</h3>
+            <span>Client / Wasm</span>
+          </div>
+          <p>Laplacian Blur Variance & Specular Glare Detection</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(2)" id="stepBtn-2" class="step-card">
+        <div class="step-num">02</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Universal Classification & Registry</h3>
+            <span>44 Doc Types</span>
+          </div>
+          <p>Categories A–H Lookup & Unknown Document Fallback</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(3)" id="stepBtn-3" class="step-card">
+        <div class="step-num">03</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Document-Specific Preprocessing</h3>
+            <span>Orientation</span>
+          </div>
+          <p>ID Card 270°/90° Normalization & Multi-Page PDF Policy</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(4)" id="stepBtn-4" class="step-card">
+        <div class="step-num">04</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Zero-Hallucination Extraction</h3>
+            <span>Sandboxed VLM</span>
+          </div>
+          <p>Nonce-Isolated Extraction + Null Preservation on Occlusion</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(5)" id="stepBtn-5" class="step-card">
+        <div class="step-num">05</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Iraqi & Kurdish Normalization</h3>
+            <span>Multi-Script</span>
+          </div>
+          <p>Compound Names, Arabic-Indic Digits & Kurdish Sorani Map</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(6)" id="stepBtn-6" class="step-card">
+        <div class="step-num">06</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>Deterministic Validation & 9 Signals</h3>
+            <span>ICAO 9303</span>
+          </div>
+          <p>TD1/TD3 Modulo-10 Checksums & Cross-Document Matrix</p>
+        </div>
+      </div>
+
+      <div onclick="selectStep(7)" id="stepBtn-7" class="step-card">
+        <div class="step-num">07</div>
+        <div class="step-info">
+          <div class="step-top">
+            <h3>CBI Law 78 Non-Repudiation Audit</h3>
+            <span>SHA-256 Chain</span>
+          </div>
+          <p>Cryptographic Decision Receipt & Compliance Dossier</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="inspector">
+      <div class="inspector-header">
+        <div>
+          <span id="stepBadge" class="step-badge">Stage 01 of 07</span>
+          <h2 id="stepTitle">Edge Quality Gate (Laplacian & Specular Glare Filter)</h2>
+        </div>
+        <span id="stepTechBadge" class="tech-badge">Pre-Ingestion Quality Gate</span>
+      </div>
+
+      <div class="block-card">
+        <h4>Technical Specification</h4>
+        <p id="stepDesc">
+          Before transmitting document captures to the extraction pipeline, Rostro evaluates optical clarity, motion blur (Laplacian variance), and specular flash glare on plastic laminate cards. Captures below threshold trigger immediate retake guidance rather than downstream OCR guessing.
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <a href="/wathiq_23_features.pdf" target="_blank" class="px-3 py-1 text-xs font-semibold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition-all flex items-center gap-1.5 no-underline">
-          <span>📄</span> Download Master 23-Feature PDF
-        </a>
-        <span class="px-3 py-1 text-xs font-semibold rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          ⚖️ CBI Law 78 Compliant
-        </span>
-        <span class="px-3 py-1 text-xs font-semibold rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20">
-          ⚡ Latency: 3.8s
-        </span>
+      <div class="io-grid">
+        <div class="io-box">
+          <span>Input Specification</span>
+          <p id="stepInput">Raw document image frame (JPEG/PNG) from mobile client or reviewer upload</p>
+        </div>
+        <div class="io-box">
+          <span>Output Specification</span>
+          <p id="stepOutput">Optical quality score (0.00–1.00) + deterministic quality flags (SPECULAR_FLASH_GLARE, BLUR)</p>
+        </div>
+      </div>
+
+      <div class="block-card">
+        <h4>Operational & Compliance Value</h4>
+        <p id="stepEdge">
+          Eliminates garbage-in/garbage-out OCR errors caused by indoor fluorescent reflections on Iraqi National ID cards and laminated Chamber of Commerce licenses.
+        </p>
+      </div>
+
+      <div class="block-card">
+        <h4>Architectural Invariant</h4>
+        <p id="stepScript">
+          Never fabricate or interpolate characters covered by specular glare. Occluded mandatory fields are preserved as null and routed to retake or human compliance review.
+        </p>
+      </div>
+
+      <div class="nav-footer">
+        <button onclick="prevStep()" class="btn-step">Previous Stage</button>
+        <span id="stepCounter" style="font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-muted);">Stage 01 of 07</span>
+        <button onclick="nextStep()" class="btn-step primary">Next Stage</button>
       </div>
     </div>
-  </div>
-
-  <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-    <!-- Left Column: Interactive Step Navigator -->
-    <div class="lg:col-span-5 space-y-3">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-xs uppercase tracking-wider font-bold text-slate-400">
-          System Execution Pipeline (Step-by-Step)
-        </h2>
-        <span class="text-xs text-sky-400">Click any step to inspect</span>
-      </div>
-
-      <!-- Step 1 Button -->
-      <div onclick="selectStep(1)" id="stepBtn-1" class="step-card step-active cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm shrink-0 border border-sky-500/30">
-          1
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">Edge Quality Pre-Filter</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Client / Kiosk</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">Wasm Laplacian Blur & Specular Glare Hotspot Mask</p>
-        </div>
-      </div>
-
-      <!-- Step 2 Button -->
-      <div onclick="selectStep(2)" id="stepBtn-2" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-500/30">
-          2
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">30ms Hardware Auto-Rotation</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Pre-Flight</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">Binary Aspect-Ratio Check & Native 270°/90° Normalizer</p>
-        </div>
-      </div>
-
-      <!-- Step 3 Button -->
-      <div onclick="selectStep(3)" id="stepBtn-3" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm shrink-0 border border-cyan-500/30">
-          3
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">Multimodal VLM Cascade</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Cognitive AI</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">Gemini 2.5 Flash -> 3.5 Flash Resilient Cascade & Nonces</p>
-        </div>
-      </div>
-
-      <!-- Step 4 Button -->
-      <div onclick="selectStep(4)" id="stepBtn-4" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0 border border-emerald-500/30">
-          4
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">Deterministic Forensics (Regula)</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Mathematical</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">ICAO Doc 9303 TD1 Modulo-10 Checksums [7, 3, 1]</p>
-        </div>
-      </div>
-
-      <!-- Step 5 Button -->
-      <div onclick="selectStep(5)" id="stepBtn-5" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0 border border-amber-500/30">
-          5
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">Iraqi Onomastic Normalizer</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Dialect NLP</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">Compound Names (عبد الزهرة), Honorifics & Kurdish Sorani</p>
-        </div>
-      </div>
-
-      <!-- Step 6 Button -->
-      <div onclick="selectStep(6)" id="stepBtn-6" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm shrink-0 border border-rose-500/30">
-          6
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">5-Signal Risk Decision Engine</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Dynamic Tiers</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">AUTO_PASS, Retake, or 1-Screen Cockpit Review in 22s</p>
-        </div>
-      </div>
-
-      <!-- Step 7 Button -->
-      <div onclick="selectStep(7)" id="stepBtn-7" class="step-card cursor-pointer p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 transition-all hover:border-slate-700 flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-sm shrink-0 border border-yellow-500/30">
-          7
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">CBI Law 78 Audit Seal</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Judicial Stamp</span>
-          </div>
-          <p class="text-xs text-slate-400 truncate mt-0.5">HMAC-SHA256 Non-Repudiation Court Admissibility</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right Column: Deep Step Inspector -->
-    <div class="lg:col-span-7">
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl relative overflow-hidden min-h-[580px]">
-        <!-- Decorative Glow -->
-        <div id="stepGlow" class="absolute -top-24 -right-24 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <!-- Dynamic Content Header -->
-        <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-          <div class="flex items-center gap-3">
-            <span id="stepIcon" class="text-2xl">📸</span>
-            <div>
-              <span id="stepBadge" class="text-[11px] font-bold uppercase tracking-wider text-sky-400">Step 1 of 7</span>
-              <h2 id="stepTitle" class="text-xl font-bold text-white">Edge Quality Pre-Filter (On-Device Wasm)</h2>
-            </div>
-          </div>
-          <span id="stepTechBadge" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 font-mono text-slate-300 border border-slate-700">
-            OpenCV.js / Wasm Canvas
-          </span>
-        </div>
-
-        <!-- Dynamic Body Content -->
-        <div class="space-y-4">
-          <!-- The 'What Happens' Card -->
-          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4">
-            <h4 class="text-xs uppercase tracking-wider font-bold text-sky-400 mb-1.5 flex items-center gap-1.5">
-              <span>⚙️</span> What Happens in this Step:
-            </h4>
-            <p id="stepDesc" class="text-sm text-slate-300 leading-relaxed">
-              When a citizen or kiosk agent points their smartphone camera at an Iraqi ID card, an on-device WebAssembly worker analyzes the live video stream at 60 FPS before uploading over cellular data. It runs two real-time algorithms: Laplacian variance for motion blur (&sigma;² ≥ 150) and luminance thresholding for specular flash glare (&gt;245 RGB covering &gt;5% area).
-            </p>
-          </div>
-
-          <!-- Input / Output Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5">
-              <span class="text-xs font-bold text-amber-400 block mb-1">📥 Input Data:</span>
-              <p id="stepInput" class="text-xs text-slate-300 font-mono">Raw 1080p camera frames from customer mobile browser or kiosk tablet</p>
-            </div>
-            <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5">
-              <span class="text-xs font-bold text-emerald-400 block mb-1">📤 Output Data:</span>
-              <p id="stepOutput" class="text-xs text-slate-300 font-mono">Clean, glare-free, non-blurred frame (JPEG) + Quality Confidence Score (0-100%)</p>
-            </div>
-          </div>
-
-          <!-- The Competitive Edge (Why it wins the hackathon) -->
-          <div class="bg-sky-950/30 border border-sky-800/40 rounded-xl p-4">
-            <h4 class="text-xs uppercase tracking-wider font-bold text-sky-300 mb-1 flex items-center gap-1.5">
-              <span>🏆</span> The Competitive Hackathon Differentiator:
-            </h4>
-            <p id="stepEdge" class="text-xs text-sky-100/90 leading-relaxed">
-              Saves 75% of server bandwidth and prevents rejected submissions before they reach the cloud. Competitors upload blurry images to cloud LLMs, wasting quota and creating frustrating retry loops.
-            </p>
-          </div>
-
-          <!-- Presentation Speaker Note / Pitch Script -->
-          <div class="bg-purple-950/30 border border-purple-800/40 rounded-xl p-4">
-            <h4 class="text-xs uppercase tracking-wider font-bold text-purple-300 mb-1 flex items-center gap-1.5">
-              <span>🎙️</span> What You Tell the Judges (Presentation Script):
-            </h4>
-            <p id="stepScript" class="text-xs text-purple-200 italic leading-relaxed">
-              "Judges, in Iraq, 42% of customer KYC rejections happen because of flash reflection on plastic cards. Instead of sending bad photos to an expensive AI model, Wathiq stops bad photos on the customer's phone instantly, coaching them in real-time to tilt the phone away from light."
-            </p>
-          </div>
-        </div>
-
-        <!-- Navigation Buttons inside modal -->
-        <div class="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between">
-          <button onclick="prevStep()" class="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold transition-all">
-            ← Previous Step
-          </button>
-          <span id="stepCounter" class="text-xs text-slate-500 font-mono">Step 1 of 7</span>
-          <button onclick="nextStep()" class="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all">
-            Next Step →
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  </main>
 
   <script>
     const STEPS_DATA = {
       1: {
-        title: "Edge Quality Pre-Filter (On-Device Wasm)",
-        badge: "Step 1 of 7",
-        icon: "📸",
-        tech: "OpenCV.js / Wasm Canvas",
-        desc: "When a citizen or kiosk agent points their smartphone camera at an Iraqi ID card, an on-device WebAssembly worker analyzes the live video stream at 60 FPS before uploading over cellular data. It runs two real-time algorithms: Laplacian variance for motion blur (σ² ≥ 150) and luminance thresholding for specular flash glare (>245 RGB covering >5% area).",
-        input: "Raw 1080p camera frames from customer mobile browser or kiosk tablet",
-        output: "Clean, glare-free, non-blurred frame (JPEG) + Quality Score (0-100%)",
-        edge: "Saves 75% of server bandwidth and prevents rejected submissions before they reach the cloud. Competitors upload blurry images to cloud LLMs, wasting quota and creating frustrating retry loops.",
-        script: "\"Judges, in Iraq, 42% of customer KYC rejections happen because of flash reflection on plastic cards. Instead of sending bad photos to an expensive AI model, Wathiq stops bad photos on the customer's phone instantly, coaching them in real-time to tilt the phone away from light.\""
+        title: "Edge Quality Gate (Laplacian & Specular Glare Filter)",
+        badge: "Stage 01 of 07",
+        tech: "Pre-Ingestion Quality Gate",
+        desc: "Before transmitting document captures to the extraction pipeline, Rostro evaluates optical clarity, motion blur (Laplacian variance), and specular flash glare on plastic laminate cards. Captures below threshold trigger immediate retake guidance rather than downstream OCR guessing.",
+        input: "Raw document image frame (JPEG/PNG) from mobile client or reviewer upload",
+        output: "Optical quality score (0.00–1.00) + deterministic quality flags (SPECULAR_FLASH_GLARE, BLUR)",
+        edge: "Eliminates garbage-in/garbage-out OCR errors caused by indoor fluorescent reflections on Iraqi National ID cards and laminated Chamber of Commerce licenses.",
+        script: "Never fabricate or interpolate characters covered by specular glare. Occluded mandatory fields are preserved as null and routed to retake or human compliance review."
       },
       2: {
-        title: "30ms Hardware Auto-Orientation Normalizer",
-        badge: "Step 2 of 7",
-        icon: "🔄",
-        tech: "macOS sips / Python Pillow / Canvas",
-        desc: "Phone cameras shoot in portrait mode (768×1024), but Iraqi ID and Residence cards are landscape (85.6mm × 53.98mm, 1.58:1 ratio). When received sideways, standard OCR baseline tokenizers break on cursive Arabic. Our server reads the JPEG binary header in 0ms: if height > width, it automatically rotates the image 270° in 30ms before any AI vision tokenization.",
-        input: "Sideways/portrait smartphone photo (768 × 1024 px)",
-        output: "Perfect upright landscape image buffer (1024 × 768 px)",
-        edge: "In our empirical tests on rotated card captures, this 30ms step boosted handwritten Arabic orientation alignment and prevented OCR distortion on sideways smartphone uploads.",
-        script: "\"Judges, why do existing systems fail on handwritten Iraqi Residence cards? Because the photo is taken sideways. Arabic cursive text cannot be parsed vertically. Wathiq fixes orientation in 30 milliseconds before the AI even touches the image.\""
+        title: "Universal Iraqi Document Registry & Classification",
+        badge: "Stage 02 of 07",
+        tech: "44 Document Types (Categories A–H)",
+        desc: "Every uploaded document is matched against the versioned Iraqi Document Registry covering 8 categories (Identity, Residence, Travel, Transport, Business/Merchant, Education/Income, Financial, Legal). Unrecognized documents are preserved as UNKNOWN_DOCUMENT with ranked candidate categories.",
+        input: "Uploaded document image + visual/OCR structural tokens",
+        output: "Canonical doc_type_id, category (A–H), support_status (TESTED/CONFIGURED/REGISTERED), and confidence",
+        edge: "Prevents forced misclassification of unseen municipal or agricultural certificates while allowing compliance officers to register new types directly from the workstation.",
+        script: "Honest support coverage: every registered type explicitly declares whether it is TESTED, CONFIGURED, or REGISTERED."
       },
       3: {
-        title: "Sandboxed Multimodal VLM Cascade",
-        badge: "Step 3 of 7",
-        icon: "🧠",
-        tech: "Gemini 2.5 Flash -> 3.5 Flash Cascade",
-        desc: "The upright image is injected into a cryptographically sandboxed container (<untrusted_document nonce='...'>) to defeat adversarial prompt injection. It runs through a resilient cascade: Gemini 2.5 Flash (with thinkingBudget: 0 for 2-second speed) automatically fails over to Gemini 3.5 Flash if rate limits (HTTP 429) occur. Enforces Zero Hallucination: occluded fields return null with low confidence.",
-        input: "Upright image buffer + Sandboxed prompt instructions",
-        output: "Structured JSON: Document classification, extracted fields, and 2D bounding boxes",
-        edge: "100% uptime during merchant registration surges via multi-model cascade, combined with zero hallucinated ID digits.",
-        script: "\"We never let an AI guess. Our rule is: 'Blank and flagged beats invented'. If a field is blurred, Wathiq marks it null. And if Google's tier reaches capacity, our cascade automatically shifts to the next model in 0.1 seconds without interrupting the user.\""
+        title: "Document-Specific Preprocessing Policy",
+        badge: "Stage 03 of 07",
+        tech: "Adaptive Orientation & Deskew",
+        desc: "Applies preprocessing tailored to the classified document type: card-aspect orientation normalization for portrait captures of landscape ID cards, tabular grid preservation for multi-row registers, and seal contrast enhancement for stamped certificates.",
+        input: "Classified document image buffer + registry preprocessing_policy",
+        output: "Normalized upright image buffer + applied_rotation_deg telemetry",
+        edge: "Prevents baseline tokenizer failures when smartphone cameras capture landscape Iraqi ID and Residence cards in portrait orientation.",
+        script: "Preprocessing policies are governed per document type in the central registry rather than hardcoded globally."
       },
       4: {
-        title: "Deterministic Forensics (Regula Checksums)",
-        badge: "Step 4 of 7",
-        icon: "📐",
-        tech: "ICAO Doc 9303 TD1 Modulo-10",
-        desc: "We enforce Deterministic Supremacy: no AI is allowed to verify document authenticity. National Card ID numbers and MRZ lines are validated mathematically using the international Regula ICAO Doc 9303 TD1 Modulo-10 checksum algorithm with cyclic weights [7, 3, 1]. A single Photoshopped digit fails the checksum with mathematical certainty (0% confidence).",
-        input: "Extracted 12-digit national ID and 3-line TD1 MRZ string",
-        output: "Mathematical authenticity score (0.0 to 1.0) + Expiry validity flag",
-        edge: "Defeats sophisticated visual forgeries that fool human eyes and generic OCR engines.",
-        script: "\"Judges, how do we stop forged IDs? Not with AI, but with pure mathematical forensics. We implement the same Regula Modulo-10 algorithm used at international airport border control gates. If a fraudster alters one digit, the math rejects it instantly.\""
+        title: "Sandboxed Zero-Hallucination Extraction",
+        badge: "Stage 04 of 07",
+        tech: "Cryptographic Nonce Isolation",
+        desc: "Extracts expected fields defined by the document's registry schema alongside 2D bounding boxes and per-field confidence scores. Untrusted OCR text is isolated inside cryptographic nonces and scanned for bilingual prompt-injection patterns.",
+        input: "Preprocessed document image + registry field schema",
+        output: "Original extracted values, 2D bounding coordinates, and field-level confidence scores",
+        edge: "Guarantees that unreadable or glare-occluded Arabic/Kurdish text is returned as null rather than guessed.",
+        script: "Adversarial Input Isolation: untrusted text inside documents can never override policy routing or risk scoring."
       },
       5: {
-        title: "Iraqi Onomastic & Kurdish Dialect Matching",
-        badge: "Step 5 of 7",
-        icon: "🇮🇶",
-        tech: "Custom Iraqi NLP / Sorani Glyph Map",
-        desc: "Solves the biggest cultural hurdle in Iraqi FinTech: cross-document name variations. Binds compound names (عبد الزهرة, نور الدين) so they aren't split; strips honorary prefixes (الشيخ, السيد, الحاج); normalizes interchangeable letters (ة/ه, ى/ي); maps Sorani Kurdish glyphs (ڕ, ڵ, ێ, ۆ); and unifies Arabic-Indic numerals (٠-٩) with Latin digits (0-9).",
-        input: "Name strings from National Card, Chamber of Commerce License, and Tax Card",
-        output: "Identity consistency score (0-100%) with phonetic token alignment",
-        edge: "Enables legitimate Iraqi merchants and Kurdish citizens to onboard seamlessly without false-positive fraud rejections.",
-        script: "\"Western KYC providers reject Iraqi merchants because 'الشيخ محمد باقر عبد الزهرة الشمري' on a National ID doesn't match 'محمد باقر عبد الزهره' on a business license. Wathiq's dialect engine recognizes that these are culturally identical, matching them at 96% confidence.\""
+        title: "Iraqi Arabic & Kurdish Sorani Normalization",
+        badge: "Stage 05 of 07",
+        tech: "Dual-Value Preservation",
+        desc: "Preserves both the raw extracted text and the canonical normalized value. Converts Eastern Arabic-Indic numerals (٠-٩) to ASCII (0-9), binds Iraqi compound names (عبد الزهرة, محمد باقر), normalizes ة/ه and ى/ي, and maps Kurdish Sorani characters (ڕ, ڵ, ێ, ۆ, گ, چ, پ, ژ).",
+        input: "Raw extracted field strings across Arabic, Kurdish, and English scripts",
+        output: "original_value + normalized_value pair for every extracted field",
+        edge: "Prevents false-positive rejections across Federal Iraqi and Kurdistan Region (KRG) documents due to orthographic or script variations.",
+        script: "Both original_value and normalized_value are displayed side-by-side in the reviewer workstation for complete audit transparency."
       },
       6: {
-        title: "Multi-Signal Composite Risk Scorer & Dynamic Routing",
-        badge: "Step 6 of 7",
-        icon: "⚖️",
-        tech: "Weighted Scoring: 5-Signal Fusion",
-        desc: "Synthesizes all signals into one score: 0.25*OCR + 0.30*Consistency + 0.20*Authenticity + 0.15*Quality + 0.10*Rules. Automatically routes cases into 4 tiers: AUTO_PASS (≥92%, instant wallet activation), RETAKE_REQUESTED (glare/blur), HUMAN_AUDIT (1-Screen Reviewer Cockpit with interactive bounding boxes), or REJECTED_FRAUD_SUSPECT.",
-        input: "All 5 sub-scores from extraction, checksums, onomastics, quality, and business rules",
-        output: "Operational decision tier: AUTO_PASS | RETAKE | AUDIT | REJECT",
-        edge: "Automates 85%+ of onboarding volume in under 4 seconds while cutting compliance review time from 4 minutes to 22 seconds.",
-        script: "\"Wathiq gives ZainCash and Qi Card the best of both worlds: 85% of clean merchants are approved in 3.8 seconds with zero human intervention. But if there's an anomaly, our 1-Screen Cockpit gives the human officer bounding boxes over the exact document words in 22 seconds.\""
+        title: "Deterministic Validation & 9 Separated Signals",
+        badge: "Stage 06 of 07",
+        tech: "ICAO Doc 9303 Modulo-10 + Cross-Checks",
+        desc: "Executes document-specific deterministic validators (3x30 TD1 and 2x44 TD3 MRZ Modulo-10 check digits with [7,3,1] weights, temporal expiry checks, and cross-document entity resolution) and computes 9 distinct verification signals.",
+        input: "Normalized document fields across all submitted documents in the case",
+        output: "9 independent verification signals + Cross-Document Consistency Matrix",
+        edge: "Never conflates optical clarity with legal validity: a sharp photo of an expired license or a forged MRZ check digit is immediately isolated.",
+        script: "External government database verification is honestly reported as EXTERNAL_VERIFICATION_UNAVAILABLE unless a live authorized integration is connected."
       },
       7: {
-        title: "Central Bank of Iraq (CBI) Law 78 Audit Seal",
-        badge: "Step 7 of 7",
-        icon: "🔒",
-        tech: "Node.js Crypto HMAC-SHA256",
-        desc: "Complies with Central Bank of Iraq standards and Iraqi Electronic Signature and Transactions Law No. 78 of 2012. Every decision generates an immutable cryptographic receipt: HMAC-SHA256(Payload + Officer ID + Timestamp, K_CBI). Data residency is strictly confined to the Republic of Iraq, providing court-admissible evidence during central bank audits.",
-        input: "Application dossier, reviewer ID, timestamp, and decision status",
-        output: "Tamper-proof HMAC-SHA256 audit digest (e.g. AUDIT-CBI-17902264-A8F2K)",
-        edge: "Guarantees legal non-repudiation. Western SaaS providers cannot provide local Iraqi legal admissibility out-of-the-box.",
-        script: "\"Finally, judges, Wathiq isn't just an AI experiment; it's a legally sovereign platform. Every approval is cryptographically sealed under Iraqi Law No. 78 of 2012. If the Central Bank audits a wallet provider, Wathiq provides court-admissible proof of compliance for every single transaction.\""
+        title: "Deterministic Routing & CBI Law 78 Audit Trail",
+        badge: "Stage 07 of 07",
+        tech: "SHA-256 Hash-Chained Non-Repudiation",
+        desc: "Routes the case deterministically to AUTO_PASS, RETAKE_REQUESTED, or HUMAN_REVIEW. Every pipeline stage and human compliance decision is recorded in a SHA-256 hash-chained audit log compliant with Iraqi Electronic Signature and Transactions Law No. 78 of 2012.",
+        input: "9 verification signals + reviewer decision action",
+        output: "Immutable audit receipt with SHA-256 digest and regulatory rationale",
+        edge: "Provides full judicial and Central Bank of Iraq (CBI) audit admissibility for every onboarding decision.",
+        script: "Deterministic Supremacy: policy routing is governed strictly by mathematical heuristics and verified compliance rules."
       }
     };
 
-    let currentStepIndex = 1;
+    let currentStep = 1;
 
     function selectStep(step) {
-      currentStepIndex = step;
-      document.querySelectorAll(".step-card").forEach(el => el.classList.remove("step-active"));
-      const activeBtn = document.getElementById(`stepBtn-${step}`);
-      if (activeBtn) activeBtn.classList.add("step-active");
+      currentStep = step;
+      const d = STEPS_DATA[step];
 
-      const data = STEPS_DATA[step];
-      document.getElementById("stepIcon").innerText = data.icon;
-      document.getElementById("stepBadge").innerText = data.badge;
-      document.getElementById("stepTitle").innerText = data.title;
-      document.getElementById("stepTechBadge").innerText = data.tech;
-      document.getElementById("stepDesc").innerText = data.desc;
-      document.getElementById("stepInput").innerText = data.input;
-      document.getElementById("stepOutput").innerText = data.output;
-      document.getElementById("stepEdge").innerText = data.edge;
-      document.getElementById("stepScript").innerText = data.script;
-      document.getElementById("stepCounter").innerText = `Step ${step} of 7`;
-    }
-
-    function prevStep() {
-      if (currentStepIndex > 1) {
-        selectStep(currentStepIndex - 1);
-      } else {
-        selectStep(7);
+      for (let i = 1; i <= 7; i++) {
+        const el = document.getElementById(`stepBtn-${i}`);
+        if (i === step) el.classList.add('step-active');
+        else el.classList.remove('step-active');
       }
+
+      document.getElementById('stepBadge').innerText = d.badge;
+      document.getElementById('stepTitle').innerText = d.title;
+      document.getElementById('stepTechBadge').innerText = d.tech;
+      document.getElementById('stepDesc').innerText = d.desc;
+      document.getElementById('stepInput').innerText = d.input;
+      document.getElementById('stepOutput').innerText = d.output;
+      document.getElementById('stepEdge').innerText = d.edge;
+      document.getElementById('stepScript').innerText = d.script;
+      document.getElementById('stepCounter').innerText = d.badge;
     }
 
     function nextStep() {
-      if (currentStepIndex < 7) {
-        selectStep(currentStepIndex + 1);
-      } else {
-        selectStep(1);
-      }
+      selectStep(currentStep < 7 ? currentStep + 1 : 1);
+    }
+
+    function prevStep() {
+      selectStep(currentStep > 1 ? currentStep - 1 : 7);
     }
   </script>
 </body>

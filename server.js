@@ -450,9 +450,26 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- STATIC FRONTEND FILE SERVING ---
+  const DIST_DIR = path.join(FRONTEND_DIR, 'dist');
 
   if (pathname === '/' || pathname === '/index.html') {
+    const distIndex = path.join(DIST_DIR, 'index.html');
+    if (fs.existsSync(distIndex)) {
+      return serveStaticFile(res, distIndex, 'text/html; charset=utf-8');
+    }
     return serveStaticFile(res, path.join(FRONTEND_DIR, 'index.html'), 'text/html; charset=utf-8');
+  }
+
+  if (pathname.startsWith('/assets/')) {
+    const assetName = path.basename(pathname);
+    const assetPath = path.join(DIST_DIR, 'assets', assetName);
+    let mime = 'application/octet-stream';
+    if (assetName.endsWith('.js')) mime = 'application/javascript; charset=utf-8';
+    else if (assetName.endsWith('.css')) mime = 'text/css; charset=utf-8';
+    else if (assetName.endsWith('.svg')) mime = 'image/svg+xml';
+    else if (assetName.endsWith('.png')) mime = 'image/png';
+    else if (assetName.endsWith('.jpg') || assetName.endsWith('.jpeg')) mime = 'image/jpeg';
+    return serveStaticFile(res, assetPath, mime);
   }
 
   if (pathname === '/styles.css') {

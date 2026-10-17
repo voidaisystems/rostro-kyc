@@ -1,6 +1,29 @@
 {
+  "name": "rostro-compliance-console",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "start": "node server.js",
+    "test": "node backend/tests/test_hybrid_server.js"
+  },
   "dependencies": {
+    "@google/genai": "^1.29.0",
+    "lucide-react": "^0.546.0",
     "pdfkit": "^0.20.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
   }
 }

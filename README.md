@@ -1,4 +1,4 @@
-# Rostro (واثق) — Autonomous KYC Document Agent
+# Rostro — Autonomous KYC Document Agent
 
 > **Agentic AI Challenge Iraq — Build Stage**  
 > Organized by **ZainCash** in cooperation with **The Leaders of the AI Intelligence** & supported by **Young Arab Leaders**  
@@ -10,7 +10,7 @@
 ## 🎯 Executive Summary
 Customer and merchant onboarding in Iraqi fintech currently suffers from significant back-office bottlenecks. Compliance officers manually verify smartphone photos of Iraqi National Cards (*البطاقة الوطنية الموحدة*), Residence Cards (*بطاقة السكن*), and Chamber of Commerce Business Licenses (*إجازة ممارسة المهنة / غرفة التجارة*). Submissions frequently feature camera tilt, specular flash glare, Arabic cursive handwriting (*خط الرقعة*), and dialectal onomastic spelling variations.
 
-**Rostro (واثق)** is an autonomous multimodal KYC verification agent that:
+**Rostro ** is an autonomous multimodal KYC verification agent that:
 1. **Gates Capture Quality:** Detects blur, specular glare, and boundary truncation before heavy processing.
 2. **Extracts via Multimodal VLM:** Uses Google Gemini (Gemini 3 Flash / Flash-Lite) to extract Arabic and Kurdish document fields with spatial bounding-box coordinates.
 3. **Enforces "Blank and Flagged Beats Invented":** Never hallucinates missing or occluded fields; returns explicit nulls with calibrated confidence.

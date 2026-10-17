@@ -1,0 +1,178 @@
+[
+  {
+    "scenario_id": "clean_merchant_pass",
+    "scenario_name_ar": "1. تاجر معتمد وبيانات مطابقة تماماً (اعتماد فوري)",
+    "description": "حالة مثالية: وضوح بصري عالٍ، مطابقة تامة للاسم الرباعي والرقم الوطني، ترخيص ساري المفعول.",
+    "expected_decision": "AUTO_PASS",
+    "merchant_trade_name": "شركة الرافدين لتجارة المواد الغذائية",
+    "national_card": {
+      "national_id_number": "198814205819",
+      "full_name_ar": "علي حسين كاظم الجبوري",
+      "mother_name_ar": "فاطمة حسن",
+      "date_of_birth": "1988-06-14",
+      "gender": "ذكر",
+      "expiry_date": "2031-06-14",
+      "clarity_score": 0.96
+    },
+    "business_license": {
+      "license_number": "BG-2023-88412",
+      "commercial_trade_name": "شركة الرافدين لتجارة المواد الغذائية",
+      "owner_name": "علي حسين كاظم الجبوري",
+      "commercial_class": "ممتازة",
+      "activity_type": "تجارة المواد الغذائية والمشروبات بالجملة",
+      "issue_date": "2023-01-10",
+      "expiry_date": "2027-01-10",
+      "governorate": "بغداد",
+      "clarity_score": 0.94
+    },
+    "tax_card": {
+      "tax_id_number": "901841208",
+      "taxpayer_name": "علي حسين كاظم الجبوري",
+      "national_id_reference": "198814205819",
+      "tax_branch": "فرع الكرخ",
+      "tax_year_status": "2025",
+      "clarity_score": 0.95
+    }
+  },
+  {
+    "scenario_id": "expired_license_temporal_flag",
+    "scenario_name_ar": "2. إجازة ممارسة مهنة منتهية الصلاحية (إحالة للتدقيق)",
+    "description": "جميع المستندات واضحة والأسماء متطابقة، لكن إجازة غرفة التجارة منتهية الصلاحية منذ 45 يوماً.",
+    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "merchant_trade_name": "مكتب النور للمقاولات العامة",
+    "national_card": {
+      "national_id_number": "197920194821",
+      "full_name_ar": "حيدر جاسم محمد الساعدي",
+      "mother_name_ar": "زينب عبد",
+      "date_of_birth": "1979-11-20",
+      "gender": "ذكر",
+      "expiry_date": "2029-11-20",
+      "clarity_score": 0.95
+    },
+    "business_license": {
+      "license_number": "BS-2021-41092",
+      "commercial_trade_name": "مكتب النور للمقاولات العامة",
+      "owner_name": "حيدر جاسم محمد الساعدي",
+      "commercial_class": "ثانية",
+      "activity_type": "مقاولات عامة وأعمال صيانة",
+      "issue_date": "2021-08-05",
+      "expiry_date": "2026-08-05",
+      "governorate": "البصرة",
+      "clarity_score": 0.92
+    },
+    "tax_card": {
+      "tax_id_number": "812049182",
+      "taxpayer_name": "حيدر جاسم محمد الساعدي",
+      "national_id_reference": "197920194821",
+      "tax_branch": "فرع البصرة",
+      "tax_year_status": "2025",
+      "clarity_score": 0.93
+    }
+  },
+  {
+    "scenario_id": "specular_glare_zero_hallucination",
+    "scenario_name_ar": "3. انعكاس فلاش ضوئي على تاريخ النفاذ (حقل محجوب)",
+    "description": "انعكاس ضوئي أبيض يغطي تاريخ نفاذ إجازة المهنة. النظام لا يخمن التاريخ بل يتركه فارغاً مع ثقة منخفضة.",
+    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "merchant_trade_name": "محل البركة لتجارة الأجهزة الكهربائية",
+    "national_card": {
+      "national_id_number": "199230491820",
+      "full_name_ar": "مصطفى كمال الدين حميد الربيعي",
+      "mother_name_ar": "مريم كاظم",
+      "date_of_birth": "1992-03-15",
+      "gender": "ذكر",
+      "expiry_date": "2032-03-15",
+      "clarity_score": 0.94
+    },
+    "business_license": {
+      "license_number": "ER-2022-77120",
+      "commercial_trade_name": "محل البركة للأجهزة الكهربائية",
+      "owner_name": "مصطفى كمال الدين حميد",
+      "commercial_class": "ثالثة",
+      "activity_type": "بيع وتصليح الأجهزة الكهربائية",
+      "issue_date": "2022-04-12",
+      "expiry_date": null,
+      "occluded_exp": true,
+      "flag_exp": "OPTICAL_FLASH_SPECULAR_GLARE",
+      "clarity_score": 0.38
+    },
+    "tax_card": {
+      "tax_id_number": "771920412",
+      "taxpayer_name": "مصطفى كمال الدين حميد الربيعي",
+      "national_id_reference": "199230491820",
+      "tax_branch": "فرع أربيل",
+      "tax_year_status": "2025",
+      "clarity_score": 0.95
+    }
+  },
+  {
+    "scenario_id": "compound_name_and_orthography_success",
+    "scenario_name_ar": "4. مرونة الأسماء المركبة العراقية وإسقاط اللقب (مطابقة ناجحة)",
+    "description": "الهوية: 'محمد باقر عبد الزهرة الشمري' مقابل الإجازة: 'محمد باقر عبد الزهره'. يحللها النظام كتطابق 96%.",
+    "expected_decision": "AUTO_PASS",
+    "merchant_trade_name": "مجمع دجلة الطبي للتجهيزات",
+    "national_card": {
+      "national_id_number": "198544109281",
+      "full_name_ar": "محمد باقر عبد الزهرة الشمري",
+      "mother_name_ar": "هدى خضير",
+      "date_of_birth": "1985-09-08",
+      "gender": "ذكر",
+      "expiry_date": "2030-09-08",
+      "clarity_score": 0.95
+    },
+    "business_license": {
+      "license_number": "BG-2024-11029",
+      "commercial_trade_name": "مجمع دجلة الطبي للتجهيزات",
+      "owner_name": "محمد باقر عبد الزهره",
+      "commercial_class": "أولى",
+      "activity_type": "استيراد وتوزيع الأجهزة والمستلزمات الطبية",
+      "issue_date": "2024-02-15",
+      "expiry_date": "2028-02-15",
+      "governorate": "بغداد",
+      "clarity_score": 0.93
+    },
+    "tax_card": {
+      "tax_id_number": "910284712",
+      "taxpayer_name": "محمد باقر عبد الزهرة الشمري",
+      "national_id_reference": "198544109281",
+      "tax_branch": "فرع الرصافة",
+      "tax_year_status": "2025",
+      "clarity_score": 0.94
+    }
+  },
+  {
+    "scenario_id": "identity_mismatch_fraud_attempt",
+    "scenario_name_ar": "5. تعارض صارخ في هوية صاحب العمل (محاولة احتيال/انتحال)",
+    "description": "الهوية الوطنية لشخص بينما إجازة ممارسة المهنة لشخص آخر تماماً. يكتشف النظام التعارض ويرفض فورا.",
+    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "merchant_trade_name": "معرض الفرات للسيارات",
+    "national_card": {
+      "national_id_number": "199011409218",
+      "full_name_ar": "كرار علي جاسم الجميلي",
+      "mother_name_ar": "سهام ناصر",
+      "date_of_birth": "1990-07-22",
+      "gender": "ذكر",
+      "expiry_date": "2030-07-22",
+      "clarity_score": 0.95
+    },
+    "business_license": {
+      "license_number": "NJ-2020-55910",
+      "commercial_trade_name": "معرض الفرات لتجارة السيارات",
+      "owner_name": "حيدر حميد كاظم التميمي",
+      "commercial_class": "ممتازة",
+      "activity_type": "تجارة واستيراد المركبات والآليات",
+      "issue_date": "2020-05-10",
+      "expiry_date": "2027-05-10",
+      "governorate": "النجف",
+      "clarity_score": 0.94
+    },
+    "tax_card": {
+      "tax_id_number": "551029481",
+      "taxpayer_name": "كرار علي جاسم الجميلي",
+      "national_id_reference": "199011409218",
+      "tax_branch": "فرع النجف",
+      "tax_year_status": "2025",
+      "clarity_score": 0.92
+    }
+  }
+]

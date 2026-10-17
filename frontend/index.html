@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZainCash - درع الأمان الذكي (أمان)</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Phone Mockup Frame -->
+    <div class="phone-frame">
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="time">09:41</span>
+        <div class="status-icons">
+          <span>5G</span>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <!-- App Header -->
+      <header class="app-header">
+        <div class="header-content">
+          <div class="brand">
+            <span class="brand-badge">أمان</span>
+            <h2>زين كاش</h2>
+          </div>
+          <div class="user-pill" id="userPill">
+            <span class="user-name">حيدر علي</span>
+            <span class="user-tier">ذهبي</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Wallet Content -->
+      <main class="main-content">
+        <!-- Balance Card -->
+        <div class="balance-card">
+          <span class="balance-label">الرصيد المتاح</span>
+          <div class="balance-amount">
+            <span id="walletBalance">450,000</span>
+            <span class="currency">د.ع</span>
+          </div>
+          <div class="card-meta">
+            <span>رقم المحفظة: 07701122334</span>
+            <span class="status-indicator">● نشط</span>
+          </div>
+        </div>
+
+        <!-- Transfer Card -->
+        <div class="transfer-card">
+          <h3 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/></svg>
+            تحويل أموال فوري
+          </h3>
+
+          <form id="transferForm" onsubmit="return false;">
+            <div class="input-group">
+              <label for="recipientPhone">رقم هاتف المستلم</label>
+              <input type="tel" id="recipientPhone" placeholder="0780XXXXXXX" value="07809988776" required>
+              <span class="input-hint" id="recipientTag">⚠️ مستلم جديد (غير مسجل)</span>
+            </div>
+
+            <div class="input-group">
+              <label for="transferAmount">المبلغ (دينار عراقي)</label>
+              <input type="number" id="transferAmount" placeholder="50000" value="75000" required>
+            </div>
+
+            <div class="input-group">
+              <label for="transferNote">الغرض / ملاحظة التحويل</label>
+              <input type="text" id="transferNote" placeholder="اكتب ملاحظة التحويل..." value="رسوم استلام جائزة السيارة">
+            </div>
+
+            <!-- Preset Demo Scenarios for Judges -->
+            <div class="presets-container">
+              <span class="presets-title">🎯 سيناريوهات تجريبية للجنة التحكيم:</span>
+              <div class="presets-buttons">
+                <button type="button" class="preset-btn danger" onclick="setPreset('lottery')">🏆 احتيال جائزة</button>
+                <button type="button" class="preset-btn danger" onclick="setPreset('otp')">🔐 سرقة كود OTP</button>
+                <button type="button" class="preset-btn danger" onclick="setPreset('safe_acc')">🏛️ حساب أمان وهمي</button>
+                <button type="button" class="preset-btn success" onclick="setPreset('dinner')">☕ تحويل عادي (عشاء)</button>
+              </div>
+            </div>
+
+            <button type="button" class="btn-send" id="btnSend" onclick="handleSendClick()">
+              <span>تأكيد التحويل</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </form>
+        </div>
+
+        <!-- Audit Drawer Toggle -->
+        <div class="audit-toggle-container">
+          <button class="btn-secondary" onclick="toggleAuditDrawer()">
+            📋 سجل التدقيق والرقابة (Audit Ledger)
+          </button>
+        </div>
+      </main>
+
+      <!-- Layer 2: Safety Coaching Bottom Sheet Modal -->
+      <div class="modal-overlay" id="modalOverlay">
+        <div class="bottom-sheet" id="bottomSheet">
+          <div class="sheet-handle"></div>
+          
+          <div class="sheet-header">
+            <div class="alert-icon-wrap">
+              <span class="alert-icon">🚨</span>
+            </div>
+            <div>
+              <h3 class="sheet-title">تنبيه أمان ذكي من زين كاش</h3>
+              <span class="sheet-subtitle">نظام كشف الاحتيال والهندسة الاجتماعية (أمان)</span>
+            </div>
+          </div>
+
+          <div class="risk-badge-bar">
+            <span class="badge risk-high" id="riskBadge">درجة الخطورة: 92/100</span>
+            <span class="badge archetype-badge" id="archetypeBadge">احتيال جوائز ورسوم</span>
+          </div>
+
+          <div class="coaching-body">
+            <p class="coaching-text" id="coachingMessage">
+              "حبيبي دير بالك! ماكو أي جهة أو مسابقة رسمية تطلب منك تدفع فلوس أو رسوم حتى تستلم جائزة. المحتالين يستخدمون هاي الطريقة حتى يسحبون فلوسك ويختفون."
+            </p>
+
+            <div class="scammer-move-box">
+              <span class="move-label">⚠️ حركة المحتال القادمة المتوقعة:</span>
+              <p class="move-text" id="scammerMoveText">
+                "راح يضغط عليك ويكلك: إذا ما تحول خلال ربع ساعة تلغى الجائزة وتتحول لغيرك."
+              </p>
+            </div>
+          </div>
+
+          <!-- Tier 3 Cooling-off and Friction Section -->
+          <div id="coolingOffSection" style="display: none; background: rgba(239, 68, 68, 0.08); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; margin: 12px 0;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-weight: bold; color: #ef4444;">⏳ مهلة التهدئة الأمنية الإلزامية:</span>
+              <span id="countdownTimer" style="font-size: 1.2rem; font-weight: 800; color: #ef4444; font-family: monospace;">120s</span>
+            </div>
+            <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 8px;">
+              نظراً للاشتباه الشديد، يتطلب زر المتابعة كتابة عبارة التأكيد أدناه لكسر ضغط المحتال:
+            </p>
+            <input type="text" id="confirmationPhraseInput" 
+                   placeholder="اكتب: أتحمل كامل المسؤولية" 
+                   oninput="validateOverrideRequirements()"
+                   style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 0.85rem; box-sizing: border-box; text-align: right;" />
+          </div>
+
+          <!-- Consent Checkbox for Override -->
+          <div class="consent-group" id="consentGroup">
+            <label class="consent-label">
+              <input type="checkbox" id="consentCheckbox" onchange="validateOverrideRequirements()">
+              <span>أقر بأنني اطلعت على تنبيه أمان وأتحمل كامل المسؤولية القانونية والمالية وفق القانون رقم 78 لسنة 2012.</span>
+            </label>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="sheet-actions">
+            <button class="btn-action btn-cancel" onclick="handleUserChoice('CANCEL')">
+              🛑 إلغاء التحويل وحماية أموالي (موصى به)
+            </button>
+            <button class="btn-action btn-override" id="btnOverride" onclick="handleUserChoice('OVERRIDE')" disabled>
+              ⚠️ أريد المتابعة على مسؤوليتي
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audit Ledger Drawer -->
+      <div class="audit-drawer" id="auditDrawer">
+        <div class="drawer-header">
+          <h3>سجل التدقيق والامتثال القانوني</h3>
+          <button class="btn-close" onclick="toggleAuditDrawer()">✕</button>
+        </div>
+        <div class="audit-list" id="auditList">
+          <div class="audit-empty">لا توجد عمليات مسجلة بعد.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

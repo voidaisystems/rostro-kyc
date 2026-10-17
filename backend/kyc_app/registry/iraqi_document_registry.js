@@ -2221,6 +2221,9 @@ function getCoverageMatrix() {
   });
 
   return {
+    total_registered_types: summary.total_types,
+    status_breakdown: summary.by_status,
+    external_verification_status: "EXTERNAL_VERIFICATION_UNAVAILABLE",
     summary,
     categories: DOCUMENT_CATEGORIES,
     matrix: matrixRows

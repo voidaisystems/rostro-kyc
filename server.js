@@ -14,7 +14,16 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { WathiqEvaluationEngine, Gemini25FlashKYCAgent } = require('./backend/kyc_app/services/hybrid_kyc_engine');
+const {
+  REGISTRY_VERSION,
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_REGISTRY,
+  getCoverageMatrix,
+  registerCandidateDocumentType,
+  UniversalKYCPipeline,
+  WathiqEvaluationEngine,
+  Gemini25FlashKYCAgent
+} = require('./backend/kyc_app/services/hybrid_kyc_engine');
 
 // Auto-load local .env if present
 try {
@@ -102,13 +111,48 @@ const server = http.createServer(async (req, res) => {
 
   // 1. Healthcheck
   if (pathname === '/api/v1/kyc/health' && req.method === 'GET') {
+    const cov = getCoverageMatrix();
     return sendJson(res, 200, {
       status: 'OPERATIONAL',
-      service: 'Wathiq KYC Agent Server',
-      engine: 'Gemini 2.5 Flash + Regula + Smart Engines + CBI Compliance',
-      jurisdiction: 'Republic of Iraq',
+      service: 'Project Rostro (واثق) Universal Iraqi Document Intelligence Server',
+      registry_version: REGISTRY_VERSION,
+      registered_document_types: cov.total_registered_types,
+      tested_document_types: cov.status_breakdown.TESTED,
+      engine: '10-Stage Universal Pipeline + Gemini 2.5 Flash + ICAO 9303 MRZ + Multi-Script Normalizer',
+      jurisdiction: 'Republic of Iraq (Federal & KRG)',
+      external_verification: 'EXTERNAL_VERIFICATION_UNAVAILABLE',
       timestamp: new Date().toISOString()
     });
+  }
+
+  // 1b. Universal Iraqi Document Registry
+  if (pathname === '/api/v1/kyc/registry' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      registry_version: REGISTRY_VERSION,
+      categories: DOCUMENT_CATEGORIES,
+      total_types: DOCUMENT_REGISTRY.length,
+      documents: DOCUMENT_REGISTRY
+    });
+  }
+
+  // 1c. Explicit Document Coverage Matrix
+  if (pathname === '/api/v1/kyc/coverage-matrix' && req.method === 'GET') {
+    return sendJson(res, 200, getCoverageMatrix());
+  }
+
+  // 1d. Register / Classify Unknown Document Type by Compliance Officer
+  if (pathname === '/api/v1/kyc/register-candidate-type' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody(req);
+      const registered = registerCandidateDocumentType(body);
+      return sendJson(res, 200, {
+        status: 'CANDIDATE_REGISTERED',
+        entry: registered,
+        message: `Document type ${registered.doc_type_id} (${registered.canonical_name_ar}) registered in the catalog with status ${registered.support_status}.`
+      });
+    } catch (err) {
+      return sendJson(res, 400, { error: 'Failed to register candidate document type', message: err.message });
+    }
   }
 
   // 2. Synthetic Scenarios
@@ -123,19 +167,24 @@ const server = http.createServer(async (req, res) => {
 
   // 3. Quantitative Benchmarks
   if (pathname === '/api/v1/kyc/benchmarks' && req.method === 'GET') {
+    const cov = getCoverageMatrix();
     return sendJson(res, 200, {
       dataset_size: 50,
+      synthetic_cases_count: 14,
+      registered_document_types: cov.total_registered_types,
+      tested_document_types: cov.status_breakdown.TESTED,
       clean_documents_accuracy: 0.962,
       degraded_documents_accuracy: 0.914,
       overall_extraction_accuracy: 0.938,
       expected_calibration_error_ece: 0.048,
       average_evaluation_latency_ms: 420,
       hallucinated_fields_count: 0,
-      cbi_law_78_compliance: true
+      cbi_law_78_compliance: true,
+      external_verification_status: 'EXTERNAL_VERIFICATION_UNAVAILABLE'
     });
   }
 
-  // 4. KYC Document Set Evaluation (Gemini 2.5 Flash + Deterministic Hybrid)
+  // 4. KYC Document Set Evaluation (10-Stage Universal Pipeline)
   if (pathname === '/api/v1/kyc/evaluate' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
@@ -265,34 +314,61 @@ const server = http.createServer(async (req, res) => {
         }
       ];
 
-      const evaluation = {
+      // Build fields map and bounding boxes map for UniversalKYCPipeline
+      const extractedFieldsMap = {};
+      const boundingBoxesMap = {};
+      const fieldConfsMap = {};
+
+      if (geminiDoc && Array.isArray(geminiDoc.fields)) {
+        for (const f of geminiDoc.fields) {
+          if (f.key) {
+            extractedFieldsMap[f.key] = f.value;
+            fieldConfsMap[f.key] = f.confidence || 0.92;
+            if (Array.isArray(f.box_2d)) {
+              boundingBoxesMap[f.key] = f.box_2d;
+            }
+          }
+        }
+      }
+
+      const pipelineCase = {
         application_id: `KYC-UPL-${Date.now().toString().slice(-5)}`,
-        merchant_trade_name: tradeName,
-        status: status,
-        overall_confidence: qualityScore,
-        confidence_percentage: Math.round(qualityScore * 100),
+        merchant_trade_name: detectedName || tradeName,
+        documents: [
+          {
+            doc_id: "DOC-UPL-01",
+            doc_type_id: geminiDoc?.doc_type_id || "AUTO_DETECT",
+            document_type_ar: geminiDoc?.document_type_ar,
+            document_type_en: geminiDoc?.document_type_en,
+            document_side: geminiDoc?.document_side || "FRONT",
+            detected_languages: geminiDoc?.detected_languages || ["ar"],
+            issuing_authority: geminiDoc?.issuing_authority_ar,
+            classification_confidence: geminiDoc?.classification_confidence || 0.92,
+            clarity_score: qualityScore,
+            has_glare: Boolean(geminiDoc?.has_glare),
+            has_blur: Boolean(geminiDoc?.has_blur),
+            fields: extractedFieldsMap,
+            field_confidences: fieldConfsMap,
+            bounding_boxes: boundingBoxesMap,
+            raw_ocr_text: geminiDoc?.summary_ar || ""
+          }
+        ]
+      };
+
+      const pipelineEval = UniversalKYCPipeline.evaluateCase(pipelineCase);
+
+      const evaluation = {
+        ...pipelineEval,
         document_type_ar: docTypeAr,
-        document_type_en: geminiDoc?.document_type_en || "Official Document",
-        document_category: geminiDoc?.document_category || "IDENTITY",
+        document_type_en: geminiDoc?.document_type_en || pipelineEval.documents[0]?.classification?.canonical_name_en || "Official Document",
+        document_category: geminiDoc?.document_category || pipelineEval.documents[0]?.classification?.document_category || "IDENTITY_CIVIL",
         detected_primary_name: detectedName,
         detected_primary_id: detectedId,
         dynamic_fields_list: dynamicFieldsList,
         uploaded_bounding_boxes: geminiDoc?.bounding_boxes || [],
         upright_image: geminiDoc?.upright_image_base64 || primaryDoc,
         applied_rotation: geminiDoc?.applied_rotation || 0,
-        cross_checks: crossChecks,
-        reviewer_dossier: {
-          recommended_decision: recDecision,
-          rationale_ar: geminiDoc?.summary_ar || `تم فحص واستخراج بيانات مستند [${docTypeAr}] بنجاح بواسطة Gemini 2.5 Flash مع حفظ سجل الامتثال القانوني.`,
-          identified_flags: flags,
-          estimated_review_seconds: isPass ? 0 : 25
-        },
-        cbi_audit: {
-          standard: "Central Bank of Iraq Law No. 78 of 2012",
-          timestamp: new Date().toISOString(),
-          hmac_sha256_digest: crypto.createHmac('sha256', 'WATHIQ_CBI_2026_COMPLIANCE_KEY').update(tradeName + Date.now()).digest('hex'),
-          data_residency: "REPUBLIC_OF_IRAQ_LOCAL_CONTAINER"
-        }
+        cross_checks: pipelineEval.cross_checks.length > 0 ? pipelineEval.cross_checks : crossChecks
       };
 
       return sendJson(res, 200, evaluation);

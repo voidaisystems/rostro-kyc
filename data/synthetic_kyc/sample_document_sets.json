@@ -1,8 +1,8 @@
 [
   {
     "scenario_id": "clean_merchant_pass",
-    "scenario_name_ar": "1. تاجر معتمد وبيانات مطابقة تماماً (اعتماد فوري)",
-    "description": "حالة مثالية: وضوح بصري عالٍ، مطابقة تامة للاسم الرباعي والرقم الوطني، ترخيص ساري المفعول.",
+    "scenario_name_ar": "1. تاجر معتمد — حزمة الهوية والسكن والتجارة والضريبة (اعتماد فوري)",
+    "description": "حالة مثالية تغطي الفئات (A, B, E): بطاقة وطنية موحدة + بطاقة سكن + شهادة غرفة تجارة بغداد + هوية ضريبية مع تطابق تام وسريان مفعول.",
     "expected_decision": "AUTO_PASS",
     "merchant_trade_name": "شركة الرافدين لتجارة المواد الغذائية",
     "national_card": {
@@ -12,7 +12,19 @@
       "date_of_birth": "1988-06-14",
       "gender": "ذكر",
       "expiry_date": "2031-06-14",
+      "document_serial": "A19881420",
+      "mrz_line1": "I<IRQA198814207<<<<<<<<<<<<<<<",
+      "mrz_line2": "8806149M3106143IRQ<<<<<<<<<<<0",
+      "mrz_line3": "AL<JUBOURI<<ALI<HUSSEIN<KADHIM",
       "clarity_score": 0.96
+    },
+    "residence_card": {
+      "head_of_family_name": "علي حسين كاظم الجبوري",
+      "information_office": "مكتب معلومات الكرادة",
+      "full_address": "بغداد - الكرادة - م ٩٠٣ ز ١٢ د ٤٤",
+      "form_number": "٧٨٤١٢٠",
+      "governorate": "بغداد",
+      "clarity_score": 0.95
     },
     "business_license": {
       "license_number": "BG-2023-88412",
@@ -21,7 +33,7 @@
       "commercial_class": "ممتازة",
       "activity_type": "تجارة المواد الغذائية والمشروبات بالجملة",
       "issue_date": "2023-01-10",
-      "expiry_date": "2027-01-10",
+      "expiry_date": "2028-01-10",
       "governorate": "بغداد",
       "clarity_score": 0.94
     },
@@ -30,15 +42,76 @@
       "taxpayer_name": "علي حسين كاظم الجبوري",
       "national_id_reference": "198814205819",
       "tax_branch": "فرع الكرخ",
-      "tax_year_status": "2025",
+      "tax_year_status": "2026",
       "clarity_score": 0.95
-    }
+    },
+    "documents": [
+      {
+        "doc_id": "DOC-NAT-01",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT_AND_BACK",
+        "clarity_score": 0.96,
+        "fields": {
+          "national_id_number": "١٩٨٨١٤٢٠٥٨١٩",
+          "full_name_ar": "علي حسين كاظم الجبوري",
+          "mother_name_ar": "فاطمة حسن",
+          "date_of_birth": "1988-06-14",
+          "expiry_date": "2031-06-14",
+          "document_serial": "A19881420",
+          "family_number": "FN-884120",
+          "mrz_line1": "I<IRQA198814207<<<<<<<<<<<<<<<",
+          "mrz_line2": "8806149M3106143IRQ<<<<<<<<<<<0",
+          "mrz_line3": "AL<JUBOURI<<ALI<HUSSEIN<KADHIM"
+        }
+      },
+      {
+        "doc_id": "DOC-RES-01",
+        "doc_type_id": "IRQ_RESIDENCE_CARD",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "head_of_family_name": "علي حسين كاظم الجبوري",
+          "information_office": "مكتب معلومات الكرادة",
+          "full_address": "بغداد - الكرادة - م ٩٠٣ ز ١٢ د ٤٤",
+          "form_number": "٧٨٤١٢٠",
+          "governorate": "بغداد"
+        }
+      },
+      {
+        "doc_id": "DOC-LIC-01",
+        "doc_type_id": "IRQ_CHAMBER_COMMERCE",
+        "document_side": "FRONT",
+        "clarity_score": 0.94,
+        "fields": {
+          "license_number": "BG-2023-88412",
+          "commercial_trade_name": "شركة الرافدين لتجارة المواد الغذائية",
+          "owner_name": "علي حسين كاظم الجبوري",
+          "commercial_class": "ممتازة",
+          "issue_date": "2023-01-10",
+          "expiry_date": "2028-01-10",
+          "governorate": "بغداد"
+        }
+      },
+      {
+        "doc_id": "DOC-TAX-01",
+        "doc_type_id": "IRQ_TAX_CARD",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "tax_id_number": "901841208",
+          "taxpayer_name": "علي حسين كاظم الجبوري",
+          "national_id_reference": "198814205819",
+          "tax_branch": "فرع الكرخ",
+          "tax_year_status": "2026"
+        }
+      }
+    ]
   },
   {
     "scenario_id": "expired_license_temporal_flag",
-    "scenario_name_ar": "2. إجازة ممارسة مهنة منتهية الصلاحية (إحالة للتدقيق)",
-    "description": "جميع المستندات واضحة والأسماء متطابقة، لكن إجازة غرفة التجارة منتهية الصلاحية منذ 45 يوماً.",
-    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "scenario_name_ar": "2. إجازة غرفة تجارة منتهية الصلاحية (إحالة للتدقيق الرقابي)",
+    "description": "جميع المستندات واضحة والأسماء متطابقة، لكن إجازة غرفة التجارة منتهية الصلاحية زمنياً.",
+    "expected_decision": "HUMAN_REVIEW",
     "merchant_trade_name": "مكتب النور للمقاولات العامة",
     "national_card": {
       "national_id_number": "197920194821",
@@ -56,7 +129,7 @@
       "commercial_class": "ثانية",
       "activity_type": "مقاولات عامة وأعمال صيانة",
       "issue_date": "2021-08-05",
-      "expiry_date": "2026-08-05",
+      "expiry_date": "2025-08-05",
       "governorate": "البصرة",
       "clarity_score": 0.92
     },
@@ -65,15 +138,15 @@
       "taxpayer_name": "حيدر جاسم محمد الساعدي",
       "national_id_reference": "197920194821",
       "tax_branch": "فرع البصرة",
-      "tax_year_status": "2025",
+      "tax_year_status": "2026",
       "clarity_score": 0.93
     }
   },
   {
     "scenario_id": "specular_glare_zero_hallucination",
-    "scenario_name_ar": "3. انعكاس فلاش ضوئي على تاريخ النفاذ (حقل محجوب)",
-    "description": "انعكاس ضوئي أبيض يغطي تاريخ نفاذ إجازة المهنة. النظام لا يخمن التاريخ بل يتركه فارغاً مع ثقة منخفضة.",
-    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "scenario_name_ar": "3. انعكاس فلاش ضوئي على تاريخ النفاذ (قاعدة عدم الهلوسة)",
+    "description": "انعكاس ضوئي أبيض يغطي تاريخ نفاذ إجازة المهنة. النظام لا يخمن التاريخ بل يتركه null مع طلب إعادة التقاط.",
+    "expected_decision": "RETAKE_REQUESTED",
     "merchant_trade_name": "محل البركة لتجارة الأجهزة الكهربائية",
     "national_card": {
       "national_id_number": "199230491820",
@@ -93,22 +166,23 @@
       "issue_date": "2022-04-12",
       "expiry_date": null,
       "occluded_exp": true,
+      "has_glare": true,
       "flag_exp": "OPTICAL_FLASH_SPECULAR_GLARE",
-      "clarity_score": 0.38
+      "clarity_score": 0.35
     },
     "tax_card": {
       "tax_id_number": "771920412",
       "taxpayer_name": "مصطفى كمال الدين حميد الربيعي",
       "national_id_reference": "199230491820",
       "tax_branch": "فرع أربيل",
-      "tax_year_status": "2025",
+      "tax_year_status": "2026",
       "clarity_score": 0.95
     }
   },
   {
     "scenario_id": "compound_name_and_orthography_success",
-    "scenario_name_ar": "4. مرونة الأسماء المركبة العراقية وإسقاط اللقب (مطابقة ناجحة)",
-    "description": "الهوية: 'محمد باقر عبد الزهرة الشمري' مقابل الإجازة: 'محمد باقر عبد الزهره'. يحللها النظام كتطابق 96%.",
+    "scenario_name_ar": "4. مرونة الأسماء المركبة العراقية وإسقاط اللقب (تطابق مُطبَّع)",
+    "description": "الهوية: 'محمد باقر عبد الزهرة الشمري' مقابل الإجازة: 'الشيخ محمد باقر عبد الزهره'. يربط النظام الاسم المركب ويوحد الإملاء.",
     "expected_decision": "AUTO_PASS",
     "merchant_trade_name": "مجمع دجلة الطبي للتجهيزات",
     "national_card": {
@@ -123,7 +197,7 @@
     "business_license": {
       "license_number": "BG-2024-11029",
       "commercial_trade_name": "مجمع دجلة الطبي للتجهيزات",
-      "owner_name": "محمد باقر عبد الزهره",
+      "owner_name": "الشيخ محمد باقر عبد الزهره",
       "commercial_class": "أولى",
       "activity_type": "استيراد وتوزيع الأجهزة والمستلزمات الطبية",
       "issue_date": "2024-02-15",
@@ -136,15 +210,15 @@
       "taxpayer_name": "محمد باقر عبد الزهرة الشمري",
       "national_id_reference": "198544109281",
       "tax_branch": "فرع الرصافة",
-      "tax_year_status": "2025",
+      "tax_year_status": "2026",
       "clarity_score": 0.94
     }
   },
   {
     "scenario_id": "identity_mismatch_fraud_attempt",
-    "scenario_name_ar": "5. تعارض صارخ في هوية صاحب العمل (محاولة احتيال/انتحال)",
-    "description": "الهوية الوطنية لشخص بينما إجازة ممارسة المهنة لشخص آخر تماماً. يكتشف النظام التعارض ويرفض فورا.",
-    "expected_decision": "MANUAL_REVIEW_REQUIRED",
+    "scenario_name_ar": "5. تعارض هوية المالك بدون وكالة قانونية (CONFLICT → مراجعة)",
+    "description": "البطاقة الوطنية لشخص بينما شهادة غرفة التجارة لشخص آخر دون إرفاق وكالة عدلية أو تخويل توقيع.",
+    "expected_decision": "HUMAN_REVIEW",
     "merchant_trade_name": "معرض الفرات للسيارات",
     "national_card": {
       "national_id_number": "199011409218",
@@ -162,7 +236,7 @@
       "commercial_class": "ممتازة",
       "activity_type": "تجارة واستيراد المركبات والآليات",
       "issue_date": "2020-05-10",
-      "expiry_date": "2027-05-10",
+      "expiry_date": "2028-05-10",
       "governorate": "النجف",
       "clarity_score": 0.94
     },
@@ -171,8 +245,415 @@
       "taxpayer_name": "كرار علي جاسم الجميلي",
       "national_id_reference": "199011409218",
       "tax_branch": "فرع النجف",
-      "tax_year_status": "2025",
+      "tax_year_status": "2026",
       "clarity_score": 0.92
     }
+  },
+  {
+    "scenario_id": "krg_kurdish_arabic_bilingual_merchant",
+    "scenario_name_ar": "6. إقليم كوردستان (KRG) — وثائق ثنائية اللغة (عربي / كوردي سوراني)",
+    "description": "تاجر في أربيل (هەولێر): بطاقة وطنية موحدة + بطاقة معلومات كوردستان (کارتی زانیاری) + غرفة تجارة وصناعة أربيل.",
+    "expected_decision": "AUTO_PASS",
+    "merchant_trade_name": "شركة زاكروس للتجارة العامة / کۆمپانیای زاگرۆس",
+    "documents": [
+      {
+        "doc_id": "DOC-KRG-NAT",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT_AND_BACK",
+        "clarity_score": 0.96,
+        "fields": {
+          "national_id_number": "199104128831",
+          "full_name_ar": "كاروان آزاد محمود البرزنجي",
+          "mother_name_ar": "شيرين أحمد",
+          "date_of_birth": "1991-04-12",
+          "expiry_date": "2032-04-12",
+          "document_serial": "B19910412",
+          "mrz_line1": "I<IRQB199104128<<<<<<<<<<<<<<<",
+          "mrz_line2": "9104129M3204120IRQ<<<<<<<<<<<0",
+          "mrz_line3": "BARZANI<<KARWAN<AZAD<MAHMOUD<<"
+        }
+      },
+      {
+        "doc_id": "DOC-KRG-INFO",
+        "doc_type_id": "KRG_INFO_CARD",
+        "document_side": "FRONT",
+        "clarity_score": 0.94,
+        "fields": {
+          "head_of_family_name": "کاروان ئازاد محمود البرزنجي",
+          "card_number": "EBL-449102",
+          "neighborhood_address": "هەولێر - گەڕەکی بەختیاری - کۆڵانی ١٤",
+          "governorate": "هەولێر"
+        }
+      },
+      {
+        "doc_id": "DOC-KRG-CHAMBER",
+        "doc_type_id": "KRG_CHAMBER_COMMERCE",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "license_number": "KRG-ERB-2024-9910",
+          "commercial_trade_name": "شركة زاكروس للتجارة العامة / کۆمپانیای زاگرۆس",
+          "owner_name": "كاكة كاروان آزاد محمود",
+          "expiry_date": "2028-06-30",
+          "governorate": "أربيل"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "corporate_poa_authorized_representative",
+    "scenario_name_ar": "7. شركة مسجلة مع وكالة عامة وتخويل مصرفي (الفئات A, E, G, H)",
+    "description": "مقدم الطلب (المفوض القانوني) يختلف اسمه عن المدير المفوض في شهادة تأسيس الشركة، لكنه مربوط بوكالة عدلية رسمية وكشف حساب مصرفي.",
+    "expected_decision": "HUMAN_REVIEW",
+    "merchant_trade_name": "شركة بابل للحلول اللوجستية المحدودة",
+    "documents": [
+      {
+        "doc_id": "DOC-REP-ID",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.96,
+        "fields": {
+          "national_id_number": "198709184412",
+          "full_name_ar": "زيدون طارق عبد الكريم العاني",
+          "mother_name_ar": "سعاد يونس",
+          "date_of_birth": "1987-09-18",
+          "expiry_date": "2031-09-18"
+        }
+      },
+      {
+        "doc_id": "DOC-COMP-REG",
+        "doc_type_id": "IRQ_COMPANY_REGISTRATION",
+        "document_side": "SINGLE_PAGE",
+        "image_width": 794,
+        "image_height": 1123,
+        "clarity_score": 0.95,
+        "fields": {
+          "registration_number": "ش-م-02-49182",
+          "company_legal_name": "شركة بابل للحلول اللوجستية المحدودة",
+          "managing_director_name": "سرمد قاسم عبد اللطيف العبيدي",
+          "capital_iqd": "250000000",
+          "incorporation_date": "2021-03-14"
+        }
+      },
+      {
+        "doc_id": "DOC-POA-01",
+        "doc_type_id": "IRQ_POWER_OF_ATTORNEY",
+        "document_side": "SINGLE_PAGE",
+        "image_width": 794,
+        "image_height": 1123,
+        "clarity_score": 0.94,
+        "fields": {
+          "notary_record_number": "عدلية-الكرخ-2025/8841",
+          "notary_office_name": "دائرة كاتب عدل الكرخ الصباحي",
+          "grantor_name": "سرمد قاسم عبد اللطيف العبيدي",
+          "grantee_name": "زيدون طارق عبد الكريم العاني",
+          "poa_scope": "تمثيل الشركة وفتح وإدارة الحسابات التجارية والمصرفية والتوقيع على العقود",
+          "issue_date": "2025-02-11"
+        }
+      },
+      {
+        "doc_id": "DOC-BANK-01",
+        "doc_type_id": "IRQ_BANK_STATEMENT",
+        "document_side": "FIRST_PAGE",
+        "image_width": 794,
+        "image_height": 1123,
+        "clarity_score": 0.95,
+        "fields": {
+          "account_holder_name": "زيدون طارق عبد الكريم العاني",
+          "iban_number": "IQ98NBIQ001000918471201",
+          "bank_name": "المصرف الأهلي العراقي",
+          "closing_balance_iqd": "148500000",
+          "statement_date": "2026-09-30"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "foreign_national_investor_onboarding",
+    "scenario_name_ar": "8. مستثمر أجنبي في العراق — جواز سفر أجنبي + إقامة + كتاب عمل (الفئتان C, F)",
+    "description": "تتحقق المنصة من كود TD3 MRZ لجواز السفر الأجنبي ومطابقة رقم الجواز مع هوية الإقامة العراقية وكتاب التوظيف.",
+    "expected_decision": "HUMAN_REVIEW",
+    "merchant_trade_name": "شركة الطاقة الحديثة للاستشارات الهندسية",
+    "documents": [
+      {
+        "doc_id": "DOC-FOR-PASS",
+        "doc_type_id": "FOREIGN_PASSPORT",
+        "document_side": "BIO_PAGE",
+        "clarity_score": 0.96,
+        "fields": {
+          "passport_number": "549182041",
+          "issuing_country_code": "GBR",
+          "full_name_en": "JAMES EDWARD THOMPSON",
+          "date_of_birth": "1982-09-10",
+          "expiry_date": "2030-09-10",
+          "mrz_line1": "P<GBRTHOMPSON<<JAMES<EDWARD<<<<<<<<<<<<<<<<<",
+          "mrz_line2": "5491820412GBR8209108M3009107<<<<<<<<<<<<<<00"
+        }
+      },
+      {
+        "doc_id": "DOC-RES-PERM",
+        "doc_type_id": "IRQ_RESIDENCE_PERMIT",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "permit_number": "RES-BG-2025-77412",
+          "holder_name": "JAMES EDWARD THOMPSON",
+          "passport_reference": "549182041",
+          "expiry_date": "2027-09-10"
+        }
+      },
+      {
+        "doc_id": "DOC-EMP-LET",
+        "doc_type_id": "IRQ_EMPLOYMENT_LETTER",
+        "document_side": "SINGLE_PAGE",
+        "clarity_score": 0.94,
+        "fields": {
+          "letter_reference_number": "HR-2026-1092",
+          "employee_name_ar": "JAMES EDWARD THOMPSON",
+          "employer_entity": "شركة الطاقة الحديثة للاستشارات الهندسية",
+          "monthly_salary_iqd": "6500000",
+          "issue_date": "2026-05-01"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "transport_fleet_driving_and_vehicle",
+    "scenario_name_ar": "9. تاجر نقل وأسطول مركبات — البطاقة الوطنية + إجازة السوق + السنوية (الفئة D)",
+    "description": "التحقق من إجازة السوق العراقية وسنوية المركبة وفحص رقم الشاصي (17-character VIN) ومطابقة المالك.",
+    "expected_decision": "AUTO_PASS",
+    "merchant_trade_name": "مكتب الصقر للنقل العام والشحن البري",
+    "documents": [
+      {
+        "doc_id": "DOC-DRV-NAT",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.96,
+        "fields": {
+          "national_id_number": "198305194810",
+          "full_name_ar": "وسام فاضل عباس الكناني",
+          "mother_name_ar": "كريمة جبار",
+          "date_of_birth": "1983-05-19",
+          "expiry_date": "2031-05-19"
+        }
+      },
+      {
+        "doc_id": "DOC-DRV-LIC",
+        "doc_type_id": "IRQ_DRIVING_LICENSE",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "license_number": "TR-BG-884129",
+          "full_name_ar": "وسام فاضل عباس الكناني",
+          "date_of_birth": "1983-05-19",
+          "license_class": "عمومي - فئة ج",
+          "expiry_date": "2029-11-01",
+          "blood_group": "O+"
+        }
+      },
+      {
+        "doc_id": "DOC-VEH-REG",
+        "doc_type_id": "IRQ_VEHICLE_REGISTRATION",
+        "document_side": "FRONT_AND_BACK",
+        "clarity_score": 0.95,
+        "fields": {
+          "owner_name_ar": "وسام فاضل عباس الكناني",
+          "plate_number": "بغداد حمل 49182 أ",
+          "chassis_vin": "WDB9634031L849201",
+          "expiry_date": "2028-10-15"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "legacy_civil_id_ration_syndicate_pack",
+    "scenario_name_ar": "10. عيادة/مكتب مهني — هوية الأحوال المدنية + البطاقة التموينية + هوية نقابة + فاتورة (الفئات A, B, F)",
+    "description": "دعم الوثائق العراقية الورقية القديمة (هوية الأحوال المدنية والبطاقة التموينية) مع هوية النقابة المهنية وقائمة الكهرباء.",
+    "expected_decision": "AUTO_PASS",
+    "merchant_trade_name": "عيادة وصيدلية الشفاء التخصصية",
+    "documents": [
+      {
+        "doc_id": "DOC-CIV-ID",
+        "doc_type_id": "IRQ_CIVIL_STATUS_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.92,
+        "fields": {
+          "id_serial_number": "٠٠٤٨١٩٢٠",
+          "full_name_ar": "أحمد عبد الرحمن طه الحديثي",
+          "register_number": "٤١٢ مكرر",
+          "page_number": "٨٨",
+          "date_of_birth": "1978-04-10",
+          "governorate": "بغداد"
+        }
+      },
+      {
+        "doc_id": "DOC-RATION-01",
+        "doc_type_id": "IRQ_RATION_CARD",
+        "document_side": "FRONT",
+        "clarity_score": 0.93,
+        "fields": {
+          "head_of_family_name": "أحمد عبد الرحمن طه الحديثي",
+          "ration_center_number": "٢١٤ - المنصور",
+          "family_members_count": "5",
+          "governorate": "بغداد"
+        }
+      },
+      {
+        "doc_id": "DOC-SYND-01",
+        "doc_type_id": "IRQ_SYNDICATE_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "membership_number": "PH-19482",
+          "member_name_ar": "الدكتور أحمد عبد الرحمن طه الحديثي",
+          "syndicate_name": "نقابة الصيادلة العراقيين",
+          "professional_title": "صيدلي ممارس",
+          "expiry_date": "2027-12-31"
+        }
+      },
+      {
+        "doc_id": "DOC-UTIL-01",
+        "doc_type_id": "IRQ_UTILITY_BILL",
+        "document_side": "SINGLE_PAGE",
+        "clarity_score": 0.93,
+        "fields": {
+          "subscriber_name": "أحمد عبد الرحمن طه الحديثي",
+          "account_or_meter_number": "ELC-601-99412",
+          "service_address": "بغداد - المنصور - م ٦٠١ ز ١٤ د ٨",
+          "billing_date": "2026-09-01"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "passport_and_property_deed_tapu",
+    "scenario_name_ar": "11. جواز السفر العراقي (TD3 MRZ) + سند التسجيل العقاري طابو (الفئتان A, H)",
+    "description": "فحص جواز السفر العراقي مع سند ملكية عقارية (صورة قيد رقم ٢٥) لإثبات الملاءة والملكية العقارية.",
+    "expected_decision": "HUMAN_REVIEW",
+    "merchant_trade_name": "مجموعة الدليمي للاستثمار والتطوير العقاري",
+    "documents": [
+      {
+        "doc_id": "DOC-IRQ-PASS",
+        "doc_type_id": "IRQ_PASSPORT",
+        "document_side": "BIO_PAGE",
+        "clarity_score": 0.96,
+        "fields": {
+          "passport_number": "A18492015",
+          "full_name_ar": "عمر فاروق سعيد الدليمي",
+          "full_name_en": "OMAR FAROUQ SAEED AL DULAIMI",
+          "date_of_birth": "1984-02-19",
+          "expiry_date": "2031-02-19",
+          "mrz_line1": "P<IRQAL<DULAIMI<<OMAR<FAROUQ<SAEED<<<<<<<<<<",
+          "mrz_line2": "A184920156IRQ8402194M3102190<<<<<<<<<<<<<<04"
+        }
+      },
+      {
+        "doc_id": "DOC-TAPU-01",
+        "doc_type_id": "IRQ_PROPERTY_DEED",
+        "document_side": "SINGLE_PAGE",
+        "image_width": 794,
+        "image_height": 1123,
+        "clarity_score": 0.94,
+        "fields": {
+          "plot_and_sector_number": "قطعة 148 / مقاطعة 12 العامرية",
+          "owner_name_ar": "عمر فاروق سعيد الدليمي",
+          "registry_office": "مديرية التسجيل العقاري في الكرخ الأولى",
+          "issue_date": "2024-11-12"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "solo_supporting_docs_policy_violation",
+    "scenario_name_ar": "12. مخالفة سياسة الهوية الأساسية — تقديم تأييد عمل وفاتورة فقط بدون هوية سيادية",
+    "description": "الوثائق الوظيفية والمالية والخدمية لا تؤسس الهوية المدنية بمفردها؛ يصعّد النظام المعاملة لطلب وثيقة هوية أساسية.",
+    "expected_decision": "POLICY_ESCALATION",
+    "merchant_trade_name": "طلب فتح حساب بوثائق ساندة فقط",
+    "documents": [
+      {
+        "doc_id": "DOC-SOLO-EMP",
+        "doc_type_id": "IRQ_EMPLOYMENT_LETTER",
+        "document_side": "SINGLE_PAGE",
+        "clarity_score": 0.95,
+        "fields": {
+          "letter_reference_number": "ADM-2026-4410",
+          "employee_name_ar": "سجاد رحيم كاظم المعموري",
+          "employer_entity": "الشركة العامة لتجارة المواد الإنشائية",
+          "monthly_salary_iqd": "1250000",
+          "issue_date": "2026-08-10"
+        }
+      },
+      {
+        "doc_id": "DOC-SOLO-UTIL",
+        "doc_type_id": "IRQ_UTILITY_BILL",
+        "document_side": "SINGLE_PAGE",
+        "clarity_score": 0.94,
+        "fields": {
+          "subscriber_name": "سجاد رحيم كاظم المعموري",
+          "account_or_meter_number": "WTR-881029",
+          "service_address": "بغداد - الحارثية - م ٢١٢ ز ٦ د ١٩",
+          "billing_date": "2026-09-15"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "duplicate_document_submission_detected",
+    "scenario_name_ar": "13. كشف تكرار الوثائق المرفوعة — رفع نفس البطاقة الوطنية مرتين",
+    "description": "يكتشف محرك البصمة الرقمية (Duplicate Detector) رفع نفس الوثيقة مرتين ضمن المعاملة ويحيلها للمراجعة.",
+    "expected_decision": "HUMAN_REVIEW",
+    "merchant_trade_name": "مكتب دجلة للخدمات التجارية",
+    "documents": [
+      {
+        "doc_id": "DOC-DUP-01",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "national_id_number": "199402185512",
+          "full_name_ar": "حنين مازن عبد الواحد الكبيسي",
+          "mother_name_ar": "نادية فؤاد",
+          "date_of_birth": "1994-02-18",
+          "expiry_date": "2033-02-18"
+        }
+      },
+      {
+        "doc_id": "DOC-DUP-02",
+        "doc_type_id": "IRQ_NATIONAL_ID",
+        "document_side": "FRONT",
+        "clarity_score": 0.95,
+        "fields": {
+          "national_id_number": "199402185512",
+          "full_name_ar": "حنين مازن عبد الواحد الكبيسي",
+          "mother_name_ar": "نادية فؤاد",
+          "date_of_birth": "1994-02-18",
+          "expiry_date": "2033-02-18"
+        }
+      }
+    ]
+  },
+  {
+    "scenario_id": "unknown_unconfigured_document_fallback",
+    "scenario_name_ar": "14. وثيقة غير مصنفة في السجل — استلام محصول حنطة زراعي (Fallback → مراجعة وتصنيف)",
+    "description": "وثيقة غير مهيأة مسبقاً: لا يجبرها النظام على قالب خاطئ، بل يحفظ الدليل ويستخرج الحقول العامة ويرشح الفئات الأقرب ويحيلها لضابط الامتثال.",
+    "expected_decision": "HUMAN_REVIEW",
+    "merchant_trade_name": "مكتب السنابل للتجارة الزراعية",
+    "documents": [
+      {
+        "doc_id": "DOC-UNK-01",
+        "doc_type_id": "UNKNOWN_DOCUMENT",
+        "document_title": "وصل استلام محصول الحنطة التسويقي — سايلو نينوى",
+        "issuing_authority": "الشركة العامة لتجارة الحبوب — فرع نينوى",
+        "raw_ocr_text": "وزارة التجارة - الشركة العامة لتجارة الحبوب - سايلو الموصل - وصل استلام الحنطة الدرجة الأولى رقم 99412 باسم المسوق محمود يونس خليل الجبوري الوزن الصافي 45 طن",
+        "clarity_score": 0.91,
+        "fields": {
+          "receipt_number": "SILO-NIN-2026-99412",
+          "farmer_or_supplier_name": "محمود يونس خليل الجبوري",
+          "grain_grade_and_weight": "حنطة درجة أولى — ٤٥ طن صافي",
+          "receiving_silo": "سايلو الموصل المركزي",
+          "issue_date": "2026-06-18"
+        }
+      }
+    ]
   }
 ]

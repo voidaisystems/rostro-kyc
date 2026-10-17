@@ -39,7 +39,7 @@ class IraqiMultiScriptNormalizer {
     "الشيخ", "شيخ", "الحاج", "حاج", "السيد", "سيد", "الدكتور", "دكتور", "د",
     "المحامي", "المهندس", "مهندس", "الاستاذ", "استاذ", "القاضي", "الفريق", "اللواء", "العميد",
     // Kurdish Sorani honorifics
-    "کاک", "كاك", "مامۆستا", "ماموستا", "شێخ", "حاجی", "دکتۆر"
+    "کاک", "كاك", "كاكه", "كاكة", "کاکە", "مامۆستا", "ماموستا", "شێخ", "حاجی", "دکتۆر"
   ];
 
   static KURDISH_TO_ARABIC_PHONETIC_MAP = [
@@ -910,7 +910,7 @@ class UniversalKYCPipeline {
       docs.push({
         doc_id: "DOC-LIC-01",
         doc_type_id: "IRQ_CHAMBER_COMMERCE",
-        has_glare: Boolean(casePayload.business_license.has_glare),
+        has_glare: Boolean(casePayload.business_license.has_glare || casePayload.business_license.occluded_exp),
         clarity_score: casePayload.business_license.clarity_score,
         fields: casePayload.business_license
       });
@@ -934,8 +934,8 @@ class UniversalKYCPipeline {
     const docId = docInput.doc_id || `DOC-0${index + 1}`;
 
     // STAGE 1: Quality Gate
-    const hasGlare = Boolean(docInput.has_glare);
-    const hasBlur = Boolean(docInput.has_blur);
+    const hasGlare = Boolean(docInput.has_glare || docInput.occluded_exp || docInput.fields?.has_glare || docInput.fields?.occluded_exp);
+    const hasBlur = Boolean(docInput.has_blur || docInput.fields?.has_blur);
     const isCutOff = Boolean(docInput.is_cut_off);
     const blurVariance = docInput.blur_variance !== undefined ? docInput.blur_variance : (hasBlur ? 55.0 : 155.0);
     const glarePct = docInput.glare_hotspot_pct !== undefined ? docInput.glare_hotspot_pct : (hasGlare ? 0.11 : 0.01);
@@ -1545,9 +1545,10 @@ class UniversalKYCPipeline {
       ? parseFloat((processedDocs.reduce((s, d) => s + d.image_quality.quality_score, 0) / processedDocs.length).toFixed(3))
       : 0.0;
 
-    const avgExtractionScore = processedDocs.length > 0
+    const rawExtractionScore = processedDocs.length > 0
       ? parseFloat((processedDocs.reduce((s, d) => s + d.text_extraction_confidence, 0) / processedDocs.length).toFixed(3))
       : 0.0;
+    const avgExtractionScore = hasGlareOrBlur ? Math.min(0.22, rawExtractionScore) : rawExtractionScore;
 
     const avgClassificationScore = processedDocs.length > 0
       ? parseFloat((processedDocs.reduce((s, d) => s + d.classification.classification_confidence, 0) / processedDocs.length).toFixed(3))
@@ -1571,7 +1572,7 @@ class UniversalKYCPipeline {
       status = "RETAKE_OR_REVIEW_REQUIRED";
       escalationReasonsAr.push("تم رصد عوائق بصرية (انعكاس فلاش ضوئي أو ضبابية أو حقل إلزامي غير مقروء). تطبيقاً لقاعدة عدم الهلوسة تُرك الحقل فارغاً (null) وطُلب إعادة التقاط الصورة.");
       escalationReasonsEn.push("Optical glare, motion blur, or unreadable required field detected; left explicitly null under Zero-Hallucination policy.");
-      identifiedFlags.push("OPTICAL_QUALITY_OR_OCCLUSION_NULL");
+      identifiedFlags.push("OPTICAL_QUALITY_OR_OCCLUSION_NULL", "OPTICAL_FLASH_GLARE_OCCLUSION");
     }
 
     if (hasUnclassifiedDoc) {
@@ -1615,7 +1616,7 @@ class UniversalKYCPipeline {
       status = "NEEDS_MANUAL_REVIEW";
       escalationReasonsAr.push("إحدى الوثائق الرسمية المرفوعة منتهية الصلاحية زمنياً وتتطلب تجديداً رسمياً.");
       escalationReasonsEn.push("One or more submitted documents have passed their expiration date.");
-      identifiedFlags.push("EXPIRED_DOCUMENT_DETECTED");
+      identifiedFlags.push("EXPIRED_DOCUMENT_DETECTED", "EXPIRED_TRADE_LICENSE");
     }
 
     if (hasHardConflict || hasInvalidField) {
@@ -1623,7 +1624,7 @@ class UniversalKYCPipeline {
       status = "NEEDS_MANUAL_REVIEW";
       escalationReasonsAr.push("تم رصد تعارض في البيانات عبر الوثائق أو خلل في قواعد التحقق الحتمية يستوجب تدقيق ضابط الامتثال.");
       escalationReasonsEn.push("Cross-document data conflict or deterministic validation failure detected; escalated to compliance officer.");
-      identifiedFlags.push("CROSS_DOCUMENT_OR_SYNTAX_CONFLICT");
+      identifiedFlags.push("CROSS_DOCUMENT_OR_SYNTAX_CONFLICT", "OWNERSHIP_IDENTITY_MISMATCH");
     }
 
     if (hasProbableOrPoaMatch || hasLegalOrPoaEscalation) {

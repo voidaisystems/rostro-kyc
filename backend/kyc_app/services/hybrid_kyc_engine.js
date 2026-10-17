@@ -14,6 +14,26 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const {
+  REGISTRY_VERSION,
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_REGISTRY,
+  validateRegistryOnStartup,
+  getAllDocumentTypes,
+  getDocumentTypeById,
+  getCoverageMatrix,
+  registerCandidateDocumentType
+} = require('../registry/iraqi_document_registry');
+const {
+  IraqiMultiScriptNormalizer,
+  DeterministicValidators,
+  UniversalDocumentClassifier,
+  DocumentPreprocessor,
+  UniversalKYCPipeline
+} = require('./universal_pipeline');
+
+// Validate registry integrity at startup
+validateRegistryOnStartup();
 
 // =====================================================================
 // PART 1: REGULA FORENSICS — ICAO DOC 9303 TD1 MODULO-10 CHECKSUMS
@@ -295,49 +315,56 @@ class Gemini25FlashKYCAgent {
     const imgBuf = Buffer.from(cleanBase64, 'base64');
     const dims = Gemini25FlashKYCAgent.getImageDimensions(imgBuf);
 
-    // Auto-detect portrait phone photos of landscape Iraqi cards (Cards are 1.58:1 landscape)
+    // Consult Universal Document Registry for preprocessing policy (ID_CARD_LANDSCAPE vs A4_PORTRAIT)
+    const regEntry = (docType && docType !== 'AUTO_DETECT') ? getDocumentTypeById(docType) : null;
+    const preproc = DocumentPreprocessor.evaluatePreprocessing(
+      { image_width: dims.width, image_height: dims.height },
+      regEntry
+    );
+
     let activeBase64 = cleanBase64;
-    let appliedRotation = 0;
-    if (dims.height > dims.width) {
-      activeBase64 = Gemini25FlashKYCAgent.rotateImage(cleanBase64, 270);
-      appliedRotation = 270;
+    let appliedRotation = preproc.applied_rotation_deg;
+    if (appliedRotation) {
+      activeBase64 = Gemini25FlashKYCAgent.rotateImage(cleanBase64, appliedRotation);
     }
 
     const nonce = crypto.randomBytes(8).toString('hex');
-    const prompt = `You are the Iraqi Autonomous KYC Document & Anti-Fraud Agent (Wathiq / واثق) operating under Central Bank of Iraq standards and Law No. 78.
-Analyze this official Iraqi identity or residency document inside the security sandbox:
+    const supportedTypeSummary = DOCUMENT_REGISTRY.map(
+      d => `${d.doc_type_id} (${d.canonical_name_ar} / ${d.canonical_name_en}) [Cat: ${d.category}]`
+    ).join("; ");
+
+    const prompt = `You are the Iraqi Universal Document Intelligence Agent (Project Rostro / واثق) operating under Central Bank of Iraq standards and Law No. 78.
+Analyze this document inside the security sandbox:
 <untrusted_document nonce="${nonce}" type_hint="${docType || 'AUTO_DETECT'}">
 
-CRITICAL INSTRUCTIONS FOR HANDWRITTEN ARABIC NAMES & VALUES:
-1. Document Identification:
-   - Identify the exact Document Type in Arabic (e.g. "بطاقة السكن", "البطاقة الوطنية الموحدة", "إجازة ممارسة مهنة / غرفة التجارة", "الهوية الضريبية", "هوية الأحوال المدنية", "شهادة الجنسية العراقية", "جواز السفر العراقي").
-   - Categorize into: RESIDENCE_CARD | NATIONAL_CARD | COMMERCIAL_LICENSE | TAX_CARD | CIVIL_STATUS_ID | PASSPORT | OTHER.
+CRITICAL INSTRUCTIONS:
+1. Universal Document Classification (Categories A–H):
+   - Registered Iraqi Document Catalog: ${supportedTypeSummary}
+   - Identify the exact doc_type_id from the catalog above. If the document does NOT match a registered type with confidence >= 0.65, set "doc_type_id": "UNKNOWN_DOCUMENT" and "document_category": "UNKNOWN_CATEGORY". Never force an unrecognized document into a wrong category.
+   - Identify document_side ("FRONT" | "BACK" | "BIO_PAGE" | "SINGLE_PAGE") and detected_languages (subset of ["ar", "ku", "en"]).
 
-2. Precision Handwriting OCR (Zero Hallucination):
-   - For an Iraqi Residence Card (بطاقة السكن):
-     * "اسم رب الأسرة": Look at the handwriting line next to اسم رب الأسرة. Transcribe each Arabic letter with extreme care. Note common Iraqi names: e.g. "شامل يونس كاظم" (Shin-Alif-Mim-Lam = شامل, Ya-Waw-Nun-Seen = يونس, Kaf-Alif-Dha-Mim = كاظم). Never confuse Shin with Ha/Tha.
-     * "مكتب معلومات": Transcribe the office name (e.g. "حي العامل").
-     * "عنوان السكن": Transcribe the neighborhood, alley, and house (e.g. "م ٨٦٧ ز ٤ د ٢٦").
-     * "رقم الاستمارة": Transcribe the form number digits (e.g. "٣٨٠٩١").
-   - For an Iraqi Unified National Card:
-     * "الاسم الكامل": Full quadruple name.
-     * "الرقم الوطني الموحد": 12 digits.
-     * "رقم الهوية": 9 alphanumeric.
-     * "اسم الأم": Mother name.
+2. Zero-Hallucination & Multi-Script OCR (Arabic, Kurdish Sorani, English):
+   - Transcribe printed and handwritten Arabic and Kurdish Sorani text faithfully without guessing obscured characters.
+   - If any portion of a field is unreadable due to flash glare, blur, or low resolution, set its value to null and confidence <= 0.30.
+   - For Iraqi Residence Cards (بطاقة السكن), carefully read "head_of_family_name" (اسم رب الأسرة), "information_office" (مكتب معلومات), "full_address" (عنوان السكن م/ز/د), and "form_number" (رقم الاستمارة).
+   - For Unified National Cards (البطاقة الوطنية الموحدة), extract "national_id_number" (12 digits), "full_name_ar", "mother_name_ar", "date_of_birth", "expiry_date", and TD1 MRZ lines if back side is visible.
 
 3. Visual Bounding Boxes:
-   - For EVERY extracted field or text line, provide its normalized bounding box "box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 coordinate scale relative to this upright image.
+   - For EVERY extracted field, provide its normalized bounding box "box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 coordinate scale relative to this image.
 
-4. Image Quality & Forensic Checks:
-   - Assess optical_clarity (0.0 to 1.0).
-   - Check for specular flash glare (has_glare: true/false).
-   - Check for motion or focus blur (has_blur: true/false).
+4. Image Quality & Forensic Signals:
+   - Assess optical_clarity (0.0 to 1.0), has_glare (true/false), and has_blur (true/false).
 
 Return ONLY a valid JSON object matching this exact structure:
 {
+  "doc_type_id": "IRQ_NATIONAL_ID | IRQ_RESIDENCE_CARD | ... | UNKNOWN_DOCUMENT",
   "document_type_ar": "...",
   "document_type_en": "...",
-  "document_category": "RESIDENCE_CARD | NATIONAL_CARD | COMMERCIAL_LICENSE | TAX_CARD | CIVIL_STATUS_ID | PASSPORT | OTHER",
+  "document_category": "IDENTITY_CIVIL | RESIDENCE_ADDRESS | TRAVEL_IMMIGRATION | DRIVING_VEHICLE | BUSINESS_MERCHANT | EDUCATION_EMPLOYMENT_INCOME | FINANCIAL_EVIDENCE | LEGAL_AUTHORIZATION | UNKNOWN_CATEGORY",
+  "document_side": "FRONT",
+  "detected_languages": ["ar"],
+  "issuing_authority_ar": "...",
+  "classification_confidence": 0.95,
   "optical_clarity": 0.95,
   "has_glare": false,
   "has_blur": false,
@@ -345,13 +372,13 @@ Return ONLY a valid JSON object matching this exact structure:
     {
       "key": "programmatic_field_key",
       "label_ar": "اسم الحقل بالعربية",
-      "value": "القيمة المستخرجة الفعلية",
+      "value": "القيمة المستخرجة الفعلية أو null",
       "confidence": 0.95,
-      "is_handwritten": true,
+      "is_handwritten": false,
       "box_2d": [100, 200, 150, 400]
     }
   ],
-  "summary_ar": "ملخص شامل لما تم استخراجه من الوثيقة الحقيقية"
+  "summary_ar": "ملخص شامل لما تم استخراجه من الوثيقة"
 }
 </untrusted_document>`;
 
@@ -369,7 +396,6 @@ Return ONLY a valid JSON object matching this exact structure:
       }
     };
 
-    // Resilient Model Fallback Cascade (gemini-2.5-flash -> gemini-3.5-flash -> gemini-3.6-flash)
     const candidateModels = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.6-flash"];
     let lastError = null;
 
@@ -385,7 +411,6 @@ Return ONLY a valid JSON object matching this exact structure:
         if (!response.ok) {
           const errText = await response.text();
           console.warn(`[Gemini Model ${model} HTTP ${response.status}]: ${errText.substring(0, 120)}...`);
-          // If rate limited (429) or unavailable, try next model in cascade
           if (response.status === 429 || response.status === 503 || response.status === 404) {
             continue;
           }
@@ -401,12 +426,10 @@ Return ONLY a valid JSON object matching this exact structure:
         let parsed = JSON.parse(textResult);
         if (Array.isArray(parsed)) parsed = parsed[0];
 
-        // Attach upright image and orientation details
         parsed.applied_rotation = appliedRotation;
         parsed.upright_image_base64 = "data:image/jpeg;base64," + activeBase64;
         parsed.model_used = model;
 
-        // Normalize fields if returned in alternate format
         if (Array.isArray(parsed.fields)) {
           parsed.fields = parsed.fields.map(f => ({
             key: f.key || f.field_name || f.name || "field",
@@ -416,7 +439,6 @@ Return ONLY a valid JSON object matching this exact structure:
             box_2d: f.box_2d || null
           }));
 
-          // Convert box_2d to web CSS percentages
           parsed.bounding_boxes = parsed.fields
             .filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4)
             .map(f => {
@@ -453,188 +475,37 @@ Return ONLY a valid JSON object matching this exact structure:
 }
 
 // =====================================================================
-// PART 5: MULTI-SIGNAL COMPOSITE RISK ENGINE & CBI COMPLIANCE
+// PART 5: UNIVERSAL PIPELINE EVALUATION ENGINE & CBI COMPLIANCE
 // =====================================================================
 class WathiqEvaluationEngine {
   /**
-   * Computes the 5-signal composite confidence score:
-   * Score = 0.25*OCR + 0.30*Consistency + 0.20*Authenticity + 0.15*Quality + 0.10*Rules
+   * Evaluates any single-document or multi-document Iraqi KYC case
+   * through the 10-stage UniversalKYCPipeline and returns the 9 separated signals,
+   * universal field table, entity relationship graph, and hash-chained CBI audit record.
    */
   static evaluateApplication(scenario, apiKey = null) {
-    const appId = scenario.application_id || `KYC-${Math.floor(10000 + Math.random() * 90000)}`;
-    const tradeName = scenario.merchant_trade_name;
-
-    const natCard = scenario.national_card || {};
-    const lic = scenario.business_license || {};
-    const tax = scenario.tax_card || {};
-
-    // 1. Image Quality Check (Mitek / Smart Engines)
-    const qualityNat = ImageQualityInspector.evaluateQuality({
-      blur_variance: natCard.has_glare ? 120 : 155,
-      glare_hotspot_pct: natCard.has_glare ? 0.08 : 0.01
-    });
-
-    const qualityLic = ImageQualityInspector.evaluateQuality({
-      blur_variance: lic.has_glare ? 110 : 160,
-      glare_hotspot_pct: lic.has_glare ? 0.09 : 0.01
-    });
-
-    const avgQuality = (qualityNat.quality_score + qualityLic.quality_score) / 2;
-
-    // 2. Regula ICAO TD1 MRZ Checksum Check
-    const natId = natCard.national_id || natCard.national_id_number || "198814205819";
-    const natName = natCard.full_name_ar || natCard.full_name || "";
-    const licOwner = lic.owner_name || lic.owner_name_ar || "";
-    const taxName = tax.taxpayer_name || tax.taxpayer_name_ar || "";
-    const taxNatRef = tax.national_id_reference || tax.national_id_ref || "";
-
-    const doc9 = natId.replace(/[^0-9A-Z]/g, '').padEnd(9, '<').substring(0, 9);
-    const docChk = RegulaChecksumValidator.computeModulo10(doc9);
-    const mrzValidation = RegulaChecksumValidator.validateTD1(
-      natCard.mrz_line1 || `I<IRQ${doc9}${docChk}<<<<<<<<<<<<<<`,
-      natCard.mrz_line2 || "9205141M3005143IRQ<<<<<<<<<<<2",
-      natCard.mrz_line3 || "AL<<ZEID<HAIDAR<ABDUL<ZAHRA<<<"
-    );
-    const authenticityScore = mrzValidation.authenticity_confidence;
-
-    // 3. Iraqi Onomastic Name Consistency Across Documents
-    const nameMatchNatLic = IraqiOnomasticNormalizer.compareNames(natName, licOwner);
-    const nameMatchNatTax = IraqiOnomasticNormalizer.compareNames(natName, taxName);
-    const avgNameSim = (nameMatchNatLic.score + nameMatchNatTax.score) / 2;
-
-    // 4. National ID Equality Across National Card and Tax Card
-    const normNatId = IraqiOnomasticNormalizer.normalizeText(natId);
-    const normTaxNatId = IraqiOnomasticNormalizer.normalizeText(taxNatRef);
-    const isIdMatching = (normNatId && normTaxNatId && normNatId === normTaxNatId);
-
-    // 5. License Expiry Check (Central Bank of Iraq Regulatory Invariant)
-    let isLicenseExpired = false;
-    let daysToExpiry = 999;
-    if (lic.expiry_date) {
-      const expDate = new Date(lic.expiry_date);
-      const today = new Date();
-      daysToExpiry = Math.floor((expDate - today) / (1000 * 60 * 60 * 24));
-      if (daysToExpiry < 0) {
-        isLicenseExpired = true;
-      }
-    }
-
-    // 6. Zero Hallucination Invariant: If Glare is Present, Nullify and Penalize
-    const isGlared = qualityNat.quality_flags.includes("SPECULAR_FLASH_GLARE_DETECTED") ||
-                     qualityLic.quality_flags.includes("SPECULAR_FLASH_GLARE_DETECTED") ||
-                     scenario.scenario_id === "specular_glare_zero_hallucination";
-
-    let ocrConfidence = 0.94;
-    if (isGlared) {
-      ocrConfidence = 0.22; // Penalized, zero hallucination
-    }
-
-    // 7. Calculate Multi-Signal Composite Score
-    const consistencyScore = (avgNameSim * 0.7) + (isIdMatching ? 0.3 : 0.0);
-    const rulesScore = (!isLicenseExpired && daysToExpiry > 30) ? 1.0 : (isLicenseExpired ? 0.0 : 0.60);
-
-    const compositeScore = (
-      (0.25 * ocrConfidence) +
-      (0.30 * consistencyScore) +
-      (0.20 * authenticityScore) +
-      (0.15 * avgQuality) +
-      (0.10 * rulesScore)
-    );
-
-    const roundedScore = parseFloat(compositeScore.toFixed(3));
-
-    // 8. Determine Action Tier (Sumsub / Persona Workflow)
-    let decisionTier = "MANUAL_REVIEW_REQUIRED";
-    let rationale = "";
-    const flags = [];
-
-    if (isGlared) {
-      decisionTier = "RETAKE_REQUESTED";
-      rationale = "تم رصد انعكاس ضوئي شديد (Specular Flash Glare) يحجب قراءة بيانات البطاقة الوطنية الموحدة. تطبيقاً لقاعدة عدم الهلوسة تم حجب الرقم وطلب إعادة التقاط فورية من التاجر.";
-      flags.push("OPTICAL_FLASH_GLARE_OCCLUSION");
-    } else if (isLicenseExpired) {
-      decisionTier = "REJECTED_OR_UPDATE_REQUIRED";
-      rationale = `إجازة ممارسة المهنة منتهية الصلاحية منذ ${Math.abs(daysToExpiry)} يوم، مما يخالف تعليمات البنك المركزي العراقي الخاصة بفتح الحسابات التجارية.`;
-      flags.push(`EXPIRED_TRADE_LICENSE_${Math.abs(daysToExpiry)}_DAYS`);
-    } else if (!nameMatchNatLic.is_match) {
-      decisionTier = "REJECTED_FRAUD_SUSPECT";
-      rationale = `تعارض جوهري في هوية مالك النشاط التجاري بين البطاقة الوطنية (${natCard.full_name_ar}) وإجازة غرفة التجارة (${lic.owner_name_ar}). تم رصد شبهة عدم تطابق بنسبة تشابه ${Math.round(nameMatchNatLic.score * 100)}%.`;
-      flags.push("OWNERSHIP_IDENTITY_MISMATCH");
-    } else if (roundedScore >= 0.88) {
-      decisionTier = "AUTO_PASS";
-      rationale = "جميع الوثائق الرسمية سارية ومطابقة بنسبة 100%. تم التحقق من سلامة كود الـ MRZ والترخيص التجاري، والملف مؤهل للاعتماد والتفعيل الفوري.";
-    } else {
-      decisionTier = "MANUAL_REVIEW_REQUIRED";
-      rationale = "تم استخراج البيانات بنجاح مع وجود ملاحظات طفيفة تتطلب مطابقة بصرية سريعة من ضابط الامتثال (زمن المعالجة المتوقع: 22 ثانية).";
-      flags.push("MINOR_ORTHOGRAPHY_REVIEW");
-    }
-
-    // 9. Central Bank of Iraq Law No. 78 Non-Repudiation HMAC Digest
-    const timestamp = new Date().toISOString();
-    const auditPayload = `${appId}|${tradeName}|${roundedScore}|${decisionTier}|${timestamp}`;
-    const hmacSecret = process.env.CBI_AUDIT_SECRET || "wathiq_cbi_law78_secret_key_2026";
-    const auditDigest = crypto.createHmac('sha256', hmacSecret).update(auditPayload).digest('hex');
-
-    return {
-      application_id: appId,
-      merchant_trade_name: tradeName,
-      status: decisionTier === "AUTO_PASS" ? "APPROVED_AUTOMATIC" : (decisionTier.startsWith("REJECT") ? "REJECTED" : "NEEDS_MANUAL_REVIEW"),
-      overall_confidence: roundedScore,
-      confidence_percentage: Math.round(roundedScore * 100),
-      evaluation_latency_ms: 420,
-      scoring_breakdown: {
-        ocr_confidence: ocrConfidence,
-        consistency_score: parseFloat(consistencyScore.toFixed(3)),
-        authenticity_score: authenticityScore,
-        image_quality_score: parseFloat(avgQuality.toFixed(3)),
-        regulatory_rules_score: rulesScore
-      },
-      cross_checks: [
-        {
-          name: "مطابقة الاسم بين البطاقة الوطنية وإجازة التجارة",
-          status: nameMatchNatLic.is_match ? "MATCH" : "MISMATCH",
-          score: nameMatchNatLic.score,
-          details: `نسبة التطابق الدلالي الموزون: ${Math.round(nameMatchNatLic.score * 100)}%`
-        },
-        {
-          name: "مطابقة الرقم الوطني مع السجل الضريبي",
-          status: isIdMatching ? "MATCH" : "MISMATCH",
-          score: isIdMatching ? 1.0 : 0.0,
-          details: isIdMatching ? "الرقم الوطني مطابق للملف الضريبي المفتوح لدى الهيئة العامة للضرائب." : "اختلاف في الرقم الوطني المسجل لدى الضرائب."
-        },
-        {
-          name: "فحص البصمة الرقمية وكود ICAO TD1 MRZ",
-          status: mrzValidation.all_checksums_valid ? "MATCH" : "WARNING",
-          score: mrzValidation.authenticity_confidence,
-          details: mrzValidation.all_checksums_valid ? "جميع خانات الفحص Modulo-10 بالأوزان 7-3-1 سليمة ومطابقة." : "تنبيه في خانة فحص تاريخ النفاذ."
-        },
-        {
-          name: "سريان مفعول إجازة ممارسة المهنة",
-          status: isLicenseExpired ? "EXPIRED" : "VALID",
-          score: isLicenseExpired ? 0.0 : 1.0,
-          details: isLicenseExpired ? `الإجازة منتهية منذ ${Math.abs(daysToExpiry)} يوم.` : `الإجازة سارية المفعول (متبقي ${daysToExpiry} يوم).`
-        }
-      ],
-      reviewer_dossier: {
-        recommended_decision: decisionTier,
-        rationale_ar: rationale,
-        identified_flags: flags,
-        estimated_review_seconds: decisionTier === "AUTO_PASS" ? 0 : 22
-      },
-      cbi_audit: {
-        standard: "Central Bank of Iraq Law No. 78 of 2012",
-        timestamp: timestamp,
-        hmac_sha256_digest: auditDigest,
-        data_residency: "REPUBLIC_OF_IRAQ_LOCAL_CONTAINER"
-      }
-    };
+    return UniversalKYCPipeline.evaluateCase(scenario);
   }
 }
 
 module.exports = {
+  REGISTRY_VERSION,
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_REGISTRY,
+  validateRegistryOnStartup,
+  getAllDocumentTypes,
+  getDocumentTypeById,
+  getCoverageMatrix,
+  registerCandidateDocumentType,
   RegulaChecksumValidator,
   ImageQualityInspector,
   IraqiOnomasticNormalizer,
+  IraqiMultiScriptNormalizer,
+  DeterministicValidators,
+  UniversalDocumentClassifier,
+  DocumentPreprocessor,
+  UniversalKYCPipeline,
   Gemini25FlashKYCAgent,
   WathiqEvaluationEngine
 };
+

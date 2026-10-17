@@ -905,94 +905,56 @@ function handleFileSelect(docType, event) {
   reader.readAsDataURL(file);
 }
 
-function loadSampleImagesIntoUpload() {
-  // Generate realistic high-res synthetic document graphics for testing uploads
-  function createDocCanvas(type, title, name, num) {
-    const cvs = document.createElement("canvas");
-    cvs.width = 480;
-    cvs.height = 300;
-    const ctx = cvs.getContext("2d");
-
-    // Card background
-    ctx.fillStyle = "#0f172a";
-    ctx.fillRect(0, 0, cvs.width, cvs.height);
-
-    ctx.fillStyle = type === 'id' ? "#0369a1" : (type === 'lic' ? "#15803d" : "#b45309");
-    ctx.beginPath();
-    ctx.roundRect(20, 20, 440, 260, 14);
-    ctx.fill();
-
-    // Inner card
-    ctx.fillStyle = "#f8fafc";
-    ctx.beginPath();
-    ctx.roundRect(30, 30, 420, 240, 10);
-    ctx.fill();
-
-    // Header band
-    ctx.fillStyle = type === 'id' ? "#0284c7" : (type === 'lic' ? "#16a34a" : "#d97706");
-    ctx.fillRect(30, 30, 420, 45);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 15px Cairo, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(`جمهورية العراق — ${title}`, 240, 58);
-
-    // Photo placeholder
-    ctx.fillStyle = "#cbd5e1";
-    ctx.fillRect(45, 90, 80, 100);
-    ctx.fillStyle = "#64748b";
-    ctx.font = "bold 24px sans-serif";
-    ctx.fillText("👤", 85, 150);
-
-    // Text fields
-    ctx.fillStyle = "#0f172a";
-    ctx.textAlign = "right";
-    ctx.font = "bold 13px IBM Plex Sans Arabic, sans-serif";
-    ctx.fillText(`الاسم الكامل: ${name}`, 430, 115);
-    ctx.fillText(`رقم الوثيقة: ${num}`, 430, 145);
-    ctx.fillText("سارية المفعول حتى: 2030/12/31", 430, 175);
-
-    // Barcode strip
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(45, 205, 390, 45);
-    ctx.fillStyle = "#38bdf8";
-    ctx.font = "10px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(`I<IRQ${num.substring(0, 9)}6<<<<<<<<<<<<<<<<<<`, 55, 225);
-    ctx.fillText(`9205141M3005143IRQ<<<<<<<<<<<<<<<<<`, 55, 240);
-
-    return cvs.toDataURL("image/jpeg", 0.9);
+async function loadSampleImagesIntoUpload() {
+  async function fetchAsDataUrl(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
-  const tradeName = document.getElementById("merchantTradeNameInput").value || "شركة النخيل للتجارة";
-  const idData = createDocCanvas('id', 'البطاقة الوطنية الموحدة', 'زيد علي عبد الحسين التميمي', '199418294012');
-  const licData = createDocCanvas('lic', 'إجازة غرفة التجارة', 'زيد علي عبد الحسين التميمي', 'BG-2024-91024');
-  const taxData = createDocCanvas('tax', 'الهوية الضريبية', 'زيد علي عبد الحسين التميمي', 'TX-89104128');
+  try {
+    const [idData, resData, licData] = await Promise.all([
+      fetchAsDataUrl('/faker_specimens/01_faker_national_id.jpg'),
+      fetchAsDataUrl('/faker_specimens/02_faker_residence_card.jpg'),
+      fetchAsDataUrl('/faker_specimens/03_faker_chamber_license.jpg')
+    ]);
 
-  window.UPLOADED_DOCUMENT_FILES.national_card = idData;
-  window.UPLOADED_DOCUMENT_FILES.license = licData;
-  window.UPLOADED_DOCUMENT_FILES.tax_card = taxData;
+    const tradeInput = document.getElementById("merchantTradeNameInput");
+    if (tradeInput) tradeInput.value = "شركة حجازي للتجارة العامة والمقاولات";
 
-  const t1 = document.getElementById("imgThumbNatCard");
-  t1.src = idData;
-  t1.style.display = "block";
-  document.querySelector("#previewBoxNatCard .dz-placeholder").style.display = "none";
-  document.getElementById("qualityNatCard").className = "dz-quality-status ok";
-  document.getElementById("qualityNatCard").innerText = "✅ عينة بطاقة وطنية جاهزة";
+    window.UPLOADED_DOCUMENT_FILES.national_card = idData;
+    window.UPLOADED_DOCUMENT_FILES.license = licData;
+    window.UPLOADED_DOCUMENT_FILES.tax_card = resData;
 
-  const t2 = document.getElementById("imgThumbLicense");
-  t2.src = licData;
-  t2.style.display = "block";
-  document.querySelector("#previewBoxLicense .dz-placeholder").style.display = "none";
-  document.getElementById("qualityLicense").className = "dz-quality-status ok";
-  document.getElementById("qualityLicense").innerText = "✅ عينة إجازة تجارة جاهزة";
+    const t1 = document.getElementById("imgThumbNatCard");
+    t1.src = idData;
+    t1.style.display = "block";
+    document.querySelector("#previewBoxNatCard .dz-placeholder").style.display = "none";
+    document.getElementById("qualityNatCard").className = "dz-quality-status ok";
+    document.getElementById("qualityNatCard").innerText = "✅ البطاقة الوطنية الموحدة (Faker Specimen)";
 
-  const t3 = document.getElementById("imgThumbTaxCard");
-  t3.src = taxData;
-  t3.style.display = "block";
-  document.querySelector("#previewBoxTaxCard .dz-placeholder").style.display = "none";
-  document.getElementById("qualityTaxCard").className = "dz-quality-status ok";
-  document.getElementById("qualityTaxCard").innerText = "✅ عينة هوية ضريبية جاهزة";
+    const t2 = document.getElementById("imgThumbLicense");
+    t2.src = licData;
+    t2.style.display = "block";
+    document.querySelector("#previewBoxLicense .dz-placeholder").style.display = "none";
+    document.getElementById("qualityLicense").className = "dz-quality-status ok";
+    document.getElementById("qualityLicense").innerText = "✅ إجازة غرفة تجارة بغداد (Faker Specimen)";
+
+    const t3 = document.getElementById("imgThumbTaxCard");
+    t3.src = resData;
+    t3.style.display = "block";
+    document.querySelector("#previewBoxTaxCard .dz-placeholder").style.display = "none";
+    document.getElementById("qualityTaxCard").className = "dz-quality-status ok";
+    document.getElementById("qualityTaxCard").innerText = "✅ بطاقة السكن العراقية (Faker Specimen)";
+  } catch (err) {
+    console.warn("Faker specimen fetch error:", err);
+  }
 }
 
 async function submitUploadedDocuments() {

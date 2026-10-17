@@ -1,0 +1,28 @@
+{
+  "generator": "Python Faker (ar_AA / en_US) + Rostro Iraqi KYC Provider",
+  "full_name_ar": "عبد الغفار جميل مزهر الشمري",
+  "mother_name_ar": "تالا زاخر",
+  "date_of_birth": "1985-11-27",
+  "national_id_number": "198588888592",
+  "document_serial": "A78689122",
+  "expiry_date": "2032-03-15",
+  "mrz_line1": "I<IRQA786891229<<<<<<<<<<<<<<<",
+  "mrz_line2": "8511272M3203156IRQ<<<<<<<<<<<6",
+  "mrz_line3": "AL<SHAMMARI<<ABDULGHAFFAR<JAMI",
+  "residence_card": {
+    "head_of_family_name": "عبد الغفار جميل مزهر الشمري",
+    "information_office": "مكتب معلومات الكرادة الشرقية",
+    "full_address": "بغداد - الكرادة - م ٢٤٥ ز ٧٩ د ٢٠",
+    "form_number": "٥٢٠٨١٥",
+    "governorate": "بغداد"
+  },
+  "chamber_license": {
+    "license_number": "BG-2025-56857",
+    "commercial_trade_name": "شركة حجازي للتجارة العامة والمقاولات",
+    "owner_name": "عبد الغفار جميل مزهر الشمري",
+    "commercial_class": "الأولى - ممتازة",
+    "issue_date": "2025-01-20",
+    "expiry_date": "2029-01-20",
+    "governorate": "بغداد"
+  }
+}

@@ -1,4 +1,4 @@
-# Project Rostro (واثق) — Universal Iraqi Document Coverage Matrix
+# Project Rostro (روسترو) — Universal Iraqi Document Coverage Matrix
 
 > **Registry Version:** `2.1.0`  
 > **Total Registered Iraqi Document Types:** **44** across **8 Categories (A–H)**  

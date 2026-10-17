@@ -1,5 +1,5 @@
 /**
- * Project Rostro (واثق) — Universal Iraqi Document Registry
+ * Project Rostro (روسترو) — Universal Iraqi Document Registry
  * ==========================================================
  * Centralized, versioned, and startup-validated registry of Iraqi, KRG,
  * and foreign-submitted onboarding documents across 8 operational categories:

@@ -1,4 +1,4 @@
-# Rostro (واثق) — Universal Iraqi Document Intelligence & KYC Agent
+# Rostro (روسترو) — Universal Iraqi Document Intelligence & KYC Agent
 
 > **Agentic AI Challenge Iraq — Build Stage**  
 > Organized by **ZainCash** in cooperation with **The Leaders of the AI Intelligence** & supported by **Young Arab Leaders**  
@@ -8,7 +8,7 @@
 ---
 
 ## 🎯 Executive Summary
-Customer and merchant onboarding in Iraqi fintech requires verifying a broad spectrum of federal Iraqi and Kurdistan Region (KRG) documents across multiple scripts (Arabic, Kurdish Sorani, and English), generations, and layouts. Rather than hardcoding a single 3-document check, **Rostro (واثق)** is a **Universal Iraqi Document Intelligence Platform** built around a centralized, startup-validated **Universal Document Registry (`44` document types across Categories `A–H`)** and a **10-Stage Shared Processing Pipeline**:
+Customer and merchant onboarding in Iraqi fintech requires verifying a broad spectrum of federal Iraqi and Kurdistan Region (KRG) documents across multiple scripts (Arabic, Kurdish Sorani, and English), generations, and layouts. Rather than hardcoding a single 3-document check, **Rostro (روسترو)** is a **Universal Iraqi Document Intelligence Platform** built around a centralized, startup-validated **Universal Document Registry (`44` document types across Categories `A–H`)** and a **10-Stage Shared Processing Pipeline**:
 
 `Upload → Quality Gate → Classification → Preprocessing → Extraction → Normalization → Validation → Risk Assessment → Decision Routing → Audit`
 

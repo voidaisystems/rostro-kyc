@@ -1,5 +1,5 @@
 /**
- * Project Rostro (واثق) — Universal Iraqi Document Processing Pipeline
+ * Project Rostro (روسترو) — Universal Iraqi Document Processing Pipeline
  * =====================================================================
  * Implements the 10-Stage Shared Processing Architecture driven by the
  * Universal Iraqi Document Registry:

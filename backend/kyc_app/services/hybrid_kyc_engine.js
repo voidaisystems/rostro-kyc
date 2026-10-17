@@ -1,5 +1,5 @@
 /**
- * Wathiq (واثق) — Best-of-Breed Hybrid KYC Document Engine
+ * Rostro (روسترو) — Best-of-Breed Hybrid KYC Document Engine
  * =========================================================
  * Synthesizes the core strengths of:
  * - Regula Forensics: ICAO Doc 9303 TD1 Modulo 10 (7-3-1 weights) Checksum Math
@@ -333,7 +333,7 @@ class Gemini25FlashKYCAgent {
       d => `${d.doc_type_id} (${d.canonical_name_ar} / ${d.canonical_name_en}) [Cat: ${d.category}]`
     ).join("; ");
 
-    const prompt = `You are the Iraqi Universal Document Intelligence Agent (Project Rostro / واثق) operating under Central Bank of Iraq standards and Law No. 78.
+    const prompt = `You are the Iraqi Universal Document Intelligence Agent (Project Rostro / روسترو) operating under Central Bank of Iraq standards and Law No. 78.
 Analyze this document inside the security sandbox:
 <untrusted_document nonce="${nonce}" type_hint="${docType || 'AUTO_DETECT'}">
 

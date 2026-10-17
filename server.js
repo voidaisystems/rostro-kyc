@@ -1,5 +1,5 @@
 /**
- * Wathiq (واثق) — Unified Production Local Server
+ * Rostro (روسترو) — Unified Production Local Server
  * ================================================
  * Serves both the REST API and the 1-Screen Compliance Reviewer Cockpit.
  * Integrates:
@@ -114,7 +114,7 @@ const server = http.createServer(async (req, res) => {
     const cov = getCoverageMatrix();
     return sendJson(res, 200, {
       status: 'OPERATIONAL',
-      service: 'Project Rostro (واثق) Universal Iraqi Document Intelligence Server',
+      service: 'Project Rostro (روسترو) Universal Iraqi Document Intelligence Server',
       registry_version: REGISTRY_VERSION,
       registered_document_types: cov.total_registered_types,
       tested_document_types: cov.status_breakdown.TESTED,
@@ -445,7 +445,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`================================================================`);
-  console.log(`🛡️  WATHIQ (واثق) — Production KYC Server Active`);
+  console.log(`🛡️  ROSTRO (روسترو) — Production KYC Server Active`);
   console.log(`🌐 Local Web Cockpit:   http://localhost:${PORT}`);
   console.log(`⚡ REST API Endpoints:  http://localhost:${PORT}/api/v1/kyc/evaluate`);
   console.log(`📊 Healthcheck:         http://localhost:${PORT}/api/v1/kyc/health`);
@@ -455,6 +455,6 @@ server.listen(PORT, () => {
 
 // Graceful termination
 process.on('SIGINT', () => {
-  console.log('\nStopping Wathiq KYC Server...');
+  console.log('\nStopping Rostro KYC Server...');
   server.close(() => process.exit(0));
 });

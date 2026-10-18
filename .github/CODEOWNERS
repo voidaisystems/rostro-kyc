@@ -1,0 +1,15 @@
+# Project Rostro (روسترو للامتثال) — Code Ownership & Review Matrix
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default global owners
+*                               @voidaisystems
+
+# Core Deterministic Risk Engine & Universal Iraqi Registry
+/backend/kyc_app/registry/      @voidaisystems
+/backend/kyc_app/services/      @voidaisystems
+/src/utils/kycEngine.ts         @voidaisystems
+
+# API Gateway & CBI Law No. 78 Cryptographic Signing
+/server.js                      @voidaisystems
+/server.ts                      @voidaisystems
+/SECURITY.md                    @voidaisystems

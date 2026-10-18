@@ -1,0 +1,54 @@
+name: Bug Report
+description: Report a defect in the Universal Iraqi KYC Pipeline, deterministic validators, or Compliance Workstation UI.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue in **Project Rostro (`روسترو للامتثال`)**.
+        > **Security Note:** Never attach real citizen IDs or personal PII. Use only synthetic specimens (`SPECIMEN / عينة تركيبية`).
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Subsystem
+      description: Which layer of the Rostro platform is affected?
+      options:
+        - "Stage 1–2: Edge Image Quality Gate (Blur / Specular Glare)"
+        - "Stage 3: Universal Document Classifier (Categories A–H)"
+        - "Stage 4: Preprocessing & Dual-Side Card Gate (FRONT + BACK)"
+        - "Stage 5–6: Multimodal OCR & Multi-Script Normalizer (AR / KU / EN)"
+        - "Stage 7: Deterministic Validators (ICAO 9303 Modulo-10 / IBAN / VIN)"
+        - "Stage 8–9: Cross-Document Reconciliation & 9-Signal Risk Routing"
+        - "Stage 10: CBI Law No. 78 HMAC-SHA256 Audit Ledger"
+        - "Frontend: React Compliance Workstation UI"
+    validations:
+      required: true
+
+  - type: input
+    id: doc_type
+    attributes:
+      label: Document Type ID (if applicable)
+      description: e.g., IRQ_NATIONAL_ID, IRQ_RESIDENCE_CARD, IRQ_CHAMBER_COMMERCE
+      placeholder: "IRQ_NATIONAL_ID"
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps or synthetic payload to reproduce the behavior.
+      placeholder: |
+        1. Upload synthetic specimen ...
+        2. Inspect Signal #7 (authenticity_indicators) ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Deterministic Behavior
+      description: What pipeline outcome (`AUTO_APPROVED`, `HUMAN_REVIEW`, `AUTO_REJECTED`, `INSUFFICIENT_DATA`) was expected?
+    validations:
+      required: true

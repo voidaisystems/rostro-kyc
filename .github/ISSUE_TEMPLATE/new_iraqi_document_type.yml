@@ -1,0 +1,56 @@
+name: New Iraqi Document Type Request
+description: Propose adding or upgrading an Iraqi or Kurdistan Region (KRG) document schema in the Universal Document Registry.
+title: "[Registry]: Add support for "
+labels: ["enhancement", "registry"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Document Category (A–H)
+      options:
+        - "A — IDENTITY_CIVIL (Identity & Civil Status)"
+        - "B — RESIDENCE_ADDRESS (Residence, Address & Household)"
+        - "C — TRAVEL_IMMIGRATION (Travel & Immigration)"
+        - "D — DRIVING_VEHICLE (Driving, Vehicle & Transport)"
+        - "E — BUSINESS_MERCHANT (Business & Merchant Onboarding)"
+        - "F — EDUCATION_EMPLOYMENT_INCOME (Education, Employment & Income)"
+        - "G — FINANCIAL_EVIDENCE (Financial & Supporting Evidence)"
+        - "H — LEGAL_AUTHORIZATION (Legal, Judicial & Authorizations)"
+    validations:
+      required: true
+
+  - type: input
+    id: canonical_names
+    attributes:
+      label: Canonical Name (English, Arabic & Kurdish Sorani)
+      placeholder: "Unified Iraqi National Card — البطاقة الوطنية الموحدة — کارتی نیشتمانی"
+    validations:
+      required: true
+
+  - type: input
+    id: issuing_authority
+    attributes:
+      label: Issuing Authority (Federal Iraq or KRG)
+      placeholder: "Ministry of Interior — Directorate of National Card Affairs"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sides
+    attributes:
+      label: Required Physical Sides
+      options:
+        - "Single-Sided (FRONT only — A4 Certificate / Booklet Spread)"
+        - "Dual-Sided (FRONT + BACK required — CR80 Card)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_fields
+    attributes:
+      label: Expected Fields & Deterministic Validation Rules
+      placeholder: |
+        - Required fields: national_id_number (12 digits), full_name_ar, dob, expiry_date
+        - Checksum / Format rules: ICAO Doc 9303 TD1 3x30 MRZ Modulo-10 [7, 3, 1]
+    validations:
+      required: true

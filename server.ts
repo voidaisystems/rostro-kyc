@@ -1,3 +1,17 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file server.ts
+ * @module @rostro/compliance-server-ts
+ * @description
+ * TypeScript Express + Vite Middleware Server for the Rostro Universal Iraqi KYC & Document
+ * Intelligence Platform. Implements deterministic ICAO Doc 9303 Modulo-10 [7, 3, 1] check digit
+ * verification, multi-script (Arabic / Kurdish Sorani / English) field normalization, Dual-Side
+ * physical card enforcement, and Central Bank of Iraq (CBI) Law No. 78 of 2012 HMAC-SHA256
+ * non-repudiation audit signing.
+ */
+
 import dotenv from 'dotenv';
 import crypto from 'node:crypto';
 import path from 'node:path';

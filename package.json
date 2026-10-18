@@ -1,12 +1,35 @@
 {
   "name": "rostro-compliance-console",
-  "private": true,
   "version": "3.0.0",
+  "description": "Rostro (روسترو للامتثال) — Universal Iraqi & KRG Document Intelligence, Forensics, and KYC Compliance Platform (44 Registered Document Types across Categories A–H).",
+  "private": true,
+  "license": "MIT",
+  "author": "Rostro Compliance Systems (@voidaisystems)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/voidaisystems/rostro-kyc.git"
+  },
+  "keywords": [
+    "kyc",
+    "iraq",
+    "krg",
+    "document-intelligence",
+    "ocr",
+    "icao-9303",
+    "mrz",
+    "fintech",
+    "compliance",
+    "cbi-law-78"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "start": "node server.js",
-    "test": "node backend/tests/test_hybrid_server.js"
+    "test": "node backend/tests/test_hybrid_server.js",
+    "test:unit": "node --experimental-strip-types --test src/utils/kycEngine.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

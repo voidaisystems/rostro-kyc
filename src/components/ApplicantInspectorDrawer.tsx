@@ -1,3 +1,16 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/components/ApplicantInspectorDrawer.tsx
+ * @module @rostro/ui/ApplicantInspectorDrawer
+ * @description
+ * Detailed Case Inspection & Adjudication Drawer for Compliance Officers.
+ * Displays the 9 independently inspectable verification signals, dual-side physical card status,
+ * OCR spatial bounding-box alignment, multi-script normalization, and cryptographically signed
+ * human adjudication controls (`/api/kyc/adjudicate`).
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
   X,

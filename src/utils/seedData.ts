@@ -1,3 +1,16 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/utils/seedData.ts
+ * @module @rostro/core/seedData
+ * @description
+ * 100% Synthetic Iraqi & Kurdistan Region (KRG) KYC Evaluation Corpus and Universal Registry Summary.
+ * Strictly zero real customer PII is included; all records are synthetic test specimens engineered
+ * to validate edge cases (Arabic/Kurdish Sorani transliteration, ICAO TD1 Modulo-10 checksums,
+ * missing reverse-side card detection, specular glare rejection, and unknown-document fallback).
+ */
+
 import type { KYCApplicant, AutomationConfig, DocumentCategoryCode, DocumentSupportStatus } from './kycEngine';
 
 export interface RegistryCategorySummary {

@@ -1,3 +1,15 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/components/AutomationRulesPanel.tsx
+ * @module @rostro/ui/AutomationRulesPanel
+ * @description
+ * Deterministic Policy & Straight-Through Processing (STP) Threshold Configuration Panel.
+ * Allows compliance administrators to configure minimum OCR confidence, maximum risk score,
+ * biometric face-match thresholds, and governorate review rules without bypassing hard math invariants.
+ */
+
 import React from 'react';
 import { Cpu, CheckCircle2, Sliders } from 'lucide-react';
 import type { AutomationConfig, KYCApplicant, Language } from '../utils/kycEngine';

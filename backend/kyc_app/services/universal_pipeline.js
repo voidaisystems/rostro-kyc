@@ -1,6 +1,10 @@
 /**
- * Project Rostro (روسترو) — Universal Iraqi Document Processing Pipeline
- * =====================================================================
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file backend/kyc_app/services/universal_pipeline.js
+ * @module @rostro/backend/universal-pipeline
+ * @description
  * Implements the 10-Stage Shared Processing Architecture driven by the
  * Universal Iraqi Document Registry:
  *   Upload → Quality Gate → Classification → Preprocessing → Extraction

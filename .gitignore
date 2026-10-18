@@ -34,7 +34,7 @@ __pycache__/
 venv/
 ENV/
 build/
-dist/
+/dist/
 
 # Local sensitive or unverified test captures
 data/synthetic_kyc/user_card*.png

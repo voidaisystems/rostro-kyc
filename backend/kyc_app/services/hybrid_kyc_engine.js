@@ -1,12 +1,15 @@
 /**
- * Rostro (روسترو) — Best-of-Breed Hybrid KYC Document Engine
- * =========================================================
- * Synthesizes the core strengths of:
- * - Regula Forensics: ICAO Doc 9303 TD1 Modulo 10 (7-3-1 weights) Checksum Math
- * - Smart Engines & Mitek: On-device Edge Image Quality (Laplacian Blur & Specular Glare)
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file backend/kyc_app/services/hybrid_kyc_engine.js
+ * @module @rostro/backend/hybrid-kyc-engine
+ * @description
+ * Best-of-Breed Hybrid KYC Document Engine synthesizing:
+ * - Regula Forensics: ICAO Doc 9303 TD1/TD3 Modulo-10 [7, 3, 1] Checksum Math
+ * - Smart Engines & OpenCV: Edge Image Quality (Laplacian Blur & Specular Glare)
  * - PaddleOCR & docTR: Spatial Bounding-Box Layout & Normalized Coordinates
  * - Gemini 2.5 Flash: Multimodal Zero-Hallucination Extraction via Google GenAI
- * - Sumsub & Persona: Multi-Signal Composite Risk Scoring & Dynamic Case Tiers
  * - Central Bank of Iraq (CBI): Law No. 78 of 2012 Non-Repudiation HMAC-SHA256 Receipts
  */
 

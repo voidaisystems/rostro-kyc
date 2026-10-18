@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/utils/kycEngine.test.ts
+ * @module @rostro/core/kycEngine.test
+ * @description
+ * Unit test suite for deterministic ICAO Doc 9303 Modulo-10 check digits, multi-script
+ * normalization, dual-side physical card policies, and risk tier calculation.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

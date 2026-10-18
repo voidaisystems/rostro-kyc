@@ -1,3 +1,21 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/utils/kycEngine.ts
+ * @module @rostro/core/kycEngine
+ * @description
+ * Deterministic Core Risk, Checksum, and Multi-Script Normalization Engine for Project Rostro.
+ *
+ * Implements:
+ * - Universal Iraqi Document Taxonomy (Categories A–H, 44 registered document types).
+ * - 9 Independently Inspectable Verification Signals (`NineVerificationSignals`).
+ * - ICAO Doc 9303 Modulo-10 `[7, 3, 1]` check digit verification (`computeIcaoCheckDigit`).
+ * - Dual-Side Physical Card Policy (`getDocumentSideRequirement`, `evaluateDualSideSatisfaction`).
+ * - Multi-Script Arabic / Kurdish Sorani / English normalization (`normalizeMultiScriptText`).
+ * - Zero-Hallucination Missing/Unclear Field Auditor (`auditMissingExpectedFields`).
+ */
+
 export type Language = 'en' | 'ar';
 export type VerificationStatus = 'approved' | 'pending' | 'flagged' | 'rejected';
 export type PipelineStage9Outcome =

@@ -1,16 +1,17 @@
 /**
- * Wathiq (واثق) — Executive Master PDF Generator
- * ==============================================
- * Generates an executive, publication-grade PDF specification of all
- * 23 production features across 7 architectural layers.
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License.
+ *
+ * @file scripts/generate_features_pdf.js
+ * @description Generates the executive PDF specification of all 23 production features across 7 architectural layers.
  */
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_PATH = path.join(__dirname, '..', 'Wathiq_23_Features_Architecture_Blueprint.pdf');
-const FRONTEND_COPY_PATH = path.join(__dirname, '..', 'frontend', 'kyc_cockpit', 'wathiq_23_features.pdf');
+const OUTPUT_PATH = path.join(__dirname, '..', 'docs', 'blueprints', 'Rostro_23_Features_Architecture_Blueprint.pdf');
+const FRONTEND_COPY_PATH = path.join(__dirname, '..', 'frontend', 'kyc_cockpit', 'rostro_23_features.pdf');
 
 // Create document with 36pt margins (0.5 inch)
 const doc = new PDFDocument({

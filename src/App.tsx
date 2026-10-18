@@ -1,6 +1,16 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/App.tsx
+ * @module @rostro/ui/App
+ * @description
+ * Root Compliance Workstation Console for Project Rostro.
+ * Provides four integrated operational views:
+ * 1. Verification Queue (`queue`) — Live triage across 44 Iraqi & KRG document types (Categories A–H).
+ * 2. Document Vault (`vault`) — Universal Document Registry coverage matrix & specimen inspection.
+ * 3. Workflow Rules (`automation`) — Deterministic straight-through processing (STP) rule calibration.
+ * 4. Audit Trail (`audit`) — Immutable SHA-256 hash-chained ledger compliant with CBI Law No. 78 of 2012.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';

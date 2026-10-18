@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/utils/i18n.ts
+ * @module @rostro/core/i18n
+ * @description
+ * Bilingual (English LTR / Arabic RTL) localization dictionary for the Rostro Compliance Workstation.
+ * Terminology aligns with Central Bank of Iraq (CBI) AML/CFT Law No. 39 of 2015 and Law No. 78 of 2012.
+ */
+
 import type { Language } from './kycEngine';
 
 export const translations = {

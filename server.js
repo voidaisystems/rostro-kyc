@@ -1,13 +1,21 @@
 /**
- * Rostro (روسترو) — Unified Production Local Server
- * ================================================
- * Serves both the REST API and the 1-Screen Compliance Reviewer Cockpit.
- * Integrates:
- * - Gemini 2.5 Flash Multimodal Agent
- * - Regula ICAO TD1 Modulo-10 Checksums
- * - Smart Engines Image Quality & Glare Detection
- * - Iraqi Onomastic Normalizer
- * - Central Bank of Iraq Law No. 78 Non-Repudiation Audit
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file server.js
+ * @module @rostro/compliance-server
+ * @description
+ * Enterprise HTTP API Gateway & Compliance Reviewer Workstation Server for Project Rostro.
+ * Orchestrates the 10-Stage Universal Iraqi Document Intelligence Pipeline across 44 registered
+ * Iraqi & Kurdistan Region (KRG) document types (Categories A–H).
+ *
+ * Architectural Invariants Enforced:
+ * 1. Deterministic Mathematical Supremacy: LLM vision output never overrides ICAO Doc 9303
+ *    Modulo-10 [7, 3, 1] check digits, 23-char CBI IBAN Modulo-97 checks, or 17-char VIN rules.
+ * 2. Dual-Side Physical Card Mandate: National IDs, Civil IDs, Residence Cards, and Driving
+ *    Licenses require both FRONT and BACK physical sides before automatic approval.
+ * 3. Server-Side Cryptographic Non-Repudiation: All verification & reviewer adjudication records
+ *    are sealed with HMAC-SHA256 under Central Bank of Iraq (CBI) Electronic Transactions Law No. 78 of 2012.
  */
 
 const http = require('http');
@@ -677,12 +685,12 @@ const server = http.createServer(async (req, res) => {
     return serveStaticFile(res, path.join(FRONTEND_DIR, 'blueprint.html'), 'text/html; charset=utf-8');
   }
 
-  if (pathname === '/wathiq_23_features.pdf' || pathname === '/features.pdf') {
-    return serveStaticFile(res, path.join(FRONTEND_DIR, 'wathiq_23_features.pdf'), 'application/pdf');
+  if (pathname === '/rostro_23_features.pdf' || pathname === '/wathiq_23_features.pdf' || pathname === '/features.pdf') {
+    return serveStaticFile(res, path.join(FRONTEND_DIR, 'rostro_23_features.pdf'), 'application/pdf');
   }
 
-  if (pathname === '/wathiq_master_blueprint.pdf' || pathname === '/master_blueprint.pdf') {
-    return serveStaticFile(res, path.join(FRONTEND_DIR, 'wathiq_master_blueprint.pdf'), 'application/pdf');
+  if (pathname === '/rostro_master_blueprint.pdf' || pathname === '/wathiq_master_blueprint.pdf' || pathname === '/master_blueprint.pdf') {
+    return serveStaticFile(res, path.join(FRONTEND_DIR, 'rostro_master_blueprint.pdf'), 'application/pdf');
   }
 
   if (pathname === '/phase3_masterplan.pdf' || pathname === '/rostro_phase3.pdf') {

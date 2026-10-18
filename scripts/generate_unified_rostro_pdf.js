@@ -1,18 +1,17 @@
 /**
- * WATHIQ (واثق) — Sovereign Agentic KYC & Forensics Engine
- * =========================================================
- * Master Unified Specification & Architectural Blueprint v3.5
- * Unifying the Autonomous Multi-Agent Cognitive Swarm (Agents α to ζ),
- * Deterministic ICAO Checksum Forensics, Ghost Portrait SSIM, CBI AML Directive 1 (2017),
- * 30ms Hardware Auto-Orientation, Iraqi Genealogical NLP, and CBI Law 78 Audit Sealing.
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License.
+ *
+ * @file scripts/generate_unified_rostro_pdf.js
+ * @description Generates the Master Unified Specification & Architectural Blueprint PDF for Project Rostro.
  */
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_PATH = path.join(__dirname, '..', 'WATHIQ_Sovereign_Agentic_KYC_Master_Blueprint.pdf');
-const FRONTEND_COPY_PATH = path.join(__dirname, '..', 'frontend', 'kyc_cockpit', 'wathiq_master_blueprint.pdf');
+const OUTPUT_PATH = path.join(__dirname, '..', 'docs', 'blueprints', 'Rostro_Sovereign_Agentic_KYC_Master_Blueprint.pdf');
+const FRONTEND_COPY_PATH = path.join(__dirname, '..', 'frontend', 'kyc_cockpit', 'rostro_master_blueprint.pdf');
 
 const doc = new PDFDocument({
   size: 'A4',

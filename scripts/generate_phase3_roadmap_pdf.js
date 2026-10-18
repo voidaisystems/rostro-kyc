@@ -1,15 +1,16 @@
 /**
- * ROSTRO / WATHIQ — Phase 3 Production Implementation Masterplan
- * ==============================================================
- * Comprehensive, calm, and persuasive technical roadmap for building
- * the working Phase 3 prototype from A to Z.
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License.
+ *
+ * @file scripts/generate_phase3_roadmap_pdf.js
+ * @description Generates the Phase 3 Production Implementation Masterplan PDF for Project Rostro.
  */
 
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_PATH = path.join(__dirname, '..', 'Rostro_Phase3_Implementation_Masterplan.pdf');
+const OUTPUT_PATH = path.join(__dirname, '..', 'docs', 'blueprints', 'Rostro_Phase3_Implementation_Masterplan.pdf');
 const FRONTEND_COPY_PATH = path.join(__dirname, '..', 'frontend', 'kyc_cockpit', 'phase3_masterplan.pdf');
 
 const doc = new PDFDocument({

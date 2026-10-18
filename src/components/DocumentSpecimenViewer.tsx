@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/components/DocumentSpecimenViewer.tsx
+ * @module @rostro/ui/DocumentSpecimenViewer
+ * @description
+ * Interactive Forensic Document Specimen Viewer with Front/Back physical side flipping,
+ * spatial OCR bounding-box overlays, ICAO Doc 9303 MRZ line inspection, and zoom/rotation controls.
+ */
+
 import React, { useState } from 'react';
 import {
   ShieldCheck,

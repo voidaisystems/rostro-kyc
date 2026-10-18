@@ -1,7 +1,11 @@
 /**
- * Project Rostro (روسترو) — Universal Iraqi Document Registry
- * ==========================================================
- * Centralized, versioned, and startup-validated registry of Iraqi, KRG,
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file backend/kyc_app/registry/iraqi_document_registry.js
+ * @module @rostro/backend/registry
+ * @description
+ * Centralized, versioned, and startup-validated registry of 44 Iraqi, KRG,
  * and foreign-submitted onboarding documents across 8 operational categories:
  *   A. IDENTITY_CIVIL              — Identity & Civil Status Documents
  *   B. RESIDENCE_ADDRESS           — Residence, Address & Household Documents

@@ -1,3 +1,16 @@
+/**
+ * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
+ *
+ * @file src/components/SecureUploadModal.tsx
+ * @module @rostro/ui/SecureUploadModal
+ * @description
+ * Multi-Document & Dual-Side Evidence Ingestion Modal for Project Rostro.
+ * Enforces Front + Back physical card capture for 2-sided Iraqi identity cards (`IRQ_NATIONAL_ID`,
+ * `IRQ_CIVIL_STATUS_ID`, `IRQ_RESIDENCE_CARD`, `IRQ_DRIVING_LICENSE`) and invokes the 10-Stage
+ * Universal KYC Pipeline with zero-hallucination field extraction.
+ */
+
 import React, { useState, useRef } from 'react';
 import {
   X,

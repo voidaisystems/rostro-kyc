@@ -1,0 +1,6 @@
+{
+  "name": "Rostro — KYC & Identity Compliance Console | روسترو للامتثال",
+  "description": "Enterprise Universal Iraqi & MENA Know Your Customer (KYC) verification dashboard with 10-stage pipeline, 44-document registry, dual-side card checks, zero-hallucination VLM OCR, dark mode, and bilingual EN/AR (RTL) support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

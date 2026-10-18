@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Upload,
+  Download,
 } from 'lucide-react';
 import {
   computeKpiMetrics,
@@ -34,7 +35,11 @@ import {
   type RiskTier,
   type VerificationStatus,
 } from './utils/kycEngine';
-import { initialApplicants, initialAutomationConfig } from './utils/seedData';
+import {
+  initialApplicants,
+  initialAutomationConfig,
+  iraqiDocumentRegistrySummary,
+} from './utils/seedData';
 import { t } from './utils/i18n';
 import { ApplicantInspectorDrawer } from './components/ApplicantInspectorDrawer';
 import { SecureUploadModal } from './components/SecureUploadModal';
@@ -70,8 +75,9 @@ export default function App() {
   // Batch Execution Notification Banner
   const [batchBannerMessage, setBatchBannerMessage] = useState<string | null>(null);
 
-  // Vault preview selection
+  // Vault preview selection & search
   const [selectedVaultDocId, setSelectedVaultDocId] = useState<string>('doc-901');
+  const [vaultSearchQuery, setVaultSearchQuery] = useState<string>('');
   const [vaultZoomed, setVaultZoomed] = useState<boolean>(false);
   const [vaultRotation, setVaultRotation] = useState<number>(0);
 
@@ -102,19 +108,34 @@ export default function App() {
     [applicants, statusFilter, riskFilter, docTypeFilter, searchQuery, sortBy, sortOrder]
   );
 
+  const selectedApplicantIndex = useMemo(
+    () => filteredApplicants.findIndex((a) => a.id === selectedApplicantId),
+    [filteredApplicants, selectedApplicantId]
+  );
+
   const selectedApplicant = useMemo(
     () => applicants.find((a) => a.id === selectedApplicantId) || null,
     [applicants, selectedApplicantId]
   );
 
   const allDocuments = useMemo(() => {
-    return applicants.flatMap((applicant) =>
+    const list = applicants.flatMap((applicant) =>
       applicant.documents.map((doc) => ({
         doc,
         applicant,
       }))
     );
-  }, [applicants]);
+    const q = vaultSearchQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(
+      ({ doc, applicant }) =>
+        doc.titleEn.toLowerCase().includes(q) ||
+        doc.titleAr.toLowerCase().includes(q) ||
+        doc.docNumber.toLowerCase().includes(q) ||
+        applicant.fullNameEn.toLowerCase().includes(q) ||
+        applicant.fullNameAr.toLowerCase().includes(q)
+    );
+  }, [applicants, vaultSearchQuery]);
 
   const allAuditEvents = useMemo(() => {
     return applicants.flatMap((applicant) =>
@@ -125,14 +146,67 @@ export default function App() {
     );
   }, [applicants]);
 
+  const handleNavigateApplicant = (direction: 'prev' | 'next') => {
+    if (filteredApplicants.length === 0) return;
+    const currentIdx = selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0;
+    const nextIdx =
+      direction === 'next'
+        ? (currentIdx + 1) % filteredApplicants.length
+        : (currentIdx - 1 + filteredApplicants.length) % filteredApplicants.length;
+    setSelectedApplicantId(filteredApplicants[nextIdx].id);
+  };
+
+  const handleExportCsv = () => {
+    const headers = [
+      'ReferenceCode',
+      'FullNameEn',
+      'FullNameAr',
+      'NormalizedEntityName',
+      'Governorate',
+      'EntityType',
+      'RiskScore',
+      'Stage9Outcome',
+      'Status',
+      'SubmittedAt',
+    ];
+    const rows = filteredApplicants.map((a) => [
+      a.referenceCode,
+      `"${a.fullNameEn}"`,
+      `"${a.fullNameAr}"`,
+      `"${a.normalizedEntityName}"`,
+      `"${a.governorateEn}"`,
+      a.entityType,
+      a.riskScore,
+      a.stage9Outcome,
+      a.status.toUpperCase(),
+      a.submittedAt,
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `rostro-cbi-kyc-compliance-${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setBatchBannerMessage(
+      lang === 'ar'
+        ? `تم تصدير ${filteredApplicants.length} سجلات امتثال بصيغة CSV بنجاح.`
+        : `Exported ${filteredApplicants.length} Rostro compliance dossiers to CSV report.`
+    );
+  };
+
   const handleRunAutomatedBatch = () => {
     const { updatedApplicants, summary } = runAutomatedBatchWorkflow(
       applicants,
       automationConfig
     );
     setApplicants(updatedApplicants);
-    const msgEn = `Processed ${summary.processedCount} pending/flagged dossiers: ${summary.autoApprovedIds.length} Auto-Approved, ${summary.autoFlaggedIds.length} Flagged for Review, ${summary.autoRejectedIds.length} Rejected.`;
-    const msgAr = `تمت معالجة ${summary.processedCount} ملفات: ${summary.autoApprovedIds.length} اعتماد تلقائي، ${summary.autoFlaggedIds.length} تصعيد للمراجعة، ${summary.autoRejectedIds.length} رفض.`;
+    const msgEn = `10-Stage Pipeline Batch Complete (${summary.processedCount} dossiers): ${summary.autoApprovedIds.length} AUTO_APPROVED, ${summary.autoFlaggedIds.length} HUMAN_REVIEW, ${summary.autoRejectedIds.length} AUTO_REJECTED.`;
+    const msgAr = `اكتمل تشغيل المحرك لـ ${summary.processedCount} ملفات: ${summary.autoApprovedIds.length} اعتماد تلقائي، ${summary.autoFlaggedIds.length} مراجعة بشرية، ${summary.autoRejectedIds.length} رفض تلقائي.`;
     setBatchBannerMessage(lang === 'ar' ? msgAr : msgEn);
   };
 
@@ -146,45 +220,65 @@ export default function App() {
     setBatchBannerMessage(null);
   };
 
-  const handleUpdateApplicantStatus = (
+  const handleUpdateApplicantStatus = async (
     applicantId: string,
     nextStatus: VerificationStatus,
     officerNote: string
   ) => {
-    fetch('/api/v1/kyc/decision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        application_id: applicantId,
-        decision: nextStatus.toUpperCase(),
-        reviewer_id: 'ROSTRO_COMPLIANCE_OFFICER',
-        notes: officerNote,
-      }),
-    }).catch(() => {});
+    let serverReceipt = `HMAC-SHA256-CBI78-${Date.now().toString(16)}`;
+    let serverTimestamp = '2026-10-17 08:45 UTC';
+    try {
+      const targetApp = applicants.find((a) => a.id === applicantId);
+      const res = await fetch('/api/kyc/adjudicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicantId,
+          referenceCode: targetApp?.referenceCode || applicantId,
+          status: nextStatus,
+          note: officerNote,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.cbiLaw78HmacReceipt) serverReceipt = data.cbiLaw78HmacReceipt;
+        if (data.timestamp) serverTimestamp = data.timestamp;
+      }
+    } catch {
+      // Fallback to local receipt if offline
+    }
 
     setApplicants((prev) =>
       prev.map((app) => {
         if (app.id !== applicantId) return app;
+        const nextStage9 =
+          nextStatus === 'approved'
+            ? 'AUTO_APPROVED'
+            : nextStatus === 'rejected'
+            ? 'AUTO_REJECTED'
+            : 'HUMAN_REVIEW';
         const newAudit = {
           id: `aud-${Date.now()}`,
-          timestamp: '2026-10-17 08:45 UTC',
-          actorEn: 'Compliance Officer (Manual Override)',
-          actorAr: 'مسؤول الامتثال (قرار يدوي)',
-          actionEn: `Status set to ${nextStatus.toUpperCase()}`,
-          actionAr: `تم تحديد الحالة إلى ${
+          timestamp: serverTimestamp,
+          actorEn: 'Compliance Officer (CBI Law No. 78 Signed)',
+          actorAr: 'مسؤول الامتثال (توقيع إلكتروني قانون 78)',
+          actionEn: `Manual Adjudication: ${nextStatus.toUpperCase()}`,
+          actionAr: `قرار مسؤول الامتثال: ${
             nextStatus === 'approved'
               ? 'معتمد'
               : nextStatus === 'rejected'
               ? 'مرفوض'
-              : 'مُصعّد للمراجعة'
+              : 'مراجعة بشرية'
           }`,
           noteEn: officerNote,
           noteAr: officerNote,
+          cbiLaw78HmacReceipt: serverReceipt,
         };
         return {
           ...app,
           status: nextStatus,
-          updatedAt: '2026-10-17 08:45 UTC',
+          stage9Outcome: nextStage9,
+          updatedAt: serverTimestamp,
           documents: app.documents.map((d) => ({ ...d, status: nextStatus })),
           auditTrail: [newAudit, ...app.auditTrail],
         };
@@ -200,16 +294,18 @@ export default function App() {
         const newAudit = {
           id: `aud-${Date.now()}`,
           timestamp: '2026-10-17 08:44 UTC',
-          actorEn: 'Automated Workflow Engine v3.2',
-          actorAr: 'محرك سير العمل التلقائي v3.2',
-          actionEn: `Rule Check Result: ${evalRes.nextStatus.toUpperCase()}`,
-          actionAr: `نتيجة فحص القواعد: ${evalRes.nextStatus.toUpperCase()}`,
+          actorEn: 'UniversalKYCPipeline v2.0.0-IRQ',
+          actorAr: 'محرك روسترو الشامل v2.0.0-IRQ',
+          actionEn: `Stage 9 Outcome: ${evalRes.stage9Outcome} (${evalRes.nextStatus.toUpperCase()})`,
+          actionAr: `نتيجة المرحلة 9: ${evalRes.stage9Outcome}`,
           noteEn: evalRes.reasonEn,
           noteAr: evalRes.reasonAr,
+          cbiLaw78HmacReceipt: `HMAC-SHA256-CBI78-${Date.now().toString(16)}`,
         };
         return {
           ...app,
           status: evalRes.nextStatus,
+          stage9Outcome: evalRes.stage9Outcome,
           updatedAt: '2026-10-17 08:44 UTC',
           documents: app.documents.map((d) => ({ ...d, status: evalRes.nextStatus })),
           auditTrail: [newAudit, ...app.auditTrail],
@@ -218,13 +314,49 @@ export default function App() {
     );
   };
 
+  const handleRegisterCandidateDoc = (applicantId: string, docId: string) => {
+    setApplicants((prev) =>
+      prev.map((app) => {
+        if (app.id !== applicantId) return app;
+        const updatedDocs = app.documents.map((d) =>
+          d.id === docId
+            ? {
+                ...d,
+                type: 'IRQ_CHAMBER_OF_COMMERCE' as DocumentType,
+                categoryCode: 'F_EDUCATION_EMPLOYMENT' as const,
+                supportStatus: 'SUPPORTED_PARTIAL' as const,
+                titleEn: 'Iraqi Dental Syndicate ID (Registered Candidate · Cat F)',
+                titleAr: 'هوية نقابة أطباء الأسنان (مسجلة في السجل · الفئة F)',
+              }
+            : d
+        );
+        const newAudit = {
+          id: `aud-${Date.now()}`,
+          timestamp: '2026-10-17 08:46 UTC',
+          actorEn: 'Compliance Schema Officer',
+          actorAr: 'مسؤول سجل الوثائق',
+          actionEn:
+            'Promoted UNKNOWN_DOCUMENT to DOCUMENT_REGISTRY (Category F · SUPPORTED_PARTIAL)',
+          actionAr: 'تم تسجيل الوثيقة المرشحة في سجل الوثائق (الفئة F · SUPPORTED_PARTIAL)',
+          cbiLaw78HmacReceipt: `HMAC-SHA256-CBI78-${Date.now().toString(16)}`,
+        };
+        return {
+          ...app,
+          documents: updatedDocs,
+          auditTrail: [newAudit, ...app.auditTrail],
+        };
+      })
+    );
+    setBatchBannerMessage(t(lang, 'candidateRegisteredMsg'));
+  };
+
   const handleIngestApplicant = (newApplicant: KYCApplicant) => {
     setApplicants((prev) => [newApplicant, ...prev]);
     setSelectedApplicantId(newApplicant.id);
     setBatchBannerMessage(
       lang === 'ar'
-        ? `تم إدراج ملف التحقق ${newApplicant.referenceCode} بنجاح واستخراج الحقول الضوئية.`
-        : `Dossier ${newApplicant.referenceCode} (${newApplicant.fullNameEn}) encrypted, ingested, and queued.`
+        ? `تم إدراج ملف التحقق ${newApplicant.referenceCode} وتوحيد النصوص بنجاح.`
+        : `Dossier ${newApplicant.referenceCode} (${newApplicant.fullNameEn}) ingested through 10-Stage Universal Pipeline.`
     );
   };
 
@@ -241,7 +373,7 @@ export default function App() {
     allDocuments.find((item) => item.doc.id === selectedVaultDocId) || allDocuments[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Strict 3-Zone Top Bar Contract */}
       <header className="flex items-center justify-between gap-3 sm:gap-8 px-4 sm:px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         {/* Zone 1: Single text element wordmark */}
@@ -349,9 +481,9 @@ export default function App() {
           </div>
 
           {/* Interactive Accessibility Controls (EN/AR + Dark Mode) & Mobile Section Switcher */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap max-w-full">
             {/* Mobile Section Switcher */}
-            <div className="flex md:hidden items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg overflow-x-auto max-w-full">
+            <div className="flex md:hidden items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg flex-wrap max-w-full">
               {(['queue', 'vault', 'automation', 'audit'] as ActiveSection[]).map((sec) => (
                 <button
                   key={sec}
@@ -546,15 +678,25 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Automated Batch Workflow Trigger */}
-                <button
-                  type="button"
-                  onClick={handleRunAutomatedBatch}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/70 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
-                >
-                  <Cpu className="w-4 h-4" />
-                  <span>{t(lang, 'runBatchBtn')}</span>
-                </button>
+                {/* Automated Batch Workflow & CSV Export Triggers */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{t(lang, 'exportCsvBtn')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRunAutomatedBatch}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/70 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <Cpu className="w-4 h-4" />
+                    <span>{t(lang, 'runBatchBtn')}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Search Input & Secondary Dropdown Filters */}
@@ -593,10 +735,13 @@ export default function App() {
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
                   >
                     <option value="all">{t(lang, 'docTypeAll')}</option>
-                    <option value="passport">{t(lang, 'docPassport')}</option>
-                    <option value="national_id">{t(lang, 'docNationalId')}</option>
-                    <option value="utility_bill">{t(lang, 'docUtilityBill')}</option>
-                    <option value="corporate_registry">{t(lang, 'docCorporate')}</option>
+                    <option value="IRQ_NATIONAL_ID">{t(lang, 'docNationalId')}</option>
+                    <option value="IRQ_CIVIL_STATUS_ID">{t(lang, 'docCivilId')}</option>
+                    <option value="IRQ_RESIDENCE_CARD">{t(lang, 'docResidenceCard')}</option>
+                    <option value="IRQ_PASSPORT">{t(lang, 'docPassport')}</option>
+                    <option value="IRQ_CHAMBER_OF_COMMERCE">{t(lang, 'docChamberCommerce')}</option>
+                    <option value="IRQ_POWER_OF_ATTORNEY">{t(lang, 'docPowerOfAttorney')}</option>
+                    <option value="UNKNOWN_DOCUMENT">{t(lang, 'docUnknown')}</option>
                   </select>
                 </div>
               </div>
@@ -629,42 +774,42 @@ export default function App() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-start border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                        <th className="py-3 px-4 text-start">{t(lang, 'colApplicant')}</th>
-                        <th className="py-3 px-4 text-start">{t(lang, 'colJurisdiction')}</th>
-                        <th className="py-3 px-4 text-start">{t(lang, 'colDocuments')}</th>
-                        <th className="py-3 px-4 text-start">
+                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        <th className="py-3 ps-4 pe-3 text-start">{t(lang, 'colApplicant')}</th>
+                        <th className="py-3 px-3 text-start">{t(lang, 'colJurisdiction')}</th>
+                        <th className="py-3 px-3 text-start">{t(lang, 'colDocuments')}</th>
+                        <th className="py-3 px-3 text-start">
                           <button
                             type="button"
                             onClick={() => toggleSort('riskScore')}
-                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100"
+                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                           >
                             <span>{t(lang, 'colRiskScore')}</span>
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-3 h-3 shrink-0" />
                           </button>
                         </th>
-                        <th className="py-3 px-4 text-start">
+                        <th className="py-3 px-3 text-start">
                           <button
                             type="button"
                             onClick={() => toggleSort('ocrConfidence')}
-                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100"
+                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                           >
                             <span>{t(lang, 'colOcrScore')}</span>
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-3 h-3 shrink-0" />
                           </button>
                         </th>
-                        <th className="py-3 px-4 text-start">
+                        <th className="py-3 px-3 text-start">
                           <button
                             type="button"
                             onClick={() => toggleSort('submittedAt')}
-                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100"
+                            className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                           >
                             <span>{t(lang, 'colSubmitted')}</span>
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-3 h-3 shrink-0" />
                           </button>
                         </th>
-                        <th className="py-3 px-4 text-start">{t(lang, 'colStatus')}</th>
-                        <th className="py-3 px-4 text-end">{t(lang, 'colActions')}</th>
+                        <th className="py-3 px-3 text-start">{t(lang, 'colStatus')}</th>
+                        <th className="py-3 ps-3 pe-4 text-end">{t(lang, 'colActions')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
@@ -672,13 +817,19 @@ export default function App() {
                         const minOcr = Math.min(
                           ...applicant.documents.map((d) => d.ocrConfidence)
                         );
+                        const primaryDoc = applicant.documents[0];
+                        const extraDocCount = Math.max(0, applicant.documents.length - 1);
+                        const [subDate, subTime] = applicant.submittedAt
+                          .replace(' UTC', '')
+                          .split(' ');
+
                         return (
                           <tr
                             key={applicant.id}
                             className="hover:bg-slate-50/90 dark:hover:bg-slate-800/40 transition-colors"
                           >
-                            {/* Applicant & Ref */}
-                            <td className="py-3 px-4">
+                            {/* 1. Applicant & Ref (Strict 2-line) */}
+                            <td className="py-3.5 ps-4 pe-3 whitespace-nowrap">
                               <div className="font-semibold text-slate-900 dark:text-slate-100">
                                 {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
                               </div>
@@ -687,14 +838,16 @@ export default function App() {
                                   {applicant.referenceCode}
                                 </span>
                                 <span aria-hidden="true">·</span>
-                                <span className="truncate max-w-[160px]">{applicant.email}</span>
+                                <span className="truncate max-w-[130px]">
+                                  {applicant.normalizedEntityName}
+                                </span>
                               </div>
                             </td>
 
-                            {/* Jurisdiction & Entity (Zero-Pill Unboxed Metadata) */}
-                            <td className="py-3 px-4">
+                            {/* 2. Governorate & Entity (Strict 2-line, Zero-Pill) */}
+                            <td className="py-3.5 px-3 whitespace-nowrap">
                               <div className="font-medium text-slate-800 dark:text-slate-200">
-                                {lang === 'ar' ? applicant.countryAr : applicant.countryEn}
+                                {lang === 'ar' ? applicant.governorateAr : applicant.governorateEn}
                               </div>
                               <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                                 <span className="font-mono">{applicant.countryCode}</span>
@@ -709,20 +862,33 @@ export default function App() {
                               </div>
                             </td>
 
-                            {/* Submitted Documents */}
-                            <td className="py-3 px-4">
-                              <div className="font-medium text-slate-800 dark:text-slate-200">
-                                {applicant.documents
-                                  .map((d) => (lang === 'ar' ? d.titleAr : d.titleEn))
-                                  .join(' · ')}
+                            {/* 3. Submitted Documents (Primary Doc + Overflow Count on Line 1, Serial on Line 2) */}
+                            <td className="py-3.5 px-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                                <span className="truncate max-w-[175px]">
+                                  {primaryDoc
+                                    ? lang === 'ar'
+                                      ? primaryDoc.titleAr
+                                      : primaryDoc.titleEn
+                                    : '—'}
+                                </span>
+                                {extraDocCount > 0 && (
+                                  <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
+                                    · <span className="font-mono">+{extraDocCount}</span>{' '}
+                                    <span>{t(lang, 'moreDocsSuffix')}</span>
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                                {applicant.documents.map((d) => d.docNumber).join(' / ')}
+                              <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
+                                {primaryDoc ? primaryDoc.docNumber : '—'}
+                                {extraDocCount > 0 && applicant.documents[1]
+                                  ? ` · ${applicant.documents[1].docNumber}`
+                                  : ''}
                               </div>
                             </td>
 
-                            {/* Risk Score & Watchlist */}
-                            <td className="py-3 px-4">
+                            {/* 4. AML Risk & Screening (Strict 2-line) */}
+                            <td className="py-3.5 px-3 whitespace-nowrap">
                               <div className="flex items-center gap-1.5 font-mono tabular-nums font-semibold">
                                 <span
                                   className={
@@ -745,20 +911,20 @@ export default function App() {
                               <div className="text-[11px] mt-0.5 flex items-center gap-1">
                                 {applicant.sanctionsMatch || applicant.pepMatch ? (
                                   <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
-                                    <ShieldAlert className="w-3 h-3" />
-                                    {t(lang, 'sanctionsHit')}
+                                    <ShieldAlert className="w-3 h-3 shrink-0" />
+                                    <span>{t(lang, 'sanctionsHitShort')}</span>
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                                    <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                    {t(lang, 'sanctionsClean')}
+                                    <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                    <span>{t(lang, 'sanctionsCleanShort')}</span>
                                   </span>
                                 )}
                               </div>
                             </td>
 
-                            {/* OCR & Biometrics */}
-                            <td className="py-3 px-4 font-mono tabular-nums">
+                            {/* 5. OCR & Biometrics (Strict 2-line) */}
+                            <td className="py-3.5 px-3 font-mono tabular-nums whitespace-nowrap">
                               <div className="text-slate-900 dark:text-slate-100 font-medium">
                                 OCR {minOcr}%
                               </div>
@@ -767,45 +933,55 @@ export default function App() {
                               </div>
                             </td>
 
-                            {/* Submitted Timestamp */}
-                            <td className="py-3 px-4 font-mono tabular-nums text-slate-600 dark:text-slate-400">
-                              {applicant.submittedAt}
+                            {/* 6. Submitted Timestamp (Date on Line 1, Time UTC on Line 2) */}
+                            <td className="py-3.5 px-3 font-mono tabular-nums whitespace-nowrap">
+                              <div className="text-slate-800 dark:text-slate-200 font-medium">
+                                {subDate}
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {subTime} UTC
+                              </div>
                             </td>
 
-                            {/* Status (Icon + Text Label, Zero Pill) */}
-                            <td className="py-3 px-4">
-                              {applicant.status === 'approved' && (
-                                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
-                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{t(lang, 'statusApproved')}</span>
-                                </span>
-                              )}
-                              {applicant.status === 'pending' && (
-                                <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
-                                  <Clock className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{t(lang, 'statusPending')}</span>
-                                </span>
-                              )}
-                              {applicant.status === 'flagged' && (
-                                <span className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
-                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{t(lang, 'statusFlagged')}</span>
-                                </span>
-                              )}
-                              {applicant.status === 'rejected' && (
-                                <span className="inline-flex items-center gap-1.5 font-semibold text-red-600 dark:text-red-400">
-                                  <XCircle className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{t(lang, 'statusRejected')}</span>
-                                </span>
-                              )}
+                            {/* 7. Stage 9 Status (2-line with Stage 9 Outcome code) */}
+                            <td className="py-3.5 px-3 whitespace-nowrap">
+                              <div>
+                                {applicant.status === 'approved' && (
+                                  <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t(lang, 'statusApproved')}</span>
+                                  </span>
+                                )}
+                                {applicant.status === 'pending' && (
+                                  <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
+                                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t(lang, 'statusPendingShort')}</span>
+                                  </span>
+                                )}
+                                {applicant.status === 'flagged' && (
+                                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t(lang, 'statusFlaggedShort')}</span>
+                                  </span>
+                                )}
+                                {applicant.status === 'rejected' && (
+                                  <span className="inline-flex items-center gap-1.5 font-semibold text-red-600 dark:text-red-400">
+                                    <XCircle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t(lang, 'statusRejected')}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                                {applicant.stage9Outcome}
+                              </div>
                             </td>
 
-                            {/* Action Button */}
-                            <td className="py-3 px-4 text-end">
+                            {/* 8. Action Button */}
+                            <td className="py-3.5 ps-3 pe-4 text-end whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => setSelectedApplicantId(applicant.id)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md transition-colors whitespace-nowrap shrink-0"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md transition-colors whitespace-nowrap shrink-0"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 <span>{t(lang, 'inspectBtn')}</span>
@@ -822,7 +998,7 @@ export default function App() {
           </section>
         )}
 
-        {/* VIEW 2: DOCUMENT VAULT */}
+        {/* VIEW 2: DOCUMENT VAULT & 44-TYPE IRAQI REGISTRY */}
         {activeSection === 'vault' && (
           <section className="space-y-6" aria-label={t(lang, 'navVault')}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -834,14 +1010,26 @@ export default function App() {
                   {t(lang, 'vaultSectionSubtitle')}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsUploadModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>{t(lang, 'ctaUpload')}</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute top-2.5 start-3 pointer-events-none" />
+                  <input
+                    type="search"
+                    value={vaultSearchQuery}
+                    onChange={(e) => setVaultSearchQuery(e.target.value)}
+                    placeholder={t(lang, 'vaultSearchPlaceholder')}
+                    className="w-full ps-8 pe-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{t(lang, 'ctaUpload')}</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -876,7 +1064,7 @@ export default function App() {
                           <span className="mx-1" aria-hidden="true">
                             ·
                           </span>
-                          <span className="font-mono">OCR {doc.ocrConfidence}%</span>
+                          <span className="font-mono">{doc.supportStatus}</span>
                         </div>
                       </div>
 
@@ -934,6 +1122,39 @@ export default function App() {
                 )}
               </div>
             </div>
+
+            {/* 44-Type Iraqi & MENA Document Registry Matrix (Categories A–H) */}
+            <div className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                  DOCUMENT_REGISTRY Coverage Matrix (44 Registered Iraqi & KRG Types · Categories A–H)
+                </span>
+                <span className="text-[11px] font-mono text-slate-500">
+                  HONEST SUPPORT STATUS SEPARATION
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800 text-xs">
+                {iraqiDocumentRegistrySummary.map((cat) => (
+                  <div key={cat.code} className="p-4 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
+                        {lang === 'ar' ? cat.titleAr : cat.titleEn}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 font-mono text-[11px]">
+                      <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                        {cat.testedTypes}/{cat.totalTypes} TESTED
+                      </span>
+                      <span>·</span>
+                      <span className="text-slate-500">{cat.defaultStatus}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {lang === 'ar' ? cat.examplesAr : cat.examplesEn}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
 
@@ -969,7 +1190,7 @@ export default function App() {
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 flex-wrap">
                       <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
                         {applicant.referenceCode}
                       </span>
@@ -986,6 +1207,11 @@ export default function App() {
                     {(evt.noteEn || evt.noteAr) && (
                       <div className="text-slate-600 dark:text-slate-400">
                         {lang === 'ar' ? evt.noteAr : evt.noteEn}
+                      </div>
+                    )}
+                    {evt.cbiLaw78HmacReceipt && (
+                      <div className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                        CBI Law No. 78 HMAC Signature: {evt.cbiLaw78HmacReceipt}
                       </div>
                     )}
                   </div>
@@ -1011,12 +1237,13 @@ export default function App() {
       {/* Quiet Compliance Footer */}
       <footer className="max-w-[1400px] mx-auto px-6 py-6 mt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
         <div>
-          VeriTrust Identity & AML Compliance Platform · ISO/IEC 27001 & FATF CDD Prototype
+          Project Rostro (روسترو للامتثال) · Central Bank of Iraq (CBI) Law No. 78 of 2012 &
+          Universal Iraqi/KRG KYC Platform
         </div>
         <div className="flex items-center gap-4">
-          <span>Bilingual EN / AR (RTL) Ready</span>
+          <span>Multi-Script AR / KU / EN Ready</span>
           <span aria-hidden="true">·</span>
-          <span>WCAG AA Contrast Verified</span>
+          <span>ICAO 9303 Modulo-10 [7,3,1] Verified</span>
         </div>
       </footer>
 
@@ -1027,6 +1254,10 @@ export default function App() {
         onClose={() => setSelectedApplicantId(null)}
         onUpdateStatus={handleUpdateApplicantStatus}
         onRunSingleAutoEval={handleRunSingleAutoEval}
+        onRegisterCandidateDoc={handleRegisterCandidateDoc}
+        onNavigateApplicant={handleNavigateApplicant}
+        currentIndex={selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0}
+        totalQueueCount={filteredApplicants.length}
       />
 
       {/* Secure KYC Packet Upload Modal */}

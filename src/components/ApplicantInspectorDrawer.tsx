@@ -558,10 +558,82 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     </span>
                     <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
                       {lang === 'ar'
-                        ? applicant.fullNameAr || sanitizeTextForLanguage(activeDoc.extractedFields.fullName, 'ar')
+                        ? applicant.fullNameAr || sanitizeTextForLanguage(activeDoc.extractedFields.fullNameArabic || activeDoc.extractedFields.fullName, 'ar')
                         : applicant.fullNameEn || sanitizeTextForLanguage(activeDoc.extractedFields.fullName, 'en')}
                     </span>
                   </div>
+
+                  {(activeDoc.extractedFields.givenName || activeDoc.slot1Summary?.givenName) && (
+                    <div
+                      onMouseEnter={() => setHighlightedField('givenName')}
+                      onMouseLeave={() => setHighlightedField(null)}
+                      className={getRowHighlightClass('givenName')}
+                    >
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {t(lang, 'fieldGivenName')}
+                      </span>
+                      <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                        {sanitizeTextForLanguage(
+                          activeDoc.extractedFields.givenName || activeDoc.slot1Summary?.givenName || '',
+                          lang
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {(activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName) && (
+                    <div
+                      onMouseEnter={() => setHighlightedField('fatherName')}
+                      onMouseLeave={() => setHighlightedField(null)}
+                      className={getRowHighlightClass('fatherName')}
+                    >
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {t(lang, 'fieldFatherName')}
+                      </span>
+                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                        {sanitizeTextForLanguage(
+                          activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName || '',
+                          lang
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {(activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName) && (
+                    <div
+                      onMouseEnter={() => setHighlightedField('grandfatherName')}
+                      onMouseLeave={() => setHighlightedField(null)}
+                      className={getRowHighlightClass('grandfatherName')}
+                    >
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {t(lang, 'fieldGrandfatherName')}
+                      </span>
+                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                        {sanitizeTextForLanguage(
+                          activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName || '',
+                          lang
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {(activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname) && (
+                    <div
+                      onMouseEnter={() => setHighlightedField('surname')}
+                      onMouseLeave={() => setHighlightedField(null)}
+                      className={getRowHighlightClass('surname')}
+                    >
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {t(lang, 'fieldSurname')}
+                      </span>
+                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                        {sanitizeTextForLanguage(
+                          activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname || '',
+                          lang
+                        )}
+                      </span>
+                    </div>
+                  )}
 
                   <div
                     onMouseEnter={() => setHighlightedField('normalizedName')}
@@ -677,18 +749,36 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     </span>
                   </div>
 
-                  {(activeDoc.extractedFields.familyNumber || activeDoc.slot2Summary?.familyNumber) && (
+                  {(activeDoc.extractedFields.familyNumber || activeDoc.slot1Summary?.familyNumber || activeDoc.slot2Summary?.familyNumber) && (
                     <div
                       onMouseEnter={() => setHighlightedField('familyNumber')}
                       onMouseLeave={() => setHighlightedField(null)}
                       className={getRowHighlightClass('familyNumber')}
                     >
                       <span className="text-zinc-500 dark:text-zinc-400">
-                        {lang === 'ar' ? 'الرقم العائلي' : 'Family Number'}
+                        {t(lang, 'fieldCardSerialBottomLeft')}
                       </span>
-                      <span className="col-span-2 font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                      <span className="col-span-2 font-mono font-bold text-emerald-700 dark:text-[#10b981]">
                         {formatReferenceCode(
-                          activeDoc.extractedFields.familyNumber || activeDoc.slot2Summary?.familyNumber || '',
+                          activeDoc.extractedFields.familyNumber || activeDoc.slot1Summary?.familyNumber || activeDoc.slot2Summary?.familyNumber || '',
+                          lang
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {(activeDoc.extractedFields.edgeNumber || activeDoc.slot1Summary?.edgeNumber) && (
+                    <div
+                      onMouseEnter={() => setHighlightedField('edgeNumber')}
+                      onMouseLeave={() => setHighlightedField(null)}
+                      className={getRowHighlightClass('edgeNumber')}
+                    >
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {t(lang, 'fieldEdgeNumber')}
+                      </span>
+                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                        {formatReferenceCode(
+                          activeDoc.extractedFields.edgeNumber || activeDoc.slot1Summary?.edgeNumber || '',
                           lang
                         )}
                       </span>

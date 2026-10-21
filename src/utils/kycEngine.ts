@@ -89,6 +89,10 @@ export interface SlotExtractionSummary {
   documentType: DocumentType;
   fullNameEn: string;
   fullNameAr: string;
+  givenName?: string;
+  fatherName?: string;
+  grandfatherName?: string;
+  surname?: string;
   motherName?: string;
   docNumber: string;
   dob: string;
@@ -106,6 +110,7 @@ export interface SlotExtractionSummary {
   isSpecimenZeroId?: boolean;
   address: string;
   familyNumber: string;
+  edgeNumber?: string;
   mrzLine1: string;
   mrzLine2: string;
   mrzLine3?: string;
@@ -173,6 +178,10 @@ export interface KYCDocument {
     fullName: string;
     fullNameArabic?: string;
     normalizedName?: string;
+    givenName?: string;
+    fatherName?: string;
+    grandfatherName?: string;
+    surname?: string;
     dob: string;
     nationality: string;
     holderNationalityAr?: string;
@@ -182,6 +191,7 @@ export interface KYCDocument {
     expiryDate?: string;
     gender?: string;
     bloodType?: string;
+    edgeNumber?: string;
     mrzLine1?: string;
     mrzLine2?: string;
     mrzLine3?: string;

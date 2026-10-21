@@ -75,6 +75,15 @@ export const translations = {
     docSpecimenHeader: 'High-Resolution Document Specimen',
     extractedOcrHeader: 'Zero-Hallucination OCR & Multi-Script Normalization',
     fieldFullName: 'Extracted Legal Name',
+    fieldGivenName: 'Given Name (First Name)',
+    fieldFatherName: "Father's Name",
+    fieldGrandfatherName: "Grandfather's Name",
+    fieldSurname: 'Surname / Tribal Affiliation',
+    fieldMotherName: "Mother's & Maternal Grandfather Name",
+    fieldGender: 'Gender / Sex',
+    fieldBloodType: 'Blood Type',
+    fieldCardSerialBottomLeft: 'Card Serial / Tracking No. (Bottom-Left)',
+    fieldEdgeNumber: 'Vertical Edge Serial Number',
     fieldNormalizedName: 'Canonical Normalized Name',
     fieldDocNumber: 'Document / 12-Digit ID No.',
     fieldDob: 'Date of Birth (ASCII Normalized)',
@@ -217,6 +226,15 @@ export const translations = {
     docSpecimenHeader: 'معاينة الوثيقة العراقية عالية الدقة',
     extractedOcrHeader: 'الاستخراج الضوئي الخالي من الهلوسة وتوحيد النصوص',
     fieldFullName: 'الاسم القانوني المستخرج',
+    fieldGivenName: 'الاسم الأول',
+    fieldFatherName: 'اسم الأب',
+    fieldGrandfatherName: 'اسم الجد',
+    fieldSurname: 'اللقب / العشيرة',
+    fieldMotherName: 'اسم الأم والجد للأم',
+    fieldGender: 'الجنس',
+    fieldBloodType: 'فصيلة الدم',
+    fieldCardSerialBottomLeft: 'رقم البطاقة / الصحيفة (أسفل اليسار)',
+    fieldEdgeNumber: 'الرقم التسلسلي الجانبي',
     fieldNormalizedName: 'الاسم القياسي الموحد',
     fieldDocNumber: 'رقم الوثيقة / البطاقة الموحدة (12 رقماً)',
     fieldDob: 'تاريخ الميلاد (أرقام قياسية)',
@@ -582,6 +600,13 @@ export function sanitizeTextForLanguage(input: string, lang: Language): string {
 
   if (lang === 'en') {
     if (!ARABIC_CHAR_REGEX.test(out)) return out;
+
+    // If the input has NO Latin characters (e.g. an Arabic-only legal name or address),
+    // preserve the original input rather than reducing it to an empty string or placeholder!
+    if (!/[A-Za-z]/.test(out)) {
+      return input.trim();
+    }
+
     out = out
       .replace(/\[غير واضح\s*\/\s*UNCLEAR\]/gi, '[UNCLEAR]')
       .replace(/\[غير موجود\s*\/\s*MISSING\]/gi, '[MISSING]')
@@ -597,11 +622,17 @@ export function sanitizeTextForLanguage(input: string, lang: Language): string {
       .replace(/^\s*·\s*/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
-    return out || 'Verified Record';
+    return out || input.trim();
   }
 
   // lang === 'ar'
   if (!/[A-Za-z]/.test(out)) return out;
+
+  // If the input has NO Arabic characters (e.g. alphanumeric code AA9792984, MRZ line, or English name),
+  // preserve the original input so we don't destroy alphanumeric codes or English-only documents!
+  if (!ARABIC_CHAR_REGEX.test(out)) {
+    return input.trim();
+  }
 
   out = out
     .replace(/\[غير واضح\s*\/\s*UNCLEAR\]/gi, '[غير واضح]')
@@ -626,5 +657,5 @@ export function sanitizeTextForLanguage(input: string, lang: Language): string {
     .replace(/\s{2,}/g, ' ')
     .trim();
 
-  return out;
+  return out || input.trim();
 }

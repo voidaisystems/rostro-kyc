@@ -121,9 +121,14 @@ interface ServerExtractionResponse {
   isSpecimenZeroId?: boolean;
   address: string;
   familyNumber: string;
+  givenName?: string;
+  fatherName?: string;
+  grandfatherName?: string;
+  surname?: string;
   motherName?: string;
   gender?: string;
   bloodType?: string;
+  edgeNumber?: string;
   mrzLine1: string;
   mrzLine2: string;
   mrzLine3?: string;
@@ -1645,9 +1650,11 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     const normalizedAr = isMissingOrUnclearValue(resolvedNameAr)
       ? '[غير موجود / MISSING]'
       : normalizeMultiScriptText(resolvedNameAr);
-    const upperName = isMissingOrUnclearValue(resolvedNameEn)
-      ? '[غير موجود / MISSING]'
-      : resolvedNameEn.toUpperCase();
+    const upperName = !isMissingOrUnclearValue(resolvedNameEn)
+      ? resolvedNameEn.toUpperCase()
+      : !isMissingOrUnclearValue(resolvedNameAr)
+        ? resolvedNameAr
+        : '[غير موجود / MISSING]';
 
     const finalDocType = extracted?.documentType || docType;
     const finalSidePolicy = getDocumentSideRequirement(finalDocType);
@@ -1666,7 +1673,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
       hasWrongSideConflict ||
       isMissingRequiredSecondSide ||
       criticalMissing.length > 0 ||
-      isMissingOrUnclearValue(resolvedNameEn) ||
+      (isMissingOrUnclearValue(resolvedNameEn) && isMissingOrUnclearValue(resolvedNameAr)) ||
       isMissingOrUnclearValue(rawDocNum);
     const isUnknownOrPoa =
       finalDocType === 'UNKNOWN_DOCUMENT' || finalDocType === 'IRQ_POWER_OF_ATTORNEY';
@@ -1843,7 +1850,12 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           engineMode: extracted?.engineMode || 'gemini-vlm-live',
           extractedFields: {
             fullName: upperName,
+            fullNameArabic: resolvedNameAr,
             normalizedName: normalizedAr,
+            givenName: extracted?.givenName || extracted?.slot1Summary?.givenName,
+            fatherName: extracted?.fatherName || extracted?.slot1Summary?.fatherName,
+            grandfatherName: extracted?.grandfatherName || extracted?.slot1Summary?.grandfatherName,
+            surname: extracted?.surname || extracted?.slot1Summary?.surname,
             dob: dob.trim() || extracted?.dob || '[غير موجود / MISSING]',
             motherName: motherName.trim() || extracted?.motherName,
             nationality: isForeignDoc
@@ -1856,6 +1868,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               : (extracted?.governorateAr || gInfo.govAr),
             gender: gender.trim() || extracted?.gender,
             bloodType: bloodType.trim() || extracted?.bloodType,
+            edgeNumber: extracted?.edgeNumber || extracted?.slot1Summary?.edgeNumber,
             mrzLine1:
               mrzLine1.trim() ||
               extracted?.mrzLine1 ||

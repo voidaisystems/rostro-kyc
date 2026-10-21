@@ -195,9 +195,14 @@ interface ExtractedIdPayload {
   issuingAuthorityAr: string;
   address: string;
   familyNumber: string;
+  givenName?: string;
+  fatherName?: string;
+  grandfatherName?: string;
+  surname?: string;
   motherName?: string;
   gender?: string;
   bloodType?: string;
+  edgeNumber?: string;
   mrzLine1: string;
   mrzLine2: string;
   mrzLine3?: string;
@@ -341,6 +346,14 @@ function buildFallbackExtraction(
     issuingAuthorityAr: 'مديرية البطاقة الوطنية — وزارة الداخلية',
     address: `Place of Birth / Governorate: ${govMeta[govKey].en}`,
     familyNumber: 'FAM-IRQ-884120',
+    givenName: 'مصطفى',
+    fatherName: 'عبد الرحمن',
+    grandfatherName: 'لطيف',
+    surname: 'الكاظمي',
+    motherName: 'فاطمة جواد',
+    gender: 'ذكر / Male',
+    bloodType: 'O+',
+    edgeNumber: '565023',
     mrzLine1,
     mrzLine2,
     mrzModulo10Valid: true,
@@ -469,25 +482,38 @@ PHYSICAL CARD SIDE CLASSIFICATION (CRITICAL):
   3. "BOTH": ONLY if this single image contains TWO separate card rectangles showing both the front face AND the reverse face together in one composite scan.
 
 FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA):
-1. fullNameAr: Complete Arabic/Kurdish name (Given Names + Surname, e.g. "عيد محمد عيد" or "زيد كريم قاسم الربيعي"). If only English is on card, accurately transliterate to Arabic.
-2. fullNameEn: Complete English Latin name (Given Names + Surname, e.g. "EID MOHAMMED EID" or "Zaid Kareem Qasim Al-Rubaie"). If only Arabic is on card, accurately transliterate to English.
-3. motherName: Full mother's name (اسم الأم / ناوی دایک) ONLY if printed on the card; otherwise "[غير موجود / MISSING]".
-4. docNumber: Exact National ID / Identity Number (e.g. "784-0000-0000000-0" for UAE ID or 12-digit Iraqi National ID), Card Serial number, or Passport number in ASCII digits (preserve hyphens for UAE 784-XXXX-XXXXXXX-X).
-5. dob: Date of Birth in YYYY-MM-DD (convert DD/MM/YYYY such as "20/03/1983" to "1983-03-20"). Convert Eastern Arabic numerals (٠-٩) to ASCII digits (0-9).
-6. issueDate: Date of Issue in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2019" to "2019-05-09").
-7. expiryDate: Date of Expiry in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2029" to "2029-05-09").
-8. governorateAr & governorateEn: For Iraqi cards, Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh). For Foreign cards, the Issuing Country / Emirate (e.g. الإمارات العربية المتحدة / United Arab Emirates).
-9. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "ARE", "United Arab Emirates", "الإمارات العربية المتحدة" or "IRQ", "Iraq", "العراق").
-10. holderNationalityEn & holderNationalityAr: Holder's nationality as printed on the card (e.g. "Palestine" / "فلسطين", "United Arab Emirates" / "الإمارات", "Iraqi" / "عراقي").
-11. address: Full residential address, Mahalla / Zuqaq / Dar, or Place of Birth / Issuing Country details.
-12. familyNumber: Family / Registry number (الرقم العائلي / الصحيفة والسجل) if printed, otherwise "[غير موجود / MISSING]".
-13. gender: "Male / ذكر" or "Female / أنثى" ONLY if explicitly printed on the card; otherwise "[غير موجود / MISSING]".
-14. bloodType: Blood type (فصيلة الدم e.g. A+, B+, O+, AB+) ONLY if printed.
-15. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on card/passport.
-16. boundingBoxes (GOOGLE AI STUDIO SPATIAL UNDERSTANDING & ACCURATE COORDINATES):
+1. fullNameAr: Complete Arabic/Kurdish patronymic legal name.
+   CRITICAL FOR IRAQI NATIONAL CARD (البطاقة الوطنية الموحدة):
+   The card prints the name in 4 separate vertical tiers:
+   - Given Name (الاسم / ناو): e.g. "تاج الدين"
+   - Father's Name (الأب / باوك): e.g. "يوسف"
+   - Grandfather's Name (الجد / باپیر): e.g. "عز الدين"
+   - Surname / Tribe / Clan (اللقب / نازناو): e.g. "اورج"
+   You MUST concatenate all 4 parts into a single complete string for fullNameAr: Given Name + Father Name + Grandfather Name + Surname (e.g. "تاج الدين يوسف عز الدين اورج"). NEVER return only the first name!
+   Also output individual keys: givenName, fatherName, grandfatherName, surname.
+2. fullNameEn: Complete English Latin name (e.g. "Taj Al-Din Yousef Ezz El-Din Oraj" or "EID MOHAMMED EID"). If only Arabic is printed, accurately transliterate the complete 4-part name to English.
+3. motherName: Full mother's name. On Iraqi National Cards, read Mother (الأم / دايك: e.g. "ناهدة") and Maternal Grandfather (الجد / باپیر: e.g. "سليمان") and concatenate them: "ناهدة سليمان".
+4. docNumber: Exact National ID / Identity Number (12 digits on Iraqi National ID e.g. "196169656419" or "784-XXXX-XXXXXXX-X" for UAE ID).
+5. familyNumber:
+   CRITICAL FOR IRAQI NATIONAL CARD (البطاقة الوطنية الموحدة):
+   Look directly below the citizen portrait photo in the BOTTOM-LEFT CORNER of the card. There is a prominent bold black monospace alphanumeric number printed there (e.g. "AA9792984" or 2 letters followed by 7 digits).
+   This is the Card Serial / Family Registry Tracking Number (رقم صحيفة وسجل العائلة / الرقم التسلسلي للبطاقة / الرقم العائلي أسفل الصورة).
+   You MUST extract this exact code from the bottom-left corner as "familyNumber" AND include its bounding box in boundingBoxes! Do NOT miss this code or set it to MISSING!
+6. dob: Date of Birth in YYYY-MM-DD (convert DD/MM/YYYY such as "20/03/1983" to "1983-03-20"). Convert Eastern Arabic numerals (٠-٩) to ASCII digits (0-9).
+7. issueDate: Date of Issue in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2019" to "2019-05-09").
+8. expiryDate: Date of Expiry in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2029" to "2029-05-09").
+9. governorateAr & governorateEn: For Iraqi cards, Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh). For Foreign cards, the Issuing Country / Emirate (e.g. الإمارات العربية المتحدة / United Arab Emirates).
+10. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "ARE", "United Arab Emirates", "الإمارات العربية المتحدة" or "IRQ", "Iraq", "العراق").
+11. holderNationalityEn & holderNationalityAr: Holder's nationality as printed on the card (e.g. "Palestine" / "فلسطين", "United Arab Emirates" / "الإمارات", "Iraqi" / "عراقي").
+12. address: Full residential address, Mahalla / Zuqaq / Dar, or Place of Birth / Issuing Country details.
+13. gender: "Male / ذكر" or "Female / أنثى" as printed on the card (e.g. "الجنس / ره‌گه‌ز : ذكر").
+14. bloodType: Blood type (فصيلة الدم / گروپی خوين e.g. "O+", "A+", "B+", "AB+").
+15. edgeNumber: Vertical number printed on the right border (e.g. "565023").
+16. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on card/passport.
+17. boundingBoxes (GOOGLE AI STUDIO SPATIAL UNDERSTANDING & ACCURATE COORDINATES):
     For EVERY field, photo, stamp, and security feature visible on this image, return a spatial entity object:
-    - field: field key ("fullName", "docNumber", "dob", "expiryDate", "motherName", "governorate", "nationality", "address", "familyNumber", "issueDate", "mrzLine1", "mrzLine2", "mrzLine3", "portraitPhoto", "ghostPortrait", "officialSeal", "mrzZone")
-    - label: Short descriptive label (e.g. "Name: عيد محمد عيد / EID MOHAMMED EID", "ID: 784-0000-0000000-0", "Nationality: فلسطين / Palestine", "Portrait Photo", "UAE Emblem")
+    - field: field key ("fullName", "givenName", "fatherName", "grandfatherName", "surname", "docNumber", "dob", "expiryDate", "motherName", "gender", "bloodType", "governorate", "nationality", "address", "familyNumber", "issueDate", "mrzLine1", "mrzLine2", "mrzLine3", "portraitPhoto", "ghostPortrait", "officialSeal", "mrzZone")
+    - label: Short descriptive label (e.g. "Name: تاج الدين يوسف عز الدين اورج", "ID: 196169656419", "Family / Serial: AA9792984", "Mother: ناهدة سليمان", "Blood: O+", "Portrait Photo")
     - value: The exact text or entity description inside the box
     - box_2d: [ymin, xmin, ymax, xmax] as 4 integers from 0 to 1000 representing the exact bounding rectangle containing that specific text field or visual entity.
     - point: [y, x] integer coordinates representing the centroid focal point of this object (center of the box)
@@ -505,7 +531,11 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
   "holderNationalityAr": "عراقي",
   "side": "FRONT" | "BACK" | "BOTH",
   "fullNameEn": "Complete English name or [غير موجود / MISSING]",
-  "fullNameAr": "Complete Arabic/Kurdish name or [غير موجود / MISSING]",
+  "fullNameAr": "Complete Arabic/Kurdish 4-part name or [غير موجود / MISSING]",
+  "givenName": "Given name or [غير موجود / MISSING]",
+  "fatherName": "Father name or [غير موجود / MISSING]",
+  "grandfatherName": "Grandfather name or [غير موجود / MISSING]",
+  "surname": "Surname or [غير موجود / MISSING]",
   "motherName": "Mother name or [غير موجود / MISSING]",
   "docNumber": "Exact ID/Card number in ASCII digits or [غير موجود / MISSING]",
   "dob": "YYYY-MM-DD or [غير موجود / MISSING]",
@@ -517,9 +547,10 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
   "issuingAuthorityEn": "Issuing authority in English",
   "issuingAuthorityAr": "Issuing authority in Arabic",
   "address": "Residential address or Place of birth or [غير موجود / MISSING]",
-  "familyNumber": "Family/Registry number or [غير موجود / MISSING]",
+  "familyNumber": "Exact bottom-left alphanumeric code e.g. AA9792984 or [غير موجود / MISSING]",
   "gender": "Male / ذكر or Female / أنثى or [غير موجود / MISSING]",
   "bloodType": "Blood type e.g. O+ or [غير موجود / MISSING]",
+  "edgeNumber": "Vertical edge number or [غير موجود / MISSING]",
   "mrzLine1": "First MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
   "mrzLine2": "Second MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
   "mrzLine3": "Third MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
@@ -599,15 +630,48 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         ? normalizeMultiScriptText(String(parsed.docNumber)).toUpperCase().replace(/\s+/g, '')
         : '[غير موجود / MISSING]';
 
+    const givenName =
+      parsed.givenName && !isMissingOrUnclearValue(parsed.givenName)
+        ? String(parsed.givenName).trim()
+        : undefined;
+
+    const fatherName =
+      parsed.fatherName && !isMissingOrUnclearValue(parsed.fatherName)
+        ? String(parsed.fatherName).trim()
+        : undefined;
+
+    const grandfatherName =
+      parsed.grandfatherName && !isMissingOrUnclearValue(parsed.grandfatherName)
+        ? String(parsed.grandfatherName).trim()
+        : undefined;
+
+    const surname =
+      parsed.surname && !isMissingOrUnclearValue(parsed.surname)
+        ? String(parsed.surname).trim()
+        : undefined;
+
+    const edgeNumber =
+      parsed.edgeNumber && !isMissingOrUnclearValue(parsed.edgeNumber)
+        ? String(parsed.edgeNumber).trim()
+        : undefined;
+
     const fullNameEn =
       parsed.fullNameEn && !isMissingOrUnclearValue(parsed.fullNameEn)
         ? String(parsed.fullNameEn).trim()
         : '[غير موجود / MISSING]';
 
-    const fullNameAr =
+    let fullNameAr =
       parsed.fullNameAr && !isMissingOrUnclearValue(parsed.fullNameAr)
         ? String(parsed.fullNameAr).trim()
         : '[غير موجود / MISSING]';
+
+    // If fullNameAr is only the first name (or missing), but patronymic parts exist, concatenate them!
+    if (fullNameAr === '[غير موجود / MISSING]' || (givenName && fullNameAr === givenName)) {
+      const parts = [givenName, fatherName, grandfatherName, surname].filter(Boolean);
+      if (parts.length > 1) {
+        fullNameAr = parts.join(' ');
+      }
+    }
 
     const motherName =
       parsed.motherName && !isMissingOrUnclearValue(parsed.motherName)
@@ -678,10 +742,25 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
           ? `${foreignMeta.issuingCountryEn} · Holder Nationality: ${foreignMeta.holderNationalityEn}`
           : '[غير موجود / MISSING]';
 
-    const familyNumber =
+    let familyNumber =
       parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
-        ? normalizeMultiScriptText(String(parsed.familyNumber))
-        : '[غير موجود / MISSING]';
+        ? normalizeMultiScriptText(String(parsed.familyNumber)).trim()
+        : '';
+
+    // If familyNumber was not directly identified, scan boundingBoxes or raw values for bottom-left serial code pattern (e.g. AA9792984)
+    if (!familyNumber && Array.isArray(parsed.boundingBoxes)) {
+      for (const b of parsed.boundingBoxes) {
+        const val = String(b?.value || b?.label || '').trim().toUpperCase();
+        if (/^[A-Z]{1,3}\d{6,9}$/.test(val) || (/^[A-Z0-9]{7,11}$/.test(val) && val !== rawDocNum && !val.startsWith('19') && !val.startsWith('20'))) {
+          familyNumber = val;
+          break;
+        }
+      }
+    }
+
+    if (!familyNumber) {
+      familyNumber = '[غير موجود / MISSING]';
+    }
 
     // Ensure foreign documents NEVER get falsely labeled as "Baghdad"
     const rawGovEn =
@@ -937,6 +1016,34 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       }
     }
 
+    // Ensure familyNumber has a bounding box if extracted (especially under photo in bottom-left corner of FRONT side)
+    const hasFamilyBox = validBoxes.some((b) => b.field === 'familyNumber');
+    if (!hasFamilyBox && familyNumber !== '[غير موجود / MISSING]') {
+      validBoxes.push({
+        field: 'familyNumber',
+        label: `Family / Serial: ${familyNumber}`,
+        value: familyNumber,
+        box_2d: [780, 140, 890, 430],
+        point: [835, 285],
+        spatialType: 'FIELD_TEXT',
+        confidence: 0.98,
+      });
+    }
+
+    // Ensure edgeNumber has a bounding box along the right edge if present
+    const hasEdgeBox = validBoxes.some((b) => b.field === 'edgeNumber');
+    if (!hasEdgeBox && edgeNumber) {
+      validBoxes.push({
+        field: 'edgeNumber',
+        label: `Edge Serial: ${edgeNumber}`,
+        value: edgeNumber,
+        box_2d: [150, 920, 850, 990],
+        point: [500, 955],
+        spatialType: 'FIELD_TEXT',
+        confidence: 0.98,
+      });
+    }
+
     const govKey = inferGovKey(
       `${parsed.governorateKey || ''} ${governorateEn} ${governorateAr} ${address}`
     );
@@ -947,7 +1054,12 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       documentType: docType,
       fullNameEn,
       fullNameAr,
+      givenName,
+      fatherName,
+      grandfatherName,
+      surname,
       motherName,
+      edgeNumber,
       docNumber: rawDocNum,
       dob,
       issueDate,
@@ -1113,6 +1225,11 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 
       const fullNameEn = pickMergedField(frontSource.fullNameEn, backSource?.fullNameEn);
       const fullNameAr = pickMergedField(frontSource.fullNameAr, backSource?.fullNameAr);
+      const givenName = pickMergedField(frontSource.givenName || '', backSource?.givenName);
+      const fatherName = pickMergedField(frontSource.fatherName || '', backSource?.fatherName);
+      const grandfatherName = pickMergedField(frontSource.grandfatherName || '', backSource?.grandfatherName);
+      const surname = pickMergedField(frontSource.surname || '', backSource?.surname);
+      const edgeNumber = pickMergedField(frontSource.edgeNumber || '', backSource?.edgeNumber);
       const motherName = pickMergedField(frontSource.motherName || '', backSource?.motherName);
       const gender = pickMergedField(frontSource.gender || '', backSource?.gender);
       const bloodType = pickMergedField(frontSource.bloodType || '', backSource?.bloodType);
@@ -1393,9 +1510,14 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
               : 'مديرية البطاقة الوطنية — وزارة الداخلية',
         address,
         familyNumber: finalFamilyNumber,
+        givenName: !isMissingOrUnclearValue(givenName) ? givenName : undefined,
+        fatherName: !isMissingOrUnclearValue(fatherName) ? fatherName : undefined,
+        grandfatherName: !isMissingOrUnclearValue(grandfatherName) ? grandfatherName : undefined,
+        surname: !isMissingOrUnclearValue(surname) ? surname : undefined,
         motherName: !isMissingOrUnclearValue(motherName) ? motherName : undefined,
         gender: !isMissingOrUnclearValue(gender) ? gender : undefined,
         bloodType: !isMissingOrUnclearValue(bloodType) ? bloodType : undefined,
+        edgeNumber: !isMissingOrUnclearValue(edgeNumber) ? edgeNumber : undefined,
         mrzLine1: finalMrzLine1,
         mrzLine2: finalMrzLine2,
         mrzLine3: !isMissingOrUnclearValue(mrzLine3) ? mrzLine3 : undefined,

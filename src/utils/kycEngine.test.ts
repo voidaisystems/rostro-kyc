@@ -831,6 +831,14 @@ test('Strict Single-Language Enforcement: translations.en has zero Arabic charac
   assert.equal(arabicScriptRegex.test(enOnly), false, `enOnly had Arabic: ${enOnly}`);
   assert.equal(latinScriptRegex.test(arOnly), false, `arOnly had Latin: ${arOnly}`);
 
+  // Pure Arabic name must be preserved in English without wiping to 'Verified Record'
+  const pureArabicName = 'تاج الدين يوسف عز الدين اورج';
+  assert.equal(sanitizeTextForLanguage(pureArabicName, 'en'), pureArabicName);
+
+  // Pure alphanumeric card serial / family tracking code must be preserved in Arabic
+  const cardSerialBottomLeft = 'AA9792984';
+  assert.equal(sanitizeTextForLanguage(cardSerialBottomLeft, 'ar'), cardSerialBottomLeft);
+
   // Verify formatReferenceCode, formatMrzForDisplay, and formatCryptoDigest in Arabic have zero Latin letters
   assert.equal(latinScriptRegex.test(formatReferenceCode('ROSTRO-2026-9041', 'ar')), false);
   assert.equal(latinScriptRegex.test(formatReferenceCode('RES-BGD-992018', 'ar')), false);

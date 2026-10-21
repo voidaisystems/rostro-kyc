@@ -349,8 +349,23 @@ CRITICAL INSTRUCTIONS:
 2. Zero-Hallucination & Multi-Script OCR (Arabic, Kurdish Sorani, English):
    - Transcribe printed and handwritten Arabic and Kurdish Sorani text faithfully without guessing obscured characters.
    - If any portion of a field is unreadable due to flash glare, blur, or low resolution, set its value to null and confidence <= 0.30.
+   - For Unified National Cards (البطاقة الوطنية الموحدة), read EVERY field individually AND in composite:
+     a) "national_id_number" (12 digits located in top center area, e.g. 196169656419).
+     b) "given_name" (الاسم / ناو: e.g. "تاج الدين").
+     c) "father_name" (الأب / باوك: e.g. "يوسف").
+     d) "grandfather_name" (الجد / باپیر: e.g. "عز الدين").
+     e) "surname" (اللقب / نازناو: e.g. "اورج").
+     f) "full_name_ar" (الاسم الكامل الرباعي مع اللقب): Concatenate given_name + father_name + grandfather_name + surname (e.g. "تاج الدين يوسف عز الدين اورج"). NEVER return only the first name!
+     g) "full_name_en" (Transliterated Full Latin Name): e.g. "Taj Al-Din Yousef Ezz El-Din Oraj".
+     h) "mother_given_name" (الأم / دايك: e.g. "ناهدة").
+     i) "maternal_grandfather_name" (الجد / باپیر تحت اسم الأم: e.g. "سليمان").
+     j) "mother_name_ar" (اسم الأم والجد): Concatenate mother_given_name + maternal_grandfather_name (e.g. "ناهدة سليمان").
+     k) "gender" (الجنس / ره‌گه‌ز: e.g. "ذكر" or "أنثى").
+     l) "blood_type" (فصيلة الدم / گروپی خوين: e.g. "O+", "A+", "B+", "AB+").
+     m) "family_number" / "card_serial_number" (BOTTOM-LEFT CORNER NUMBER أسفل اليسار):
+        Look directly under the cardholder's portrait photo in the bottom-left corner of the card. Extract the bold monospace alphanumeric number printed there (e.g. "AA9792984"). This is the Card Tracking / Family Registry Serial Number (رقم الصحيفة والسجل / الرقم التسلسلي للبطاقة / الرقم العائلي). You MUST extract this exact code from the bottom-left corner and include its bounding box!
+     n) "edge_number" (الرقم الجانبي): The number printed vertically along the right border (e.g. "565023").
    - For Iraqi Residence Cards (بطاقة السكن), carefully read "head_of_family_name" (اسم رب الأسرة), "information_office" (مكتب معلومات), "full_address" (عنوان السكن م/ز/د), and "form_number" (رقم الاستمارة).
-   - For Unified National Cards (البطاقة الوطنية الموحدة), extract "national_id_number" (12 digits), "full_name_ar", "mother_name_ar", "date_of_birth", "expiry_date", and TD1 MRZ lines if back side is visible.
 
 3. Visual Bounding Boxes:
    - For EVERY extracted field, provide its normalized bounding box "box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 coordinate scale relative to this image.

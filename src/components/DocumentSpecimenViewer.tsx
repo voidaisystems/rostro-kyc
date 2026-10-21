@@ -33,6 +33,10 @@ import { normalizeBoxPercentages, getSpatialEntityColors } from '../utils/edgeFo
 
 export type OcrHighlightField =
   | 'fullName'
+  | 'givenName'
+  | 'fatherName'
+  | 'grandfatherName'
+  | 'surname'
   | 'normalizedName'
   | 'docNumber'
   | 'motherName'
@@ -45,6 +49,7 @@ export type OcrHighlightField =
   | 'familyNumber'
   | 'gender'
   | 'bloodType'
+  | 'edgeNumber'
   | 'mrz'
   | null;
 
@@ -410,7 +415,8 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                       const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
                       const isTarget =
                         highlightedField === box.field ||
-                        (box.field === 'fullName' && highlightedField === 'normalizedName') ||
+                        (box.field === 'fullName' && (highlightedField === 'normalizedName' || highlightedField === 'givenName' || highlightedField === 'fatherName' || highlightedField === 'grandfatherName' || highlightedField === 'surname')) ||
+                        (box.field === 'familyNumber' && highlightedField === 'familyNumber') ||
                         (box.field === 'mrzLine1' && highlightedField === 'mrz') ||
                         (box.field === 'mrzLine2' && highlightedField === 'mrz');
                       const isHovered = hoveredBoxIdx === idx;

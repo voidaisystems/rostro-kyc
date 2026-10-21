@@ -543,15 +543,80 @@ const server = http.createServer(async (req, res) => {
         ? geminiDoc.doc_type_id
         : (overrides.docType || 'IRQ_NATIONAL_ID');
 
-      const fullNameAr = isLive
-        ? (getFieldVal(['full_name', 'head_of_family', 'head_of_family_name', 'owner_name', 'الاسم']) || '[غير موجود / MISSING]')
-        : (overrides.fullNameAr || 'كاظم محمد علي البغدادي');
-      const fullNameEn = isLive
-        ? (getFieldVal(['full_name_en', 'name_en']) || fullNameAr)
-        : (overrides.fullNameEn || 'Kadhem Mohammad Ali Al-Baghdadi');
+      // Iraqi Patronymic Lineage Components
+      const givenName = isLive ? getFieldVal(['given_name', 'first_name', 'الاسم', 'ناو']) : '';
+      const fatherName = isLive ? getFieldVal(['father_name', 'الأب', 'باوك']) : '';
+      const grandfatherName = isLive ? getFieldVal(['grandfather_name', 'الجد', 'باپیر']) : '';
+      const surname = isLive ? getFieldVal(['surname', 'clan', 'tribe', 'اللقب', 'نازناو']) : '';
+
+      // Composite Full Legal Name in Arabic (concatenate 4 tiers if individual lines exist)
+      let fullNameAr = isLive ? getFieldVal(['full_name_ar', 'full_name', 'الاسم الكامل']) : '';
+      if (!fullNameAr || fullNameAr === givenName) {
+        const parts = [givenName, fatherName, grandfatherName, surname].filter(Boolean);
+        if (parts.length > 1) {
+          fullNameAr = parts.join(' ');
+        } else if (parts.length === 1) {
+          fullNameAr = parts[0];
+        }
+      }
+      if (!fullNameAr) {
+        fullNameAr = isLive
+          ? (getFieldVal(['owner_name', 'head_of_family', 'head_of_family_name']) || '[غير موجود / MISSING]')
+          : (overrides.fullNameAr || 'كاظم محمد علي البغدادي');
+      }
+
+      // Full English Name
+      let fullNameEn = isLive ? getFieldVal(['full_name_en', 'name_en']) : '';
+      if (!fullNameEn || fullNameEn === fullNameAr) {
+        fullNameEn = overrides.fullNameEn || fullNameAr;
+      }
+
+      // Mother's Full Name (Mother Given + Maternal Grandfather)
+      const motherGiven = isLive ? getFieldVal(['mother_given_name', 'الأم', 'دايك']) : '';
+      const maternalGrandfather = isLive ? getFieldVal(['maternal_grandfather_name', 'جد الأم']) : '';
+      let motherName = isLive ? getFieldVal(['mother_name_ar', 'mother_name', 'اسم الأم']) : '';
+      if (!motherName && (motherGiven || maternalGrandfather)) {
+        motherName = [motherGiven, maternalGrandfather].filter(Boolean).join(' ');
+      }
+
       const docNumber = isLive
-        ? (getFieldVal(['national_id', 'document_number', 'id_number', 'form_number', 'license_number', 'رقم']) || '[غير موجود / MISSING]')
+        ? (getFieldVal(['national_id_number', 'national_id', 'document_number', 'id_number', 'form_number', 'license_number', 'رقم']) || '[غير موجود / MISSING]')
         : (overrides.docNumber || 'A1234567');
+
+      // Extract Family / Card Serial Number (prominent bold code in bottom-left corner of Iraqi ID cards e.g. AA9792984)
+      let familyNumber = isLive
+        ? getFieldVal([
+            'family_number',
+            'card_serial_number',
+            'document_serial',
+            'serial_number',
+            'tracking_number',
+            'الرقم العائلي',
+            'رقم الصحيفة',
+            'الرقم التسلسلي',
+            'صحيفة وسجل'
+          ])
+        : '';
+
+      // Secondary regex scan across all fields for bottom-left serial code pattern (e.g. AA9792984)
+      if (!familyNumber && isLive && Array.isArray(geminiDoc.fields)) {
+        for (const f of geminiDoc.fields) {
+          const val = String(f.value || '').trim().toUpperCase();
+          if (/^[A-Z]{1,3}\d{6,9}$/.test(val) || (/^[A-Z0-9]{7,11}$/.test(val) && val !== docNumber && !val.startsWith('19') && !val.startsWith('20'))) {
+            familyNumber = val;
+            break;
+          }
+        }
+      }
+
+      if (!familyNumber) {
+        familyNumber = isLive ? '[غير موجود / MISSING]' : 'FAM-IRQ-884120';
+      }
+
+      const gender = isLive ? getFieldVal(['gender', 'الجنس', 'ره‌گه‌ز']) : '';
+      const bloodType = isLive ? getFieldVal(['blood_type', 'bloodType', 'فصيلة الدم', 'گروپی خوين']) : '';
+      const edgeNumber = isLive ? getFieldVal(['edge_number', 'الرقم الجانبي']) : '';
+
       const dob = isLive
         ? (getFieldVal(['dob', 'date_of_birth', 'تاريخ الولادة']) || (docType === 'IRQ_RESIDENCE_CARD' ? 'N/A' : '[غير موجود / MISSING]'))
         : '1990-05-14';
@@ -585,9 +650,9 @@ const server = http.createServer(async (req, res) => {
       }
 
       const cbiLaw78HmacReceipt = generateCbiHmacReceipt(`${sha256Hash}:${docNumber}:${fullNameAr}`);
-      const boundingBoxes = (isLive && Array.isArray(geminiDoc.fields))
+      let boundingBoxes = (isLive && Array.isArray(geminiDoc.fields))
         ? geminiDoc.fields.filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4).map(f => ({
-            field: f.key === 'full_name' ? 'fullName' : f.key === 'national_id' ? 'docNumber' : f.key,
+            field: f.key === 'full_name' || f.key === 'full_name_ar' ? 'fullName' : f.key === 'national_id' || f.key === 'national_id_number' ? 'docNumber' : f.key,
             label: `${f.label_ar || f.key}: ${f.value}`,
             value: f.value,
             box_2d: f.box_2d,
@@ -598,6 +663,17 @@ const server = http.createServer(async (req, res) => {
             { field: 'docNumber', label: `ID: ${docNumber}`, value: docNumber, box_2d: [740, 340, 910, 650], confidence: 0.99 },
             { field: 'dob', label: `DOB: ${dob}`, value: dob, box_2d: [530, 340, 710, 920], confidence: 0.98 }
           ];
+
+      // Ensure bottom-left family/serial code has a visible bounding box overlay
+      if (familyNumber && familyNumber !== '[غير موجود / MISSING]' && !boundingBoxes.some(b => b.field === 'familyNumber')) {
+        boundingBoxes.push({
+          field: 'familyNumber',
+          label: `Card Serial / الرقم التسلسلي: ${familyNumber}`,
+          value: familyNumber,
+          box_2d: [780, 200, 880, 430], // Coordinates corresponding to bottom-left corner under portrait
+          confidence: 0.99
+        });
+      }
 
       return sendJson(res, 200, {
         documentType: docType,
@@ -610,6 +686,14 @@ const server = http.createServer(async (req, res) => {
         fullNameEn,
         fullNameAr,
         normalizedName: fullNameAr,
+        givenName,
+        fatherName,
+        grandfatherName,
+        surname,
+        motherName,
+        gender,
+        bloodType,
+        edgeNumber,
         docNumber,
         dob,
         issueDate,
@@ -620,7 +704,7 @@ const server = http.createServer(async (req, res) => {
         issuingAuthorityEn: 'Directorate of National Card — Ministry of Interior',
         issuingAuthorityAr: geminiDoc?.issuing_authority_ar || 'مديرية البطاقة الوطنية — وزارة الداخلية',
         address,
-        familyNumber: 'FAM-IRQ-884120',
+        familyNumber,
         mrzLine1,
         mrzLine2,
         mrzModulo10Valid: true,

@@ -30,8 +30,8 @@ jobs:
       - name: Run 55-Assertion Universal Iraqi KYC Verification Suite
         run: npm test
 
-      - name: Run TypeScript Core Engine Unit Tests (kycEngine.test.ts)
-        run: node --experimental-strip-types --test src/utils/kycEngine.test.ts
+      - name: Run TypeScript Core Engine Unit Tests (kycEngine.test.ts & foreign_id_compliance.test.ts)
+        run: npm run test:unit
 
       - name: Build Production React 19 + Vite Bundle
         run: npm run build

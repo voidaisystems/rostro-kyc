@@ -17,7 +17,9 @@ Thumbs.db
 # Large Binary / Trained Models
 *.traineddata
 
-# Logs & Temporary Data
+# Archives
+*.zip
+*.tar.gz
 *.log
 npm-debug.log*
 yarn-debug.log*

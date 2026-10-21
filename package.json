@@ -29,10 +29,12 @@
     "build": "vite build",
     "start": "node server.js",
     "test": "node backend/tests/test_hybrid_server.js",
-    "test:unit": "node --experimental-strip-types --test src/utils/kycEngine.test.ts"
+    "test:unit": "node --experimental-strip-types --test src/utils/kycEngine.test.ts src/tests/foreign_id_compliance.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
     "lucide-react": "^0.546.0",
     "pdfkit": "^0.20.2",
     "react": "^19.0.0",

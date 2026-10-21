@@ -1,21 +1,3 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file src/utils/kycEngine.ts
- * @module @rostro/core/kycEngine
- * @description
- * Deterministic Core Risk, Checksum, and Multi-Script Normalization Engine for Project Rostro.
- *
- * Implements:
- * - Universal Iraqi Document Taxonomy (Categories A–H, 44 registered document types).
- * - 9 Independently Inspectable Verification Signals (`NineVerificationSignals`).
- * - ICAO Doc 9303 Modulo-10 `[7, 3, 1]` check digit verification (`computeIcaoCheckDigit`).
- * - Dual-Side Physical Card Policy (`getDocumentSideRequirement`, `evaluateDualSideSatisfaction`).
- * - Multi-Script Arabic / Kurdish Sorani / English normalization (`normalizeMultiScriptText`).
- * - Zero-Hallucination Missing/Unclear Field Auditor (`auditMissingExpectedFields`).
- */
-
 export type Language = 'en' | 'ar';
 export type VerificationStatus = 'approved' | 'pending' | 'flagged' | 'rejected';
 export type PipelineStage9Outcome =
@@ -52,6 +34,7 @@ export type DocumentType =
   | 'IRQ_RATION_CARD'
   | 'IRQ_PASSPORT'
   | 'FOREIGN_PASSPORT'
+  | 'FOREIGN_NATIONAL_ID'
   | 'IRQ_DRIVING_LICENSE'
   | 'IRQ_CHAMBER_OF_COMMERCE'
   | 'IRQ_COMPANY_REG'
@@ -71,11 +54,23 @@ export interface NineVerificationSignals {
   external_verification_status: 'EXTERNAL_VERIFICATION_UNAVAILABLE';
 }
 
+export type SpatialEntityType =
+  | 'FIELD_TEXT'
+  | 'BIOMETRIC_PORTRAIT'
+  | 'SECURITY_GHOST_PORTRAIT'
+  | 'OFFICIAL_SEAL_STAMP'
+  | 'SECURITY_HOLOGRAM'
+  | 'MACHINE_READABLE_ZONE'
+  | 'CARD_CORNER_ANCHOR';
+
 export interface OcrBoundingBox {
   field: string;
   label: string;
   value?: string;
   box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
+  point?: [number, number]; // [y, x] centroid point from Gemini Spatial Understanding
+  spatialType?: SpatialEntityType;
+  color?: string;
   confidence: number;
 }
 
@@ -86,6 +81,63 @@ export interface MissingExpectedField {
   reasonEn: string;
   reasonAr: string;
   severity: 'CRITICAL' | 'WARNING';
+}
+
+export interface SlotExtractionSummary {
+  slotIndex: 1 | 2;
+  detectedSide: 'FRONT' | 'BACK' | 'BOTH' | 'UNKNOWN';
+  documentType: DocumentType;
+  fullNameEn: string;
+  fullNameAr: string;
+  motherName?: string;
+  docNumber: string;
+  dob: string;
+  issueDate: string;
+  expiryDate: string;
+  governorateKey?: 'BGD' | 'EBL' | 'BSR' | 'SUL' | 'MOS';
+  governorateEn: string;
+  governorateAr: string;
+  issuingCountryCode?: string;
+  issuingCountryEn?: string;
+  issuingCountryAr?: string;
+  holderNationalityEn?: string;
+  holderNationalityAr?: string;
+  isForeignDocument?: boolean;
+  isSpecimenZeroId?: boolean;
+  address: string;
+  familyNumber: string;
+  mrzLine1: string;
+  mrzLine2: string;
+  mrzLine3?: string;
+  gender?: string;
+  bloodType?: string;
+  ocrConfidence: number;
+  boundingBoxes: OcrBoundingBox[];
+  missingExpectedFields: MissingExpectedField[];
+}
+
+export interface CardPairConflictIssue {
+  code:
+    | 'DUPLICATE_FRONT_SIDES'
+    | 'DUPLICATE_BACK_SIDES'
+    | 'SWAPPED_FRONT_AND_BACK'
+    | 'DIFFERENT_HOLDER_NAMES'
+    | 'DIFFERENT_DOC_NUMBERS'
+    | 'DIFFERENT_DOB'
+    | 'DIFFERENT_DOCUMENT_TYPES';
+  severity: 'CRITICAL' | 'WARNING';
+  titleEn: string;
+  titleAr: string;
+  detailEn: string;
+  detailAr: string;
+}
+
+export interface CardPairValidationResult {
+  isValidPair: boolean;
+  hasCrossCardConflict: boolean;
+  hasWrongSideConflict: boolean;
+  effectiveSide: 'FRONT' | 'BACK' | 'BOTH';
+  issues: CardPairConflictIssue[];
 }
 
 export interface KYCDocument {
@@ -102,8 +154,13 @@ export interface KYCDocument {
   expiryDate: string;
   issuingAuthorityEn: string;
   issuingAuthorityAr: string;
+  issuingCountryCode?: string;
   issuingCountryEn: string;
   issuingCountryAr: string;
+  holderNationalityEn?: string;
+  holderNationalityAr?: string;
+  isForeignDocument?: boolean;
+  isSpecimenZeroId?: boolean;
   ocrConfidence: number; // 0-100
   livenessScore?: number; // 0-100
   hasGlare?: boolean;
@@ -114,9 +171,17 @@ export interface KYCDocument {
   status: VerificationStatus;
   extractedFields: {
     fullName: string;
+    fullNameArabic?: string;
     normalizedName?: string;
     dob: string;
     nationality: string;
+    holderNationalityAr?: string;
+    motherName?: string;
+    governorate?: string;
+    issueDate?: string;
+    expiryDate?: string;
+    gender?: string;
+    bloodType?: string;
     mrzLine1?: string;
     mrzLine2?: string;
     mrzLine3?: string;
@@ -125,9 +190,13 @@ export interface KYCDocument {
   };
   customPreviewUrl?: string;
   customBackPreviewUrl?: string;
+  customImageUrl?: string;
   boundingBoxes?: OcrBoundingBox[];
   backBoundingBoxes?: OcrBoundingBox[];
   missingExpectedFields?: MissingExpectedField[];
+  slot1Summary?: SlotExtractionSummary;
+  slot2Summary?: SlotExtractionSummary;
+  cardPairValidation?: CardPairValidationResult;
   engineMode?: 'gemini-vlm-live' | 'deterministic-fallback';
 }
 
@@ -307,8 +376,8 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
           'Portrait, Holder & Mother/Grandfather Name, 12-Digit National ID No., DOB & Place of Birth',
         frontFieldsSummaryAr: 'الصورة الشخصية، الاسم الكامل واسم الأم والجد، الرقم الوطني، تاريخ ومحل الولادة',
         backFieldsSummaryEn:
-          '3-Line ICAO TD1 MRZ, Issue Date, Expiry Date, Family Number (الرقم العائلي), Issuing Authority & QR',
-        backFieldsSummaryAr: 'شريط القراءة الآلي MRZ (3 أسطر)، تاريخ الإصدار والنفاذ، الرقم العائلي، جهة الإصدار والباركود',
+          '3-Line ICAO TD1 MRZ, Issue Date, Expiry Date, Family Number, Issuing Authority & QR',
+        backFieldsSummaryAr: 'شريط القراءة الآلي الثلاثي، تاريخ الإصدار والنفاذ، الرقم العائلي، جهة الإصدار والباركود',
       };
     case 'IRQ_RESIDENCE_CARD':
       return {
@@ -319,7 +388,7 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
           'Head of Household Name, Information Office, Address (Mahalla / Zukak / Dar), Form Number',
         frontFieldsSummaryAr: 'اسم رب الأسرة، مكتب المعلومات، العنوان (المحلة / الزقاق / الدار)، رقم الاستمارة',
         backFieldsSummaryEn:
-          'Information Office Official Stamp, Issue Date (تاريخ التنظيم), Mukhtar Endorsement & Registry Notes',
+          'Information Office Official Stamp, Issue Date, Mukhtar Endorsement & Registry Notes',
         backFieldsSummaryAr: 'ختم مكتب المعلومات الرسمي، تاريخ التنظيم، توقيع المختار وملاحظات السجل',
       };
     case 'IRQ_CIVIL_STATUS_ID':
@@ -330,7 +399,7 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
         frontFieldsSummaryEn: 'Holder Name, Portrait, ID Serial Number, Date & Place of Birth',
         frontFieldsSummaryAr: 'الاسم الكامل، الصورة، رقم الهوية، تاريخ ومحل الولادة',
         backFieldsSummaryEn:
-          'Registry & Page Number (الصحيفة والسجل), Marital Status, Civil Status Directorate & Issue Date',
+          'Registry & Page Number, Marital Status, Civil Status Directorate & Issue Date',
         backFieldsSummaryAr: 'رقم الصحيفة والسجل، الحالة الزوجية، دائرة الأحوال المدنية وتاريخ الإصدار',
       };
     case 'IRQ_DRIVING_LICENSE':
@@ -352,7 +421,21 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
         frontFieldsSummaryEn: 'Merchant / Entity Name, Membership / Tax Number, Issue & Expiry Dates',
         frontFieldsSummaryAr: 'الاسم التجاري / اسم التاجر، رقم العضوية / الرقم الضريبي، تاريخ الإصدار والنفاذ',
         backFieldsSummaryEn: 'Chamber / Tax Authority Stamp, QR Verification Code & Signatory Endorsement',
-        backFieldsSummaryAr: 'ختم الغرفة التجارية / الضريبة، رمز الاستجابة السريعة QR وتوقيع المخول',
+        backFieldsSummaryAr: 'ختم الغرفة التجارية أو الضريبة، رمز الاستجابة السريعة وتوقيع المخول',
+      };
+    case 'FOREIGN_NATIONAL_ID':
+      return {
+        requiresBothSides: true,
+        policyBadgeEn: 'FOREIGN / GCC ID CARD · FRONT + BACK + PASSPORT CO-DOC REQUIRED',
+        policyBadgeAr: 'بطاقة هوية أجنبية / خليجية · يتطلب الوجهين مع جواز السفر وإقامة العراق',
+        frontFieldsSummaryEn:
+          'Holder Name (AR/EN), Issuing Country, Nationality, ID Number (e.g. UAE 784-XXXX-XXXXXXX-X), DOB, Issue/Expiry Dates & Chip/Portrait',
+        frontFieldsSummaryAr:
+          'الاسم الكامل (عربي/إنجليزي)، دولة الإصدار، الجنسية، رقم الهوية (مثل الإمارات 784)، تاريخ الميلاد والإصدار والانتهاء والصورة',
+        backFieldsSummaryEn:
+          '3-Line ICAO TD1 MRZ, Card Serial Number, Employer / Sponsor, Occupation & Issuing Authority Barcode',
+        backFieldsSummaryAr:
+          'شريط القراءة الآلي الثلاثي (MRZ)، الرقم التسلسلي للبطاقة، المهنة وجهة العمل وتوقيع جهة الإصدار',
       };
     case 'IRQ_PASSPORT':
     case 'FOREIGN_PASSPORT':
@@ -362,7 +445,7 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
         policyBadgeAr: 'صفحة البيانات البيومترية فقط · لا يوجد ظهر مطلوب',
         frontFieldsSummaryEn:
           'Bio-Data Page contains Portrait, Full Name, Passport No., DOB, Expiry & 2-Line TD3 MRZ on one page',
-        frontFieldsSummaryAr: 'صفحة البيانات تحتوي على الصورة والاسم ورقم الجواز والصلاحية وشريط MRZ في صفحة واحدة',
+        frontFieldsSummaryAr: 'صفحة البيانات تحتوي على الصورة والاسم ورقم الجواز والصلاحية وشريط القراءة الآلي في صفحة واحدة',
         backFieldsSummaryEn: 'Not applicable — Passports only require the single Bio-Data page',
         backFieldsSummaryAr: 'غير مطلوب — جواز السفر يتطلب صفحة البيانات البيومترية فقط',
       };
@@ -380,11 +463,669 @@ export function getDocumentSideRequirement(docType: DocumentType): DocumentSideR
 }
 
 /**
+ * Detects whether an extracted ID / Document number is an official specimen / template placeholder
+ * (e.g., UAE Golden Card sample "784-0000-0000000-0", "000000000000", "000-0000-0000000-0").
+ */
+export function isSpecimenZeroIdNumber(docNumber?: string | null): boolean {
+  if (!docNumber || isMissingOrUnclearValue(docNumber)) return false;
+  const normalized = normalizeMultiScriptText(docNumber).trim();
+  const compactDigits = normalized.replace(/[^0-9]/g, '');
+  if (!compactDigits) return false;
+  // UAE 784 prefix followed by all zeros (e.g. 784-0000-0000000-0 -> 784000000000000)
+  if (/^7840{6,}$/.test(compactDigits)) return true;
+  // Any ID where all digits are 0 or contains 7+ consecutive zeros in the serial body
+  if (/^0{5,}$/.test(compactDigits)) return true;
+  if (/0{7,}/.test(compactDigits)) return true;
+  return false;
+}
+
+export interface InferredForeignDocMetadata {
+  isForeignDocument: boolean;
+  resolvedDocType: DocumentType;
+  issuingCountryCode: string;
+  issuingCountryEn: string;
+  issuingCountryAr: string;
+  issuingAuthorityEn: string;
+  issuingAuthorityAr: string;
+  holderNationalityEn: string;
+  holderNationalityAr: string;
+  isSpecimenZeroId: boolean;
+}
+
+const NATIONALITY_DICTIONARY: Array<{
+  matchTokens: string[];
+  en: string;
+  ar: string;
+  code: string;
+}> = [
+  {
+    matchTokens: ['palestin', 'فلسطين', 'فلسطيني', 'فلسطينية', 'pse'],
+    en: 'Palestine',
+    ar: 'فلسطين',
+    code: 'PSE',
+  },
+  {
+    matchTokens: ['united arab emirates', 'emirates', 'uae', 'الامارات', 'الإمارات', 'اماراتي', 'إماراتي', 'are'],
+    en: 'United Arab Emirates',
+    ar: 'الإمارات العربية المتحدة',
+    code: 'ARE',
+  },
+  {
+    matchTokens: ['jordan', 'الاردن', 'الأردن', 'اردني', 'أردني', 'jor'],
+    en: 'Jordan',
+    ar: 'الأردن',
+    code: 'JOR',
+  },
+  {
+    matchTokens: ['saudi', 'السعوديه', 'السعودية', 'سعودي', 'sau', 'ksa'],
+    en: 'Saudi Arabia',
+    ar: 'المملكة العربية السعودية',
+    code: 'SAU',
+  },
+  {
+    matchTokens: ['kuwait', 'الكويت', 'كويتي', 'kwt'],
+    en: 'Kuwait',
+    ar: 'الكويت',
+    code: 'KWT',
+  },
+  {
+    matchTokens: ['qatar', 'قطر', 'قطري', 'qat'],
+    en: 'Qatar',
+    ar: 'قطر',
+    code: 'QAT',
+  },
+  {
+    matchTokens: ['bahrain', 'البحرين', 'بحريني', 'bhr'],
+    en: 'Bahrain',
+    ar: 'البحرين',
+    code: 'BHR',
+  },
+  {
+    matchTokens: ['oman', 'عمان', 'عماني', 'omn'],
+    en: 'Oman',
+    ar: 'سلطنة عمان',
+    code: 'OMN',
+  },
+  {
+    matchTokens: ['egypt', 'مصر', 'مصري', 'egy'],
+    en: 'Egypt',
+    ar: 'مصر',
+    code: 'EGY',
+  },
+  {
+    matchTokens: ['syria', 'سوريا', 'سورية', 'سوري', 'syr'],
+    en: 'Syria',
+    ar: 'سوريا',
+    code: 'SYR',
+  },
+  {
+    matchTokens: ['lebanon', 'lebanese', 'لبنان', 'لبناني', 'lbn'],
+    en: 'Lebanon',
+    ar: 'لبنان',
+    code: 'LBN',
+  },
+  {
+    matchTokens: ['turkey', 'turkish', 'تركيا', 'تركي', 'tur'],
+    en: 'Turkey',
+    ar: 'تركيا',
+    code: 'TUR',
+  },
+  {
+    matchTokens: ['iran', 'ايران', 'إيران', 'ايراني', 'irn'],
+    en: 'Iran',
+    ar: 'إيران',
+    code: 'IRN',
+  },
+  {
+    matchTokens: ['united kingdom', 'british', 'uk', 'بريطانيا', 'بريطاني', 'gbr'],
+    en: 'United Kingdom',
+    ar: 'المملكة المتحدة',
+    code: 'GBR',
+  },
+  {
+    matchTokens: ['united states', 'usa', 'american', 'امريكا', 'أمريكا', 'امريكي', 'ضواحي'],
+    en: 'United States',
+    ar: 'الولايات المتحدة',
+    code: 'USA',
+  },
+  {
+    matchTokens: ['india', 'indian', 'الهند', 'هندي', 'ind'],
+    en: 'India',
+    ar: 'الهند',
+    code: 'IND',
+  },
+  {
+    matchTokens: ['pakistan', 'باكستان', 'باكستاني', 'pak'],
+    en: 'Pakistan',
+    ar: 'باكستان',
+    code: 'PAK',
+  },
+];
+
+/**
+ * Deterministically infers whether an uploaded card is a Foreign National / Resident ID
+ * (such as UAE Emirates ID 784-XXXX-XXXXXXX-X, GCC ID, Jordanian ID, or Foreign Passport)
+ * so that the system never falsely labels a foreign ID as "Iraq / Baghdad".
+ */
+export function inferForeignDocumentMetadata(input: {
+  documentType?: DocumentType;
+  docNumber?: string;
+  issuingCountryCode?: string;
+  issuingCountryEn?: string;
+  issuingCountryAr?: string;
+  holderNationalityEn?: string;
+  holderNationalityAr?: string;
+  mrzLine1?: string;
+  mrzLine2?: string;
+  rawTextHint?: string;
+}): InferredForeignDocMetadata {
+  const normDocNum = normalizeMultiScriptText(input.docNumber || '').trim();
+  const compactDigits = normDocNum.replace(/[^0-9]/g, '');
+  const mrz1 = (input.mrzLine1 || '').toUpperCase();
+  const mrz2 = (input.mrzLine2 || '').toUpperCase();
+  const combinedHints = normalizeMultiScriptText(
+    [
+      input.issuingCountryCode || '',
+      input.issuingCountryEn || '',
+      input.issuingCountryAr || '',
+      input.rawTextHint || '',
+      mrz1,
+    ].join(' ')
+  ).toLowerCase();
+
+  const isSpecimenZeroId = isSpecimenZeroIdNumber(normDocNum);
+
+  // Detect UAE Emirates ID pattern: 784-XXXX-XXXXXXX-X or 15 digits starting with 784 (ISO numeric code for UAE)
+  const isUaeIdNumber =
+    /^784[- ]?\d{4}[- ]?\d{7}[- ]?\d$/.test(normDocNum) ||
+    (compactDigits.length === 15 && compactDigits.startsWith('784'));
+
+  const isUaeByText =
+    combinedHints.includes('united arab emirates') ||
+    combinedHints.includes('emirates identity') ||
+    combinedHints.includes('resident identity card') ||
+    combinedHints.includes('golden card') ||
+    combinedHints.includes('الامارات العربيه المتحده') ||
+    combinedHints.includes('الهيئه الاتحاديه للهويه') ||
+    combinedHints.includes('بطاقه هويه مقيم') ||
+    mrz1.startsWith('IDARE') ||
+    mrz1.startsWith('I<ARE') ||
+    (input.issuingCountryCode || '').toUpperCase() === 'ARE' ||
+    (input.issuingCountryCode || '').toUpperCase() === 'UAE';
+
+  // Resolve Holder Nationality if present
+  const natHint = normalizeMultiScriptText(
+    `${input.holderNationalityEn || ''} ${input.holderNationalityAr || ''} ${input.rawTextHint || ''}`
+  ).toLowerCase();
+
+  let holderNationalityEn = input.holderNationalityEn?.trim() || '';
+  let holderNationalityAr = input.holderNationalityAr?.trim() || '';
+
+  for (const entry of NATIONALITY_DICTIONARY) {
+    if (entry.matchTokens.some((tok) => natHint.includes(normalizeMultiScriptText(tok).toLowerCase()))) {
+      holderNationalityEn = entry.en;
+      holderNationalityAr = entry.ar;
+      break;
+    }
+  }
+
+  if (isUaeIdNumber || isUaeByText) {
+    const resolvedDocType: DocumentType =
+      input.documentType === 'FOREIGN_PASSPORT' ? 'FOREIGN_PASSPORT' : 'FOREIGN_NATIONAL_ID';
+    return {
+      isForeignDocument: true,
+      resolvedDocType,
+      issuingCountryCode: 'ARE',
+      issuingCountryEn: 'United Arab Emirates',
+      issuingCountryAr: 'الإمارات العربية المتحدة',
+      issuingAuthorityEn:
+        'Federal Authority for Identity, Citizenship, Customs & Port Security (ICP) — UAE',
+      issuingAuthorityAr:
+        'الهيئة الاتحادية للهوية والجنسية والجمارك وأمن المنافذ — الإمارات العربية المتحدة',
+      holderNationalityEn: holderNationalityEn || 'United Arab Emirates / Resident Expatriate',
+      holderNationalityAr: holderNationalityAr || 'مقيم / الإمارات العربية المتحدة',
+      isSpecimenZeroId,
+    };
+  }
+
+  // Check if explicitly classified as FOREIGN_NATIONAL_ID or FOREIGN_PASSPORT or another foreign country
+  for (const entry of NATIONALITY_DICTIONARY) {
+    const codeUpper = (input.issuingCountryCode || '').toUpperCase();
+    const countryHint = normalizeMultiScriptText(
+      `${input.issuingCountryEn || ''} ${input.issuingCountryAr || ''}`
+    ).toLowerCase();
+    if (
+      codeUpper === entry.code ||
+      entry.matchTokens.some((tok) => countryHint.includes(normalizeMultiScriptText(tok).toLowerCase())) ||
+      mrz1.startsWith(`ID${entry.code}`) ||
+      mrz1.startsWith(`P<${entry.code}`)
+    ) {
+      const resolvedDocType: DocumentType =
+        input.documentType === 'FOREIGN_PASSPORT' || mrz1.startsWith('P<')
+          ? 'FOREIGN_PASSPORT'
+          : 'FOREIGN_NATIONAL_ID';
+      return {
+        isForeignDocument: true,
+        resolvedDocType,
+        issuingCountryCode: entry.code,
+        issuingCountryEn: entry.en,
+        issuingCountryAr: entry.ar,
+        issuingAuthorityEn: `Civil & Identity Authority — ${entry.en}`,
+        issuingAuthorityAr: `هيئة الأحوال المدنية والهوية — ${entry.ar}`,
+        holderNationalityEn: holderNationalityEn || entry.en,
+        holderNationalityAr: holderNationalityAr || entry.ar,
+        isSpecimenZeroId,
+      };
+    }
+  }
+
+  const isExplicitForeignCode = Boolean(
+    input.issuingCountryCode &&
+      input.issuingCountryCode.trim() !== '' &&
+      input.issuingCountryCode.toUpperCase() !== 'IRQ'
+  );
+
+  const isExplicitForeignCountryName = Boolean(
+    (input.issuingCountryEn &&
+      !input.issuingCountryEn.toLowerCase().includes('iraq') &&
+      input.issuingCountryEn.trim() !== '') ||
+    (input.issuingCountryAr &&
+      !input.issuingCountryAr.includes('عراق') &&
+      input.issuingCountryAr.trim() !== '')
+  );
+
+  if (
+    input.documentType === 'FOREIGN_NATIONAL_ID' ||
+    input.documentType === 'FOREIGN_PASSPORT' ||
+    isExplicitForeignCode ||
+    isExplicitForeignCountryName
+  ) {
+    const rawCountryEn = input.issuingCountryEn?.trim() || 'Foreign Country';
+    const rawCountryAr = input.issuingCountryAr?.trim() || 'دولة أجنبية';
+    const resolvedDocType: DocumentType =
+      input.documentType === 'FOREIGN_PASSPORT' ? 'FOREIGN_PASSPORT' : 'FOREIGN_NATIONAL_ID';
+
+    return {
+      isForeignDocument: true,
+      resolvedDocType,
+      issuingCountryCode: input.issuingCountryCode || 'FOR',
+      issuingCountryEn: rawCountryEn,
+      issuingCountryAr: rawCountryAr,
+      issuingAuthorityEn: `Foreign Issuing Authority (${rawCountryEn})`,
+      issuingAuthorityAr: `جهة إصدار حكومية أجنبية (${rawCountryAr})`,
+      holderNationalityEn: holderNationalityEn || rawCountryEn || 'Foreign National',
+      holderNationalityAr: holderNationalityAr || rawCountryAr || 'جنسية أجنبية',
+      isSpecimenZeroId,
+    };
+  }
+
+  // Default: Iraqi document (All Iraqi documents are acceptable)
+  return {
+    isForeignDocument: false,
+    resolvedDocType: input.documentType || 'IRQ_NATIONAL_ID',
+    issuingCountryCode: 'IRQ',
+    issuingCountryEn: 'Iraq',
+    issuingCountryAr: 'العراق',
+    issuingAuthorityEn: 'Ministry of Interior — Directorate of National Card (Iraq)',
+    issuingAuthorityAr: 'وزارة الداخلية — مديرية البطاقة الوطنية الموحدة (العراق)',
+    holderNationalityEn: holderNationalityEn || 'Iraqi',
+    holderNationalityAr: holderNationalityAr || 'عراقي',
+    isSpecimenZeroId,
+  };
+}
+
+export interface ForeignIdPolicyRuleItem {
+  code: 'CBI-FOR-01' | 'CBI-FOR-02' | 'CBI-FOR-03' | 'CBI-FOR-04';
+  status: 'ACTION_REQUIRED' | 'SPECIMEN_ALERT' | 'SCREENING_ACTIVE' | 'VERIFIED';
+  titleEn: string;
+  titleAr: string;
+  descriptionEn: string;
+  descriptionAr: string;
+}
+
+export interface ForeignIdCbiProtocolAssessment {
+  isForeignDocument: boolean;
+  issuingCountryCode: string;
+  issuingCountryEn: string;
+  issuingCountryAr: string;
+  issuingAuthorityEn: string;
+  issuingAuthorityAr: string;
+  holderNationalityEn: string;
+  holderNationalityAr: string;
+  isCrossBorderExpatResident: boolean;
+  isSpecimenZeroId: boolean;
+  hasSupportingPassportOrIraqResidency: boolean;
+  hasBothCardSides: boolean;
+  recommendedStage9Outcome: PipelineStage9Outcome;
+  headlineEn: string;
+  headlineAr: string;
+  summaryEn: string;
+  summaryAr: string;
+  requiredCoDocumentsEn: string[];
+  requiredCoDocumentsAr: string[];
+  rules: ForeignIdPolicyRuleItem[];
+}
+
+/**
+ * Evaluates how the Iraqi KYC / CBI Compliance System must deal with a Foreign (Non-Iraqi) ID
+ * such as a United Arab Emirates Resident Identity Card (784-XXXX-XXXXXXX-X).
+ */
+export function evaluateForeignIdComplianceProtocol(params: {
+  docType: DocumentType;
+  docNumber?: string;
+  issuingCountryCode?: string;
+  issuingCountryEn?: string;
+  issuingCountryAr?: string;
+  holderNationalityEn?: string;
+  holderNationalityAr?: string;
+  uploadedSide?: 'FRONT' | 'BACK' | 'BOTH';
+  coDocuments?: DocumentType[];
+}): ForeignIdCbiProtocolAssessment {
+  const inferred = inferForeignDocumentMetadata({
+    documentType: params.docType,
+    docNumber: params.docNumber,
+    issuingCountryCode: params.issuingCountryCode,
+    issuingCountryEn: params.issuingCountryEn,
+    issuingCountryAr: params.issuingCountryAr,
+    holderNationalityEn: params.holderNationalityEn,
+    holderNationalityAr: params.holderNationalityAr,
+  });
+
+  const coDocs = params.coDocuments || [];
+  const hasSupportingPassportOrIraqResidency = coDocs.some(
+    (t) => t === 'FOREIGN_PASSPORT' || t === 'IRQ_PASSPORT' || t === 'IRQ_RESIDENCE_CARD'
+  );
+  const hasBothCardSides =
+    params.uploadedSide === 'BOTH' || !getDocumentSideRequirement(inferred.resolvedDocType).requiresBothSides;
+
+  const isCrossBorderExpatResident =
+    Boolean(inferred.holderNationalityEn) &&
+    !inferred.holderNationalityEn.toLowerCase().includes(inferred.issuingCountryEn.toLowerCase()) &&
+    !inferred.holderNationalityEn.toLowerCase().includes('expat');
+
+  const rules: ForeignIdPolicyRuleItem[] = [
+    {
+      code: 'CBI-FOR-01',
+      status: hasSupportingPassportOrIraqResidency ? 'VERIFIED' : 'ACTION_REQUIRED',
+      titleEn: 'Non-Standalone Foreign ID — Mandatory Co-Documents Required in Iraq',
+      titleAr: 'هوية أجنبية غير مستقلة — تتطلب وثائق رديفة إلزامية في العراق',
+      descriptionEn:
+        inferred.resolvedDocType === 'FOREIGN_PASSPORT'
+          ? `Foreign Passport (${inferred.issuingCountryEn}) requires a valid Iraqi Entry Visa Stamp or Iraqi Residence Card (بطاقة السكن / الإقامة) to complete CBI onboarding.`
+          : `Under Central Bank of Iraq (CBI) AML/CFT Law No. 39 of 2015, a foreign national/resident ID card issued by ${inferred.issuingCountryEn} cannot be used alone to open an Iraqi financial account. It must be accompanied by (1) a Valid Passport and (2) an Iraqi Residency Visa / Iraqi Residence Card.`,
+      descriptionAr:
+        inferred.resolvedDocType === 'FOREIGN_PASSPORT'
+          ? `جواز السفر الأجنبي (${inferred.issuingCountryAr}) يتطلب تأشيرة دخول عراقية نافذة أو بطاقة إقامة / سكن عراقية لاستكمال فتح الحساب.`
+          : `وفقاً لتعليمات البنك المركزي العراقي وقانون مكافحة غسل الأموال رقم 39 لسنة 2015، لا تُقبل بطاقة الهوية الصادرة من (${inferred.issuingCountryAr}) كوثيقة وحيدة لفتح الحساب في العراق؛ بل يجب إرفاق: (1) جواز سفر نافذ، و(2) ختم إقامة شرعية في العراق أو بطاقة سكن عراقية.`,
+    },
+    {
+      code: 'CBI-FOR-02',
+      status: 'SCREENING_ACTIVE',
+      titleEn: isCrossBorderExpatResident
+        ? `Multi-Jurisdiction Watchlist Screening (${inferred.issuingCountryEn} + ${inferred.holderNationalityEn} + Iraq)`
+        : `Cross-Border AML/CFT Watchlist Screening (${inferred.issuingCountryEn} + Iraq)`,
+      titleAr: isCrossBorderExpatResident
+        ? `فحص قوائم العقوبات متعدد الدول (${inferred.issuingCountryAr} + ${inferred.holderNationalityAr} + العراق)`
+        : `فحص قوائم العقوبات عبر الحدود (${inferred.issuingCountryAr} + العراق)`,
+      descriptionEn: isCrossBorderExpatResident
+        ? `Card is issued by ${inferred.issuingCountryEn} (${inferred.issuingCountryCode}) to a holder of ${inferred.holderNationalityEn} nationality. The engine screens the entity across CBI Iraq, OFAC, UN, and ${inferred.issuingCountryEn} AML/CFT registries.`
+        : `Applicant holds a ${inferred.issuingCountryEn} document. Cross-border sanctions, PEP, and adverse media screening is enforced across CBI Iraq, OFAC, UN, and GCC/MENA watchlists.`,
+      descriptionAr: isCrossBorderExpatResident
+        ? `البطاقة صادرة من (${inferred.issuingCountryAr}) لحامل الجنسية (${inferred.holderNationalityAr}). يقوم النظام بفحص الاسم عبر قوائم البنك المركزي العراقي والأمم المتحدة وOFAC وقوائم دولة الإصدار والجنسية.`
+        : `الوثيقة صادرة من (${inferred.issuingCountryAr}). يتم تطبيق الفحص المشدد للعقوبات الدولية والمحلية (CBI / OFAC / UN) وقوائم الأشخاص المعرضين سياسياً (PEP).`,
+    },
+    {
+      code: 'CBI-FOR-03',
+      status: inferred.isSpecimenZeroId ? 'SPECIMEN_ALERT' : 'VERIFIED',
+      titleEn: inferred.isSpecimenZeroId
+        ? `Specimen / Sample ID Number Detected (${params.docNumber || '784-0000-0000000-0'})`
+        : `ISO Country Prefix & ID Format Check (${inferred.issuingCountryCode})`,
+      titleAr: inferred.isSpecimenZeroId
+        ? `تنبيه: رقم هوية نموذجي / عينة اختبارية (${params.docNumber || '784-0000-0000000-0'})`
+        : `التحقق من رمز الدولة وصيغة رقم الهوية (${inferred.issuingCountryCode})`,
+      descriptionEn: inferred.isSpecimenZeroId
+        ? `The extracted ID number "${params.docNumber}" contains an all-zero specimen serial (0000-0000000-0). This is an official promotional/sample card template (e.g. UAE Golden Card Specimen) and cannot be auto-approved for a live bank account.`
+        : `ID number structure matches ${inferred.issuingCountryEn} (${inferred.issuingCountryCode}) numbering format.`,
+      descriptionAr: inferred.isSpecimenZeroId
+        ? `رقم الهوية المستخرج "${params.docNumber}" يتكون من أصفار نموذجية (0000-0000000-0). هذه البطاقة هي "نموذج استرشادي / عينة ترويجية" (Specimen) للإقامة الذهبية وليست بطاقة حقيقية صالحة للاعتماد المالي المباشر.`
+        : `صيغة رقم الهوية تطابق الهيكلة القياسية المعتمدة في (${inferred.issuingCountryAr}).`,
+    },
+    {
+      code: 'CBI-FOR-04',
+      status: hasBothCardSides ? 'VERIFIED' : 'ACTION_REQUIRED',
+      titleEn: 'Reverse Side (Back) ICAO TD1 MRZ & Sponsor Verification',
+      titleAr: 'التحقق من الوجه الخلفي (MRZ وبيانات الكفيل / جهة العمل)',
+      descriptionEn: hasBothCardSides
+        ? 'Both front and reverse sides provided for ICAO TD1 MRZ Modulo-10 check-digit verification.'
+        : `Only the FRONT side of the ${inferred.issuingCountryEn} ID was uploaded. While Issue/Expiry dates appear on the front of UAE Golden Cards, the BACK side is required to verify the 3-line ICAO TD1 MRZ, Card Serial Number, and Employer/Sponsor.`,
+      descriptionAr: hasBothCardSides
+        ? 'تم إرفاق الوجهين الأمامي والخلفي للتحقق من شريط القراءة الآلي (MRZ).'
+        : `تم رفع الوجه الأمامي فقط لبطاقة (${inferred.issuingCountryAr}). رغم ظهور تاريخ الإصدار والانتهاء على الوجه الأمامي للإقامة الذهبية الإماراتية، يلزم رفع الوجه الخلفي للتحقق من شريط القراءة الآلي (MRZ) والرقم التسلسلي وبيانات الكفيل/المهنة.`,
+    },
+  ];
+
+  const recommendedStage9Outcome: PipelineStage9Outcome =
+    inferred.isSpecimenZeroId || !hasBothCardSides
+      ? 'INSUFFICIENT_DATA'
+      : 'HUMAN_REVIEW';
+
+  return {
+    isForeignDocument: inferred.isForeignDocument,
+    issuingCountryCode: inferred.issuingCountryCode,
+    issuingCountryEn: inferred.issuingCountryEn,
+    issuingCountryAr: inferred.issuingCountryAr,
+    issuingAuthorityEn: inferred.issuingAuthorityEn,
+    issuingAuthorityAr: inferred.issuingAuthorityAr,
+    holderNationalityEn: inferred.holderNationalityEn,
+    holderNationalityAr: inferred.holderNationalityAr,
+    isCrossBorderExpatResident,
+    isSpecimenZeroId: inferred.isSpecimenZeroId,
+    hasSupportingPassportOrIraqResidency,
+    hasBothCardSides,
+    recommendedStage9Outcome,
+    headlineEn: `Foreign Document Detected (${inferred.issuingCountryEn}) · Reverted to Human Review`,
+    headlineAr: `تم رصد وثيقة أجنبية (${inferred.issuingCountryAr}) · محالة حتماً للتدقيق البشري`,
+    summaryEn: `MANDATORY POLICY DIRECTIVE: Only official Iraqi documents are acceptable for automated processing. All 44 Iraqi document types are acceptable. This document was issued by ${inferred.issuingCountryEn} (${inferred.issuingCountryCode}) and has been identified as a foreign document: it CANNOT and WILL NEVER be accepted automatically. It is strictly reverted to a human compliance officer for manual Enhanced Due Diligence (EDD) review.`,
+    summaryAr: `ضابطة الامتثال الإلزامية: يقبل النظام الوثائق الرسمية العراقية حصراً (كافة أنواع الوثائق العراقية الـ 44 مقبولة). هذه الوثيقة صادرة من (${inferred.issuingCountryAr} — ${inferred.issuingCountryCode}) وتم تحديدها كوثيقة أجنبية؛ ولا يمكن قبولها آلياً على الإطلاق، بل تُحال حتماً إلى الموظف البشري لإجراءات العناية الواجبة المشددة (EDD) والتدقيق اليدوي.`,
+    requiredCoDocumentsEn: [
+      `Valid International Passport (جواز سفر دولي نافذ) — Required for ${inferred.issuingCountryEn} document holders`,
+      'Valid Iraqi Residency Visa Stamp or Iraqi Residence Card (إقامة وزارة الداخلية العراقية أو بطاقة السكن)',
+      'Reverse Side (Back) of Foreign ID Card with 3-Line ICAO TD1 MRZ & Sponsor Verification',
+    ],
+    requiredCoDocumentsAr: [
+      `جواز سفر دولي نافذ — إلزامي لحاملي وثائق (${inferred.issuingCountryAr})`,
+      'ختم إقامة شرعية نافذة في العراق صادر من وزارة الداخلية أو بطاقة سكن عراقية',
+      'الوجه الخلفي لبطاقة الهوية الأجنبية متضمناً شريط القراءة الآلي MRZ وبيانات جهة العمل/الكفيل',
+    ],
+    rules,
+  };
+}
+
+export function validateUploadedCardPair(
+  slot1: SlotExtractionSummary,
+  slot2?: SlotExtractionSummary | null
+): CardPairValidationResult {
+  const issues: CardPairConflictIssue[] = [];
+  let hasCrossCardConflict = false;
+  let hasWrongSideConflict = false;
+
+  if (!slot2) {
+    const singleSide: 'FRONT' | 'BACK' | 'BOTH' =
+      slot1.detectedSide === 'BOTH'
+        ? 'BOTH'
+        : slot1.detectedSide === 'BACK'
+          ? 'BACK'
+          : 'FRONT';
+    const req = getDocumentSideRequirement(slot1.documentType);
+    return {
+      isValidPair: !req.requiresBothSides || singleSide === 'BOTH',
+      hasCrossCardConflict: false,
+      hasWrongSideConflict: false,
+      effectiveSide: singleSide,
+      issues: [],
+    };
+  }
+
+  // 1. Check physical side orientation (FRONT vs BACK)
+  if (slot1.detectedSide === 'FRONT' && slot2.detectedSide === 'FRONT') {
+    hasWrongSideConflict = true;
+    issues.push({
+      code: 'DUPLICATE_FRONT_SIDES',
+      severity: 'CRITICAL',
+      titleEn: 'Two Front ID Images Uploaded — Reverse (Back) Side Missing',
+      titleAr: 'خطأ: تم رفع صورتين للوجه الأمامي فقط (الوجه الخلفي للبطاقة مفقود)',
+      detailEn:
+        'Both Image 1 and Image 2 show the FRONT side of an ID card. You must upload the FRONT side in Slot 1 and the reverse (BACK) side in Slot 2.',
+      detailAr:
+        'كلتا الصورتين المرفوعتين تعرضان الوجه الأمامي للبطاقة. يجب رفع الوجه الأمامي في الخانة الأولى والوجه الخلفي (الظهر) في الخانة الثانية.',
+    });
+  } else if (slot1.detectedSide === 'BACK' && slot2.detectedSide === 'BACK') {
+    hasWrongSideConflict = true;
+    issues.push({
+      code: 'DUPLICATE_BACK_SIDES',
+      severity: 'CRITICAL',
+      titleEn: 'Two Back ID Images Uploaded — Front Side Missing',
+      titleAr: 'خطأ: تم رفع صورتين للوجه الخلفي فقط (الوجه الأمامي مفقود)',
+      detailEn:
+        'Both Image 1 and Image 2 show the reverse (BACK) side of a card. The primary FRONT side containing holder name and portrait is missing.',
+      detailAr:
+        'كلتا الصورتين تعرضان الوجه الخلفي فقط؛ الوجه الأمامي المتضمن الاسم والصورة الشخصية مفقود.',
+    });
+  } else if (slot1.detectedSide === 'BACK' && slot2.detectedSide === 'FRONT') {
+    issues.push({
+      code: 'SWAPPED_FRONT_AND_BACK',
+      severity: 'WARNING',
+      titleEn: 'Front & Back Slots Swapped (Auto-Corrected)',
+      titleAr: 'تم عكس خانتي الأمام والظهر (تم التصحيح تلقائياً)',
+      detailEn:
+        'Slot 1 contained the BACK side and Slot 2 contained the FRONT side. Fields were automatically aligned.',
+      detailAr:
+        'الخانة الأولى تضمنت الظهر والخانة الثانية تضمنت الأمام. تمت مطابقة الحقول تلقائياً.',
+    });
+  }
+
+  // 2. Check Cross-Image Document Type Mismatch
+  if (
+    slot1.documentType !== 'UNKNOWN_DOCUMENT' &&
+    slot2.documentType !== 'UNKNOWN_DOCUMENT' &&
+    slot1.documentType !== slot2.documentType
+  ) {
+    hasCrossCardConflict = true;
+    issues.push({
+      code: 'DIFFERENT_DOCUMENT_TYPES',
+      severity: 'CRITICAL',
+      titleEn: 'Different Document Types Uploaded Across Slots',
+      titleAr: 'اختلاف نوع الوثيقة بين الصورتين المرفوعتين',
+      detailEn: `Image 1 is classified as ${slot1.documentType}, whereas Image 2 is a different document type (${slot2.documentType}).`,
+      detailAr: 'الصورة الأولى مصنفة كنوع وثيقة مختلف عن الصورة الثانية.',
+    });
+  }
+
+  // 3. Check Cross-Image Holder Name Mismatch (when both images contain a holder name)
+  const s1HasNameAr = !isMissingOrUnclearValue(slot1.fullNameAr);
+  const s2HasNameAr = !isMissingOrUnclearValue(slot2.fullNameAr);
+  const s1HasNameEn = !isMissingOrUnclearValue(slot1.fullNameEn);
+  const s2HasNameEn = !isMissingOrUnclearValue(slot2.fullNameEn);
+
+  let namesConflict = false;
+  if (s1HasNameAr && s2HasNameAr) {
+    const n1 = normalizeMultiScriptText(slot1.fullNameAr);
+    const n2 = normalizeMultiScriptText(slot2.fullNameAr);
+    if (n1 && n2 && n1 !== n2 && !n1.includes(n2) && !n2.includes(n1)) {
+      namesConflict = true;
+    }
+  }
+  if (!namesConflict && s1HasNameEn && s2HasNameEn) {
+    const e1 = slot1.fullNameEn.trim().toLowerCase().replace(/\s+/g, ' ');
+    const e2 = slot2.fullNameEn.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (e1 && e2 && e1 !== e2 && !e1.includes(e2) && !e2.includes(e1)) {
+      namesConflict = true;
+    }
+  }
+
+  if (namesConflict) {
+    hasCrossCardConflict = true;
+    const s1En = !isMissingOrUnclearValue(slot1.fullNameEn) ? slot1.fullNameEn : 'Holder 1';
+    const s2En = !isMissingOrUnclearValue(slot2.fullNameEn) ? slot2.fullNameEn : 'Holder 2';
+    const s1Ar = !isMissingOrUnclearValue(slot1.fullNameAr) ? slot1.fullNameAr : 'المتقدم الأول';
+    const s2Ar = !isMissingOrUnclearValue(slot2.fullNameAr) ? slot2.fullNameAr : 'المتقدم الثاني';
+    issues.push({
+      code: 'DIFFERENT_HOLDER_NAMES',
+      severity: 'CRITICAL',
+      titleEn: 'Cross-Card Identity Mismatch — Two Different People Uploaded',
+      titleAr: 'تضارب هوية خطير: الصورتان المرفوعتان تعودان لشخصين مختلفين',
+      detailEn: `Image 1 belongs to "${s1En}", whereas Image 2 belongs to a completely different person: "${s2En}". Both uploaded images must belong to the same cardholder.`,
+      detailAr: `الصورة الأولى تعود إلى "${s1Ar}"، بينما الصورة الثانية تعود إلى شخص آخر مختلف تماماً: "${s2Ar}".`,
+    });
+  }
+
+  // 4. Check Cross-Image Document / National ID Number Mismatch
+  const s1HasDocNum = !isMissingOrUnclearValue(slot1.docNumber);
+  const s2HasDocNum = !isMissingOrUnclearValue(slot2.docNumber);
+  if (s1HasDocNum && s2HasDocNum) {
+    const d1 = normalizeMultiScriptText(slot1.docNumber).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const d2 = normalizeMultiScriptText(slot2.docNumber).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (d1 && d2 && d1 !== d2) {
+      hasCrossCardConflict = true;
+      issues.push({
+        code: 'DIFFERENT_DOC_NUMBERS',
+        severity: 'CRITICAL',
+        titleEn: 'Mismatched National ID / Document Numbers Across Images',
+        titleAr: 'تضارب الرقم الوطني / رقم الوثيقة بين الصورتين المرفوعتين',
+        detailEn: `Image 1 has ID/Card Number "${slot1.docNumber}", whereas Image 2 has a different ID/Card Number "${slot2.docNumber}".`,
+        detailAr: `الصورة الأولى تحمل الرقم "${slot1.docNumber}" بينما الصورة الثانية تحمل رقماً مختلفاً "${slot2.docNumber}". يجب أن تعود الصورتان لنفس البطاقة.`,
+      });
+    }
+  }
+
+  // 5. Check Cross-Image Date of Birth Mismatch
+  const s1HasDob = !isMissingOrUnclearValue(slot1.dob) && slot1.dob !== 'N/A';
+  const s2HasDob = !isMissingOrUnclearValue(slot2.dob) && slot2.dob !== 'N/A';
+  if (s1HasDob && s2HasDob) {
+    const dob1 = normalizeMultiScriptText(slot1.dob).replace(/\//g, '-').trim();
+    const dob2 = normalizeMultiScriptText(slot2.dob).replace(/\//g, '-').trim();
+    if (dob1 && dob2 && dob1 !== dob2) {
+      hasCrossCardConflict = true;
+      issues.push({
+        code: 'DIFFERENT_DOB',
+        severity: 'CRITICAL',
+        titleEn: 'Mismatched Date of Birth Across Uploaded Images',
+        titleAr: 'تضارب تاريخ الولادة بين الصورتين المرفوعتين',
+        detailEn: `Image 1 states Date of Birth "${dob1}", whereas Image 2 states "${dob2}".`,
+        detailAr: `تاريخ الولادة في الصورة الأولى هو "${dob1}" بينما في الصورة الثانية هو "${dob2}".`,
+      });
+    }
+  }
+
+  let effectiveSide: 'FRONT' | 'BACK' | 'BOTH' = 'FRONT';
+  if (hasCrossCardConflict || hasWrongSideConflict) {
+    effectiveSide = slot1.detectedSide === 'BACK' ? 'BACK' : 'FRONT';
+  } else if (
+    (slot1.detectedSide === 'FRONT' && slot2.detectedSide === 'BACK') ||
+    (slot1.detectedSide === 'BACK' && slot2.detectedSide === 'FRONT') ||
+    slot1.detectedSide === 'BOTH' ||
+    slot2.detectedSide === 'BOTH'
+  ) {
+    effectiveSide = 'BOTH';
+  }
+
+  return {
+    isValidPair: !hasCrossCardConflict && !hasWrongSideConflict && effectiveSide === 'BOTH',
+    hasCrossCardConflict,
+    hasWrongSideConflict,
+    effectiveSide,
+    issues,
+  };
+}
+
+/**
  * Deterministic Schema-Aware & Side-Aware Missing Field Auditor for Iraqi & MENA Document Types.
  * Checks:
- * 1) Whether a dual-sided physical card (National ID, Residence Card, Driving License, etc.) is missing its
- *    mandatory FRONT or BACK side (whereas Passports only need a single Bio-Data page).
- * 2) Which fields are supposed to appear on the given DocumentType and flags any field that is missing or [غير واضح]
+ * 1) Any Cross-Card or Wrong-Side conflicts detected across Dual-Slot uploads.
+ * 2) Whether a dual-sided physical card (National ID, Foreign National ID, Residence Card, Driving License, etc.)
+ *    is missing its mandatory FRONT or BACK side (whereas Passports only need a single Bio-Data page).
+ * 3) Foreign ID CBI compliance rules (Specimen Zero-ID placeholder check & Supporting Passport/Iraqi Visa requirement).
+ * 4) Which fields are supposed to appear on the given DocumentType and flags any field that is missing or [غير واضح]
  *    without ever inventing or guessing the missing value.
  */
 export function auditMissingExpectedFields(
@@ -402,7 +1143,8 @@ export function auditMissingExpectedFields(
     mrzLine1?: string;
   },
   aiReportedMissing: MissingExpectedField[] = [],
-  uploadedSide?: 'FRONT' | 'BACK' | 'BOTH'
+  uploadedSide?: 'FRONT' | 'BACK' | 'BOTH',
+  pairValidation?: CardPairValidationResult
 ): MissingExpectedField[] {
   const results: MissingExpectedField[] = [];
   const seenKeys = new Set<string>();
@@ -414,25 +1156,65 @@ export function auditMissingExpectedFields(
     }
   };
 
+  // Surface any Cross-Card or Duplicate-Side conflicts first
+  if (pairValidation && pairValidation.issues.length > 0) {
+    for (const issue of pairValidation.issues) {
+      addMissing({
+        fieldKey: `pairConflict_${issue.code}`,
+        labelEn: issue.titleEn,
+        labelAr: issue.titleAr,
+        reasonEn: issue.detailEn,
+        reasonAr: issue.detailAr,
+        severity: issue.severity,
+      });
+    }
+  }
+
+  // Check if Document Number is a Specimen / Sample Zero-ID (e.g. UAE 784-0000-0000000-0)
+  if (isSpecimenZeroIdNumber(fields.docNumber)) {
+    addMissing({
+      fieldKey: 'specimenZeroSerial',
+      labelEn: `Specimen / Sample Placeholder ID Number (${fields.docNumber})`,
+      labelAr: `رقم هوية نموذجي / عينة ترويجية غير حقيقية (${fields.docNumber})`,
+      reasonEn: `The ID number "${fields.docNumber}" consists of all-zero specimen placeholder digits (0000-0000000-0). Official sample/template cards cannot be approved as live customer identity credentials.`,
+      reasonAr: `رقم الهوية "${fields.docNumber}" يتكون من أصفار نموذجية (0000-0000000-0) خاصة ببطاقات العينات الاسترشادية (Specimen) ولا يمكن اعتماده كوثيقة رسمية حقيقية.`,
+      severity: 'CRITICAL',
+    });
+  }
+
+  // Check Foreign National ID Supporting Co-Document Requirement under CBI Iraq Rules
+  if (docType === 'FOREIGN_NATIONAL_ID') {
+    addMissing({
+      fieldKey: 'foreignIdSupportingDocs',
+      labelEn: 'Mandatory Co-Documents: Valid Passport + Iraqi Residency / Entry Visa',
+      labelAr: 'الوثائق الرديفة الإلزامية: جواز سفر نافذ + إقامة عراقية / بطاقة سكن',
+      reasonEn:
+        'A Foreign National/Resident ID card (e.g. UAE Emirates ID) is not a standalone primary onboarding document under Central Bank of Iraq (CBI) AML/CFT directives. You must also attach the holder’s Passport and Iraqi Residency/Entry Visa or route to Enhanced Due Diligence (EDD).',
+      reasonAr:
+        'بطاقة الهوية الأجنبية أو الخليجية (مثل الهوية الإماراتية) لا تُعد وثيقة مستقلة كافية بمفردها لدى البنك المركزي العراقي؛ يجب إرفاق جواز السفر النافذ وتأشيرة الإقامة/بطاقة السكن العراقية أو إحالة الملف للعناية الواجبة المشددة (EDD).',
+      severity: 'WARNING',
+    });
+  }
+
   // Check Dual-Sided Card Completeness (Front + Back required for cards; Passports exempt)
   const sidePolicy = getDocumentSideRequirement(docType);
   if (sidePolicy.requiresBothSides && uploadedSide && uploadedSide !== 'BOTH') {
     if (uploadedSide === 'FRONT') {
       addMissing({
         fieldKey: 'backSideUpload',
-        labelEn: 'Reverse Side of Card (الوجه الخلفي / ظهر البطاقة)',
+        labelEn: 'Reverse Side of Card (Back Side)',
         labelAr: 'الوجه الخلفي للبطاقة (ظهر البطاقة)',
-        reasonEn: `All physical cards (${docType}) have a front and back and require BOTH sides. Only the FRONT side was uploaded; reverse-side fields (${sidePolicy.backFieldsSummaryEn}) cannot be verified without the back side.`,
-        reasonAr: `جميع البطاقات (${docType}) تحتوي على وجه أمامي وخلفي ويجب رفعهما معاً. تم رفع الوجه الأمامي فقط؛ حقول الظهر (${sidePolicy.backFieldsSummaryAr}) لا يمكن التحقق منها بدون صورة الظهر.`,
+        reasonEn: `All physical cards (${docType}) have a front and back and require BOTH sides. Only the FRONT side was provided; reverse-side fields (${sidePolicy.backFieldsSummaryEn}) cannot be verified without the back side.`,
+        reasonAr: `جميع البطاقات تحتوي على وجه أمامي وخلفي ويجب رفعهما معاً. تم توفير الوجه الأمامي فقط؛ حقول الظهر (${sidePolicy.backFieldsSummaryAr}) لا يمكن التحقق منها بدون صورة الظهر.`,
         severity: 'CRITICAL',
       });
     } else if (uploadedSide === 'BACK') {
       addMissing({
         fieldKey: 'frontSideUpload',
-        labelEn: 'Front Side of Card (الوجه الأمامي للبطاقة)',
+        labelEn: 'Front Side of Card',
         labelAr: 'الوجه الأمامي للبطاقة',
         reasonEn: `All physical cards (${docType}) require BOTH front and back images. Only the BACK side was uploaded; front-side fields (${sidePolicy.frontFieldsSummaryEn}) are missing.`,
-        reasonAr: `جميع البطاقات (${docType}) تتطلب رفع الوجهين الأمامي والخلفي. تم رفع الظهر فقط؛ حقول الوجه الأمامي (${sidePolicy.frontFieldsSummaryAr}) مفقودة.`,
+        reasonAr: `جميع البطاقات تتطلب رفع الوجهين الأمامي والخلفي. تم رفع الظهر فقط؛ حقول الوجه الأمامي (${sidePolicy.frontFieldsSummaryAr}) مفقودة.`,
         severity: 'CRITICAL',
       });
     }
@@ -461,14 +1243,14 @@ export function auditMissingExpectedFields(
       fieldKey: 'fullName',
       labelEn:
         docType === 'IRQ_RESIDENCE_CARD'
-          ? 'Head of Household Name (اسم رب الأسرة)'
-          : 'Holder Full Name (الاسم الكامل واللقب)',
+          ? 'Head of Household Name'
+          : 'Holder Full Name & Surname',
       labelAr:
         docType === 'IRQ_RESIDENCE_CARD'
           ? 'اسم رب الأسرة على بطاقة السكن'
           : 'الاسم الكامل واللقب لصاحب الوثيقة',
       reasonEn: `Mandatory holder name field is supposed to appear on ${docType} but is missing or unreadable on the card.`,
-      reasonAr: `حقل الاسم الأساسي مفترض وجوده على ${docType} ولكنه مفقود أو غير واضح في البطاقة.`,
+      reasonAr: `حقل الاسم الأساسي مفترض وجوده على البطاقة ولكنه مفقود أو غير واضح.`,
       severity: 'CRITICAL',
     });
   }
@@ -479,28 +1261,27 @@ export function auditMissingExpectedFields(
       fieldKey: 'docNumber',
       labelEn:
         docType === 'IRQ_RESIDENCE_CARD'
-          ? 'Residence Card / Form Number (رقم استمارة بطاقة السكن)'
-          : 'Document / National ID Number (الرقم الوطني / رقم الوثيقة)',
+          ? 'Residence Card / Form Number'
+          : 'Document / National ID Number',
       labelAr:
         docType === 'IRQ_RESIDENCE_CARD'
           ? 'رقم استمارة بطاقة السكن'
           : 'الرقم الوطني أو التسلسلي للوثيقة',
       reasonEn: `Serial / ID number is required on ${docType} but was missing or occluded on the uploaded image.`,
-      reasonAr: `رقم البطاقة أو الاستمارة مفترض وجوده على ${docType} ولكنه غير موجود في الصورة.`,
+      reasonAr: `رقم البطاقة أو الاستمارة مفترض وجوده على الوثيقة ولكنه غير موجود في الصورة.`,
       severity: 'CRITICAL',
     });
   }
 
   // Document-type-specific schema rules
   if (docType === 'IRQ_RESIDENCE_CARD' || docType === 'IRQ_RATION_CARD') {
-    // Iraqi Residence Card (بطاقة السكن) & Ration Card (البطاقة التموينية) require Residential Address (Mahalla / Zukak / Dar)
     if (isMissingOrUnclearValue(fields.address)) {
       addMissing({
         fieldKey: 'address',
-        labelEn: 'Residential Address: Mahalla / Zukak / Dar (عنوان السكن: المحلة / الزقاق / الدار)',
+        labelEn: 'Residential Address: Mahalla / Zukak / Dar',
         labelAr: 'عنوان السكن الكامل (المحلة / الزقاق / الدار)',
         reasonEn:
-          'Iraqi Residence / Ration Card must state Mahalla, Zukak, and Dar (المحلة / الزقاق / الدار), but this field is missing from the card.',
+          'Iraqi Residence / Ration Card must state Mahalla, Zukak, and Dar, but this field is missing from the card.',
         reasonAr:
           'يجب أن تتضمن بطاقة السكن أو التموينية حقول (المحلة / الزقاق / الدار)، ولكن هذا الحقل مفقود من البطاقة.',
         severity: 'CRITICAL',
@@ -509,10 +1290,10 @@ export function auditMissingExpectedFields(
     if (isMissingOrUnclearValue(fields.issueDate) || fields.issueDate === 'N/A') {
       addMissing({
         fieldKey: 'issueDate',
-        labelEn: 'Residence Card Issue Date (تاريخ تنظيم بطاقة السكن)',
+        labelEn: 'Residence Card Issue Date',
         labelAr: 'تاريخ تنظيم / إصدار بطاقة السكن',
         reasonEn:
-          'Issue date is expected on Iraqi Residence Card (بطاقة السكن) (often on reverse side) but was not found on the card.',
+          'Issue date is expected on Iraqi Residence Card (often on reverse side) but was not found on the card.',
         reasonAr: 'تاريخ تنظيم بطاقة السكن مفترض وجوده ولكنه غير موجود على البطاقة.',
         severity: 'WARNING',
       });
@@ -520,16 +1301,17 @@ export function auditMissingExpectedFields(
     if (isMissingOrUnclearValue(fields.familyNumber)) {
       addMissing({
         fieldKey: 'familyNumber',
-        labelEn: 'Information Office / Registry Number (رقم السجل / مكتب المعلومات)',
+        labelEn: 'Information Office / Registry Number',
         labelAr: 'رقم السجل أو العائلة في مكتب المعلومات',
         reasonEn:
-          'Registry / Family number is expected on Iraqi Residence Card (بطاقة السكن) but is missing.',
+          'Registry / Family number is expected on Iraqi Residence Card but is missing.',
         reasonAr: 'رقم السجل أو العائلة مفترض وجوده على بطاقة السكن ولكنه مفقود.',
         severity: 'WARNING',
       });
     }
   } else if (
     docType === 'IRQ_NATIONAL_ID' ||
+    docType === 'FOREIGN_NATIONAL_ID' ||
     docType === 'IRQ_CIVIL_STATUS_ID' ||
     docType === 'IRQ_PASSPORT' ||
     docType === 'FOREIGN_PASSPORT' ||
@@ -539,25 +1321,25 @@ export function auditMissingExpectedFields(
     if (isMissingOrUnclearValue(fields.dob) || fields.dob === 'N/A') {
       addMissing({
         fieldKey: 'dob',
-        labelEn: 'Date of Birth (تاريخ الولادة)',
-        labelAr: 'تاريخ الولادة (YYYY/MM/DD)',
-        reasonEn: `Date of Birth (تاريخ الولادة) is mandatory on ${docType} but is missing or unreadable on the uploaded card.`,
-        reasonAr: `حقل تاريخ الولادة إلزامي على ${docType} ولكنه غير موجود أو غير واضح على البطاقة.`,
+        labelEn: 'Date of Birth',
+        labelAr: 'تاريخ الولادة',
+        reasonEn: `Date of Birth is mandatory on ${docType} but is missing or unreadable on the uploaded card.`,
+        reasonAr: `حقل تاريخ الولادة إلزامي على الوثيقة ولكنه غير موجود أو غير واضح على البطاقة.`,
         severity: 'CRITICAL',
       });
     }
 
-    // National ID, Passport, and Driving License require Expiry Date
+    // National ID, Foreign ID, Passport, and Driving License require Expiry Date
     if (
       docType !== 'IRQ_CIVIL_STATUS_ID' &&
       (isMissingOrUnclearValue(fields.expiryDate) || fields.expiryDate === 'N/A')
     ) {
       addMissing({
         fieldKey: 'expiryDate',
-        labelEn: 'Expiration Date (تاريخ النفاذ / الانتهاء)',
+        labelEn: 'Expiration Date',
         labelAr: 'تاريخ النفاذ / انتهاء الصلاحية',
-        reasonEn: `Expiration Date (تاريخ النفاذ) is supposed to be printed on ${docType} (on the BACK of National ID or Bio-Page of Passport) but is missing.`,
-        reasonAr: `حقل تاريخ النفاذ مفترض وجوده على ${docType} ولكنه مفقود من البطاقة.`,
+        reasonEn: `Expiration Date is supposed to be printed on ${docType} (on the BACK of Iraqi National ID or Front/Back of Foreign ID / Bio-Page of Passport) but is missing.`,
+        reasonAr: `حقل تاريخ النفاذ مفترض وجوده على الوثيقة ولكنه مفقود من البطاقة.`,
         severity: 'CRITICAL',
       });
     }
@@ -565,10 +1347,10 @@ export function auditMissingExpectedFields(
     if (isMissingOrUnclearValue(fields.issueDate) || fields.issueDate === 'N/A') {
       addMissing({
         fieldKey: 'issueDate',
-        labelEn: 'Issue Date (تاريخ الإصدار)',
+        labelEn: 'Issue Date',
         labelAr: 'تاريخ الإصدار',
-        reasonEn: `Issue Date (تاريخ الإصدار) is expected on ${docType} (often on reverse side) and was not found.`,
-        reasonAr: `تاريخ الإصدار مفترض وجوده على ${docType} ولكنه غير ظاهر في الصورة.`,
+        reasonEn: `Issue Date is expected on ${docType} (often on reverse side) and was not found.`,
+        reasonAr: `تاريخ الإصدار مفترض وجوده على الوثيقة ولكنه غير ظاهر في الصورة.`,
         severity: 'WARNING',
       });
     }
@@ -586,6 +1368,25 @@ export function evaluateApplicantWithRules(
   reasonEn: string;
   reasonAr: string;
 } {
+  // 0. Check Cross-Card Identity / Document Number Conflict (e.g. Two different people's IDs uploaded)
+  const docWithCrossConflict = applicant.documents.find(
+    (d) => d.cardPairValidation?.hasCrossCardConflict
+  );
+  if (docWithCrossConflict && docWithCrossConflict.cardPairValidation) {
+    const conflictTitlesEn = docWithCrossConflict.cardPairValidation.issues
+      .map((i) => i.titleEn)
+      .join(' · ');
+    const conflictTitlesAr = docWithCrossConflict.cardPairValidation.issues
+      .map((i) => i.titleAr)
+      .join(' · ');
+    return {
+      nextStatus: 'rejected',
+      stage9Outcome: 'AUTO_REJECTED',
+      reasonEn: `AUTO_REJECTED (Stage 9 · Cross-Image Fraud & Identity Conflict Gate): ${conflictTitlesEn}.`,
+      reasonAr: `رفض تلقائي (المرحلة 9 · بوابة تضارب الهوية بين الصورتين): ${conflictTitlesAr}.`,
+    };
+  }
+
   // 1. Check Sanctions / PEP hits or forged MRZ first
   const hasTamperedMrz = applicant.documents.some((d) => d.mrzModulo10Valid === false);
   if (
@@ -599,12 +1400,43 @@ export function evaluateApplicantWithRules(
         ? 'AUTO_REJECTED (Stage 9): Deterministic ICAO 9303 Modulo-10 [7,3,1] MRZ check-digit failure.'
         : 'AUTO_REJECTED (Stage 9): Positive match on CBI / OFAC / UN Sanctions or PEP screening.',
       reasonAr: hasTamperedMrz
-        ? 'رفض تلقائي (المرحلة 9): فشل التحقق الرياضي Modulo-10 [7,3,1] لشريط MRZ.'
+        ? 'رفض تلقائي (المرحلة 9): فشل التحقق الرياضي لشريط القراءة الآلي.'
         : 'رفض تلقائي (المرحلة 9): تطابق إيجابي في قوائم البنك المركزي العراقي أو العقوبات الدولية.',
     };
   }
 
-  // 2. Check Dual-Sided Card Completeness (Front + Back required for cards, except Passports)
+  // 1b. Check Specimen / Sample Zero-ID Number (e.g., UAE 784-0000-0000000-0)
+  const specimenDoc = applicant.documents.find(
+    (d) => d.isSpecimenZeroId || isSpecimenZeroIdNumber(d.docNumber)
+  );
+  if (specimenDoc) {
+    return {
+      nextStatus: 'flagged',
+      stage9Outcome: 'INSUFFICIENT_DATA',
+      reasonEn: `INSUFFICIENT_DATA (Stage 9 · Specimen / Sample Document Gate): Document number "${specimenDoc.docNumber}" is an all-zero specimen template (${specimenDoc.issuingCountryEn || 'Foreign ID'}) and cannot be used as a live identity credential.`,
+      reasonAr: `بيانات غير كافية (المرحلة 9 · بوابة الوثائق النموذجية Specimen): رقم الوثيقة "${specimenDoc.docNumber}" هو رقم نموذجي صفري خاص بالعينات الاسترشادية ولا يمثل هوية حقيقية صالحة للاعتماد.`,
+    };
+  }
+
+  // 2. Check Wrong Side Conflict (e.g. Two FRONT images uploaded instead of FRONT + BACK)
+  const docWithWrongSide = applicant.documents.find(
+    (d) => d.cardPairValidation?.hasWrongSideConflict
+  );
+  if (docWithWrongSide && docWithWrongSide.cardPairValidation) {
+    const firstIssue = docWithWrongSide.cardPairValidation.issues[0];
+    return {
+      nextStatus: 'flagged',
+      stage9Outcome: 'INSUFFICIENT_DATA',
+      reasonEn: `INSUFFICIENT_DATA (Stage 9 · Duplicate Card Side Gate): ${
+        firstIssue?.detailEn || 'Both uploaded images are the same side of the card; reverse side is missing.'
+      }`,
+      reasonAr: `بيانات غير كافية (المرحلة 9 · تكرار نفس وجه البطاقة): ${
+        firstIssue?.detailAr || 'تم رفع نفس وجه البطاقة مرتين والوجه الآخر مفقود.'
+      }`,
+    };
+  }
+
+  // 3. Check Dual-Sided Card Completeness (Front + Back required for cards, except Passports)
   const docMissingSide = applicant.documents.find(
     (doc) => getDocumentSideRequirement(doc.type).requiresBothSides && doc.side !== 'BOTH'
   );
@@ -612,15 +1444,23 @@ export function evaluateApplicantWithRules(
     const missingWhichSideEn = docMissingSide.side === 'FRONT' ? 'BACK side' : 'FRONT side';
     const missingWhichSideAr =
       docMissingSide.side === 'FRONT' ? 'الوجه الخلفي (الظهر)' : 'الوجه الأمامي';
+    const foreignNoteEn =
+      docMissingSide.type === 'FOREIGN_NATIONAL_ID' || docMissingSide.isForeignDocument
+        ? ` Note: This is a Foreign ID (${docMissingSide.issuingCountryEn}); under CBI Iraq rules, it also requires a supporting Passport + Iraqi Residency Visa/Card.`
+        : '';
+    const foreignNoteAr =
+      docMissingSide.type === 'FOREIGN_NATIONAL_ID' || docMissingSide.isForeignDocument
+        ? ` ملاحظة: هذه هوية أجنبية (${docMissingSide.issuingCountryAr}) وتتطلب أيضاً جواز سفر نافذ وإقامة عراقية وفق ضوابط البنك المركزي العراقي.`
+        : '';
     return {
       nextStatus: 'flagged',
       stage9Outcome: 'INSUFFICIENT_DATA',
-      reasonEn: `INSUFFICIENT_DATA (Stage 9 · Dual-Side Card Gate): ${docMissingSide.type} is a dual-sided card and is missing its mandatory ${missingWhichSideEn} (only ${docMissingSide.side} uploaded).`,
-      reasonAr: `بيانات غير كافية (المرحلة 9 · بوابة الوجهين للبطاقات): الوثيقة (${docMissingSide.type}) تتطلب رفع الوجهين وينقصها ${missingWhichSideAr}.`,
+      reasonEn: `INSUFFICIENT_DATA (Stage 9 · Dual-Side Card Gate): ${docMissingSide.type} is a dual-sided card and is missing its mandatory ${missingWhichSideEn} (only ${docMissingSide.side} uploaded).${foreignNoteEn}`,
+      reasonAr: `بيانات غير كافية (المرحلة 9 · بوابة الوجهين للبطاقات): الوثيقة المرفقة تتطلب رفع الوجهين وينقصها ${missingWhichSideAr}.${foreignNoteAr}`,
     };
   }
 
-  // 3. Check Schema-Aware Missing Expected Fields on any submitted card (Zero-Hallucination Invariant)
+  // 3b. Check Schema-Aware Missing Expected Fields on any submitted card (Zero-Hallucination Invariant)
   const criticalMissingFields = applicant.documents.flatMap((doc) =>
     (doc.missingExpectedFields || []).filter((f) => f.severity === 'CRITICAL')
   );
@@ -640,7 +1480,28 @@ export function evaluateApplicantWithRules(
     };
   }
 
-  // 3. Check Unknown Document or Mandatory Human Review document categories (e.g., Power of Attorney)
+  // 3c. Check Foreign National ID / Foreign Passport CBI Enhanced Due Diligence (EDD) Gate
+  const foreignDoc = applicant.documents.find(
+    (d) =>
+      d.type === 'FOREIGN_NATIONAL_ID' ||
+      d.type === 'FOREIGN_PASSPORT' ||
+      d.isForeignDocument === true ||
+      (d.issuingCountryCode && d.issuingCountryCode !== 'IRQ')
+  );
+  if (foreignDoc) {
+    const hasSupportingPassport = applicant.documents.some(
+      (d) => d.type === 'FOREIGN_PASSPORT' || d.type === 'IRQ_PASSPORT'
+    );
+    const hasIraqResidency = applicant.documents.some((d) => d.type === 'IRQ_RESIDENCE_CARD');
+    return {
+      nextStatus: 'flagged',
+      stage9Outcome: 'HUMAN_REVIEW',
+      reasonEn: `HUMAN_REVIEW (Stage 9 · Foreign Document Rejection Gate): Foreign document detected (${foreignDoc.issuingCountryEn || 'Foreign Jurisdiction'} · Code: ${foreignDoc.issuingCountryCode || 'FOR'}). Under national KYC policy, ONLY official Iraqi documents are acceptable. All foreign documents are strictly rejected from automated acceptance and are permanently reverted to human compliance review.`,
+      reasonAr: `مراجعة بشرية إلزامية (المرحلة 9 · بوابة استبعاد الوثائق الأجنبية): تم رصد وثيقة أجنبية صادرة من (${foreignDoc.issuingCountryAr || 'دولة أجنبية'} — الرمز: ${foreignDoc.issuingCountryCode || 'أجنبي'}). وفق السياسة الوطنية، الوثائق العراقية فقط هي المقبولة؛ ولا يمكن قبول أي وثيقة أجنبية آلياً على الإطلاق بل تُحال حتماً للمراجعة والتدقيق البشري اليدوي.`,
+    };
+  }
+
+  // 3d. Check Unknown Document or Mandatory Human Review document categories (e.g., Power of Attorney)
   const hasUnknownOrLegalDoc = applicant.documents.some(
     (d) =>
       d.type === 'UNKNOWN_DOCUMENT' ||
@@ -654,7 +1515,7 @@ export function evaluateApplicantWithRules(
       reasonEn:
         'HUMAN_REVIEW (Stage 9): Dossier contains UNKNOWN_DOCUMENT or Legal Power of Attorney (Category H) requiring officer review.',
       reasonAr:
-        'مراجعة بشرية (المرحلة 9): يحتوي الملف على وثيقة غير مصنفة أو وكالة قانونية (الفئة H) تتطلب تدقيق مسؤول الامتثال.',
+        'مراجعة بشرية (المرحلة 9): يحتوي الملف على وثيقة غير مصنفة أو وكالة قانونية (الفئة ح) تتطلب تدقيق مسؤول الامتثال.',
     };
   }
 
@@ -688,7 +1549,7 @@ export function evaluateApplicantWithRules(
         nextStatus: 'flagged',
         stage9Outcome: 'INSUFFICIENT_DATA',
         reasonEn:
-          'INSUFFICIENT_DATA (Stage 9): High-risk profile missing Iraqi Residence Card (بطاقة السكن) or Ration Card.',
+          'INSUFFICIENT_DATA (Stage 9): High-risk profile missing Iraqi Residence Card or Ration Card.',
         reasonAr:
           'بيانات غير كافية (المرحلة 9): ملف عالي المخاطر يفتقر إلى بطاقة السكن أو البطاقة التموينية.',
       };
@@ -756,13 +1617,22 @@ export function runAutomatedBatchWorkflow(
       status: evaluation.nextStatus,
     }));
 
+    const outcomeAr =
+      evaluation.stage9Outcome === 'AUTO_APPROVED'
+        ? 'اعتماد تلقائي'
+        : evaluation.stage9Outcome === 'AUTO_REJECTED'
+          ? 'رفض تلقائي'
+          : evaluation.stage9Outcome === 'INSUFFICIENT_DATA'
+            ? 'بيانات غير كافية'
+            : 'مراجعة بشرية';
+
     const newAudit: AuditEvent = {
       id: `aud-${Date.now()}-${applicant.id}`,
       timestamp: '2026-10-17 08:40 UTC',
       actorEn: 'UniversalKYCPipeline v2.0.0-IRQ',
-      actorAr: 'محرك روسترو الشامل v2.0.0-IRQ',
+      actorAr: 'محرك روسترو الشامل للتحقق',
       actionEn: `Stage 9 Outcome: ${evaluation.stage9Outcome} (${evaluation.nextStatus.toUpperCase()})`,
-      actionAr: `نتيجة المرحلة 9: ${evaluation.stage9Outcome}`,
+      actionAr: `نتيجة المرحلة 9: ${outcomeAr}`,
       noteEn: evaluation.reasonEn,
       noteAr: evaluation.reasonAr,
       cbiLaw78HmacReceipt: 'HMAC-SHA256-CBI78-9f4e2a10d8c4b712e3019284a761c002',

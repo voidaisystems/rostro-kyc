@@ -662,14 +662,27 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname.startsWith('/assets/')) {
-    const assetName = path.basename(pathname);
-    const assetPath = path.join(DIST_DIR, 'assets', assetName);
+    const relPath = pathname.replace(/^\/assets\//, '');
+    let assetPath = path.join(DIST_DIR, 'assets', relPath);
+    if (!fs.existsSync(assetPath)) {
+      const publicPath = path.join(__dirname, 'public', 'assets', relPath);
+      if (fs.existsSync(publicPath)) {
+        assetPath = publicPath;
+      } else {
+        const flatPath = path.join(DIST_DIR, 'assets', path.basename(pathname));
+        if (fs.existsSync(flatPath)) {
+          assetPath = flatPath;
+        }
+      }
+    }
+    const ext = path.extname(assetPath).toLowerCase();
     let mime = 'application/octet-stream';
-    if (assetName.endsWith('.js')) mime = 'application/javascript; charset=utf-8';
-    else if (assetName.endsWith('.css')) mime = 'text/css; charset=utf-8';
-    else if (assetName.endsWith('.svg')) mime = 'image/svg+xml';
-    else if (assetName.endsWith('.png')) mime = 'image/png';
-    else if (assetName.endsWith('.jpg') || assetName.endsWith('.jpeg')) mime = 'image/jpeg';
+    if (ext === '.js') mime = 'application/javascript; charset=utf-8';
+    else if (ext === '.css') mime = 'text/css; charset=utf-8';
+    else if (ext === '.svg') mime = 'image/svg+xml';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    else if (ext === '.json') mime = 'application/json; charset=utf-8';
     return serveStaticFile(res, assetPath, mime);
   }
 

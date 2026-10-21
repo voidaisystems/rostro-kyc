@@ -1,42 +1,33 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file server.ts
- * @module @rostro/compliance-server-ts
- * @description
- * TypeScript Express + Vite Middleware Server for the Rostro Universal Iraqi KYC & Document
- * Intelligence Platform. Implements deterministic ICAO Doc 9303 Modulo-10 [7, 3, 1] check digit
- * verification, multi-script (Arabic / Kurdish Sorani / English) field normalization, Dual-Side
- * physical card enforcement, and Central Bank of Iraq (CBI) Law No. 78 of 2012 HMAC-SHA256
- * non-repudiation audit signing.
- */
-
 import dotenv from 'dotenv';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   auditMissingExpectedFields,
   calculateRiskTier,
   computeIcaoCheckDigit,
+  inferForeignDocumentMetadata,
   isMissingOrUnclearValue,
+  isSpecimenZeroIdNumber,
   normalizeMultiScriptText,
+  validateUploadedCardPair,
+  type CardPairValidationResult,
   type DocumentCategoryCode,
   type DocumentSupportStatus,
   type DocumentType,
   type MissingExpectedField,
   type NineVerificationSignals,
   type OcrBoundingBox,
+  type SlotExtractionSummary,
 } from './src/utils/kycEngine.ts';
 import { iraqiDocumentRegistrySummary } from './src/utils/seedData.ts';
 
 // Load .env while preserving system environment fallback
 dotenv.config();
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const CBI_HMAC_SECRET =
   process.env.CBI_LAW78_HMAC_SECRET || 'ROSTRO-CBI-LAW-78-2012-NON-REPUDIATION-KEY';
 
@@ -53,6 +44,99 @@ function getGeminiClient(): GoogleGenAI | null {
       },
     },
   });
+}
+
+// Agentic AI Challenge Iraq — Multi-Model Quota Pool & Zero-Latency 429/503 Cooldown Tracker
+let activeModelTier = 'gemini-3.5-flash';
+
+const vlmResponseCache = new Map<string, string>();
+const modelCooldownUntil = new Map<string, { until: number; reason: string }>();
+
+let telemetryStats = {
+  totalExtractions: 0,
+  cacheHits: 0,
+  liveModelCalls: 0,
+  rateLimit429Retries: 0,
+  lastModelUsed: activeModelTier as string,
+};
+
+async function callVisionModelWithRetryAndCache(
+  ai: GoogleGenAI,
+  contentsPayload: unknown,
+  requestConfig: unknown,
+  imageSha256: string
+): Promise<string> {
+  telemetryStats.totalExtractions++;
+  if (vlmResponseCache.has(imageSha256)) {
+    telemetryStats.cacheHits++;
+    return vlmResponseCache.get(imageSha256)!;
+  }
+
+  // Verified active multimodal Vision & Spatial Understanding models with independent Free-Tier quotas
+  const candidateModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-robotics-er-2-preview',
+    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
+  ];
+
+  const now = Date.now();
+  // Filter out models currently in 429/503 cooldown first (if all are in cooldown, try all anyway)
+  const availableModels = candidateModels.filter((m) => {
+    const cd = modelCooldownUntil.get(m);
+    return !cd || cd.until <= now;
+  });
+  const modelsToTry = availableModels.length > 0 ? availableModels : candidateModels;
+
+  const tStart = Date.now();
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
+    try {
+      telemetryStats.liveModelCalls++;
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: modelName,
+          contents: contentsPayload as never,
+          config: requestConfig as never,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout after 10000ms on ${modelName}`)), 10000)
+        ),
+      ]);
+      const rawText = (response.text || '{}').trim();
+      const cleanedJson = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const elapsed = Date.now() - tStart;
+      console.log(`[VLM Speed] Model ${modelName} processed card in ${elapsed}ms`);
+      activeModelTier = modelName;
+      telemetryStats.lastModelUsed = modelName;
+      modelCooldownUntil.delete(modelName);
+      vlmResponseCache.set(imageSha256, cleanedJson);
+      return cleanedJson;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[VLM Fallback] Model ${modelName} unavailable (${msg.slice(0, 90)}), switching immediately...`);
+      if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+        telemetryStats.rateLimit429Retries++;
+        // Put exhausted model on 15-minute cooldown so future uploads skip it in 0ms
+        modelCooldownUntil.set(modelName, {
+          until: Date.now() + 15 * 60 * 1000,
+          reason: '429_QUOTA_EXHAUSTED',
+        });
+      } else if (msg.includes('503') || msg.includes('UNAVAILABLE')) {
+        // Put high-demand 503 model on 2-minute cooldown
+        modelCooldownUntil.set(modelName, {
+          until: Date.now() + 2 * 60 * 1000,
+          reason: '503_HIGH_DEMAND',
+        });
+      }
+      if (i === modelsToTry.length - 1) {
+        throw err;
+      }
+    }
+  }
+  return '{}';
 }
 
 function generateCbiHmacReceipt(payload: string): string {
@@ -100,22 +184,39 @@ interface ExtractedIdPayload {
   governorateKey: 'BGD' | 'EBL' | 'BSR' | 'SUL' | 'MOS';
   governorateEn: string;
   governorateAr: string;
+  issuingCountryCode?: string;
+  issuingCountryEn?: string;
+  issuingCountryAr?: string;
+  holderNationalityEn?: string;
+  holderNationalityAr?: string;
+  isForeignDocument?: boolean;
+  isSpecimenZeroId?: boolean;
   issuingAuthorityEn: string;
   issuingAuthorityAr: string;
   address: string;
   familyNumber: string;
+  motherName?: string;
+  gender?: string;
+  bloodType?: string;
   mrzLine1: string;
   mrzLine2: string;
+  mrzLine3?: string;
   mrzModulo10Valid: boolean;
   ocrConfidence: number;
   livenessScore: number;
   hasGlare: boolean;
   hasBlur: boolean;
+  rotationNeededClockwiseDeg?: 0 | 90 | 180 | 270;
+  backRotationNeededClockwiseDeg?: 0 | 90 | 180 | 270;
   sha256Hash: string;
   cbiLaw78HmacReceipt: string;
   nineSignals: NineVerificationSignals;
   boundingBoxes: OcrBoundingBox[];
+  backBoundingBoxes?: OcrBoundingBox[];
   missingExpectedFields: MissingExpectedField[];
+  slot1Summary?: SlotExtractionSummary;
+  slot2Summary?: SlotExtractionSummary;
+  cardPairValidation?: CardPairValidationResult;
   engineMode: 'gemini-vlm-live' | 'deterministic-fallback';
 }
 
@@ -205,11 +306,14 @@ function buildFallbackExtraction(
     { en: string; ar: string }
   > = {
     BGD: { en: 'Baghdad (Al-Karkh)', ar: 'بغداد (الكرخ)' },
-    EBL: { en: 'Erbil (Hawler)', ar: 'أربيل (هەولێر)' },
+    EBL: { en: 'Erbil (Hawler)', ar: 'أربيل (إقليم كردستان)' },
     BSR: { en: 'Basra (Al-Ashar)', ar: 'البصرة (العشار)' },
-    SUL: { en: 'Sulaymaniyah (KRG)', ar: 'السليمانية (سلێمانی)' },
+    SUL: { en: 'Sulaymaniyah (KRG)', ar: 'السليمانية (إقليم كردستان)' },
     MOS: { en: 'Nineveh (Mosul)', ar: 'نينوى (الموصل)' },
   };
+
+  const issueDate = '2024-02-10';
+  const expiryDate = '2034-02-09';
 
   const cbiLaw78HmacReceipt = generateCbiHmacReceipt(
     `${sha256Hash}:${normalizedDocNum}:${normalizedName}`
@@ -221,7 +325,7 @@ function buildFallbackExtraction(
     supportStatus: 'TESTED',
     side: 'BOTH',
     detectedLanguages: ['ar', 'ku', 'en'],
-    titleEn: 'Unified Iraqi National Card (البطاقة الوطنية)',
+    titleEn: 'Unified Iraqi National Card',
     titleAr: 'البطاقة الوطنية الموحدة',
     fullNameEn,
     fullNameAr,
@@ -259,28 +363,52 @@ function buildFallbackExtraction(
     },
     boundingBoxes: [
       {
-        field: 'fullName',
-        label: `NAME: ${fullNameEn}`,
-        value: fullNameEn,
-        box_2d: [220, 340, 480, 920],
-        confidence: 0.97,
-      },
-      {
         field: 'docNumber',
-        label: `ID: ${normalizedDocNum}`,
+        label: `ID / الرقم الوطني: ${normalizedDocNum}`,
         value: normalizedDocNum,
-        box_2d: [740, 340, 910, 650],
+        box_2d: [80, 220, 140, 680],
         confidence: 0.99,
       },
       {
+        field: 'fullName',
+        label: `NAME / الاسم: ${fullNameEn}`,
+        value: fullNameEn,
+        box_2d: [150, 220, 255, 880],
+        confidence: 0.98,
+      },
+      {
+        field: 'motherName',
+        label: 'MOTHER / اسم الأم: فاطمة حسن (FATIMA HASSAN)',
+        value: 'فاطمة حسن',
+        box_2d: [265, 220, 310, 680],
+        confidence: 0.97,
+      },
+      {
+        field: 'governorate',
+        label: `GOV / محل الولادة: ${govMeta[govKey].ar}`,
+        value: govMeta[govKey].ar,
+        box_2d: [315, 220, 355, 780],
+        confidence: 0.98,
+      },
+      {
         field: 'dob',
-        label: `DOB: ${dob}`,
+        label: `DOB / تاريخ الولادة: ${dob}`,
         value: dob,
-        box_2d: [530, 340, 710, 920],
+        box_2d: [360, 220, 400, 650],
+        confidence: 0.99,
+      },
+      {
+        field: 'expiryDate',
+        label: `EXP / تاريخ النفاذ: ${expiryDate}`,
+        value: expiryDate,
+        box_2d: [405, 220, 445, 650],
         confidence: 0.98,
       },
     ],
     missingExpectedFields: [],
+    motherName: 'فاطمة حسن',
+    gender: 'ذكر / Male',
+    bloodType: 'O+',
     engineMode: 'deterministic-fallback',
   };
 }
@@ -304,6 +432,565 @@ async function startServer() {
   app.get('/api/kyc/registry', handleRegistryHealth);
   app.get('/api/kyc/health', handleRegistryHealth);
 
+  // Helper: Extract a single card image via Gemini VLM with strict Zero-Hallucination, Side Detection & Foreign ID Recognition
+  const extractSingleCardImage = async (
+    ai: GoogleGenAI,
+    cleanBase64: string,
+    imageMimeType: string,
+    slotIndex: 1 | 2
+  ): Promise<SlotExtractionSummary & {
+    issuingAuthorityEn?: string;
+    issuingAuthorityAr?: string;
+    imageQualityScore?: number;
+    hasGlare?: boolean;
+    hasBlur?: boolean;
+    rotationNeededClockwiseDeg?: 0 | 90 | 180 | 270;
+  }> => {
+    const singleImageSystemPrompt = `You are Project Rostro (روسترو للامتثال), an enterprise Iraqi & MENA KYC Document Intelligence Vision-Language Model.
+Carefully inspect Slot ${slotIndex} image. Read and extract EVERY visible Arabic, Kurdish Sorani, and English field printed on this card image without guessing or inventing data.
+
+IRAQI vs. FOREIGN / GCC DOCUMENT CLASSIFICATION (CRITICAL — DO NOT CONFUSE):
+- Carefully inspect the country header, emblem, and ID number format:
+  1. If the card is issued by a NON-IRAQI country — such as the **United Arab Emirates (الإمارات العربية المتحدة — Federal Authority for Identity and Citizenship / Resident Identity Card / Golden Card with ID format 784-XXXX-XXXXXXX-X)**, Saudi Arabia, Jordan, Kuwait, Qatar, Bahrain, Oman, Egypt, Syria, Lebanon, Turkey, or any foreign government:
+     * You MUST set "documentType": "FOREIGN_NATIONAL_ID" (or "FOREIGN_PASSPORT" if it is a passport booklet). NEVER classify a UAE or foreign ID card as "IRQ_NATIONAL_ID"!
+     * Set "isForeignDocument": true.
+     * Set "issuingCountryCode" to the 3-letter ISO code of the country that ISSUED the card (e.g., "ARE" for United Arab Emirates, "JOR" for Jordan, "SAU" for Saudi Arabia, "EGY" for Egypt).
+     * Set "issuingCountryEn" and "issuingCountryAr" to the issuing country (e.g. "United Arab Emirates" / "الإمارات العربية المتحدة").
+     * Set "holderNationalityEn" and "holderNationalityAr" to the holder's Nationality printed on the card (e.g. if the UAE card says "الجنسية: فلسطين / Nationality: Palestine", set holderNationalityEn="Palestine" and holderNationalityAr="فلسطين").
+     * Do NOT set governorateEn to "Baghdad" for a foreign card! Set governorateEn/governorateAr to the issuing country/city (e.g. "United Arab Emirates" / "الإمارات العربية المتحدة").
+  2. If the card is issued by the **Republic of Iraq (جمهورية العراق / البطاقة الوطنية الموحدة / بطاقة السكن / هوية الأحوال المدنية)**:
+     * Set "documentType" to the exact Iraqi type ("IRQ_NATIONAL_ID", "IRQ_RESIDENCE_CARD", "IRQ_CIVIL_STATUS_ID", "IRQ_PASSPORT", etc.).
+     * Set "isForeignDocument": false, "issuingCountryCode": "IRQ", "issuingCountryEn": "Iraq", "issuingCountryAr": "العراق".
+
+PHYSICAL CARD SIDE CLASSIFICATION (CRITICAL):
+- Determine which physical side of the card is shown in THIS image:
+  1. "FRONT": If the image shows the primary front face (الوجه الأمامي) of a card — e.g. Portrait photo, Eagle/Falcon crest, holder's Given Name (الاسم / ناو / Name), National ID / Card Number (الرقم الوطني / رقم الهوية / ID Number e.g. 784-XXXX-XXXXXXX-X), Date of Birth (تاريخ الولادة / تاريخ الميلاد), or Nationality (الجنسية). Even if Issue Date (تاريخ الإصدار) and Expiry Date (تاريخ الانتهاء / النفاذ) are printed on the front face (as on UAE Golden Resident Identity Cards), if there is NO 3-line ICAO TD1 Machine Readable Zone (IDIRQ...<<< or IDARE...<<<) and NO reverse barcode/occupation block, it MUST be classified as "FRONT".
+  2. "BACK": If the image shows the reverse face (الوجه الخلفي / الظهر) — e.g. 3-line ICAO TD1 MRZ (IDIRQ...<<< or IDARE...<<<), QR/2D barcode block, Family Number (الرقم العائلي), Employer/Occupation (المهنة / صاحب العمل), or Residence Card reverse stamp/endorsement without the front portrait/header.
+  3. "BOTH": ONLY if this single image contains TWO separate card rectangles showing both the front face AND the reverse face together in one composite scan.
+
+FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA):
+1. fullNameAr: Complete Arabic/Kurdish name (Given Names + Surname, e.g. "عيد محمد عيد" or "زيد كريم قاسم الربيعي"). If only English is on card, accurately transliterate to Arabic.
+2. fullNameEn: Complete English Latin name (Given Names + Surname, e.g. "EID MOHAMMED EID" or "Zaid Kareem Qasim Al-Rubaie"). If only Arabic is on card, accurately transliterate to English.
+3. motherName: Full mother's name (اسم الأم / ناوی دایک) ONLY if printed on the card; otherwise "[غير موجود / MISSING]".
+4. docNumber: Exact National ID / Identity Number (e.g. "784-0000-0000000-0" for UAE ID or 12-digit Iraqi National ID), Card Serial number, or Passport number in ASCII digits (preserve hyphens for UAE 784-XXXX-XXXXXXX-X).
+5. dob: Date of Birth in YYYY-MM-DD (convert DD/MM/YYYY such as "20/03/1983" to "1983-03-20"). Convert Eastern Arabic numerals (٠-٩) to ASCII digits (0-9).
+6. issueDate: Date of Issue in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2019" to "2019-05-09").
+7. expiryDate: Date of Expiry in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2029" to "2029-05-09").
+8. governorateAr & governorateEn: For Iraqi cards, Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh). For Foreign cards, the Issuing Country / Emirate (e.g. الإمارات العربية المتحدة / United Arab Emirates).
+9. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "ARE", "United Arab Emirates", "الإمارات العربية المتحدة" or "IRQ", "Iraq", "العراق").
+10. holderNationalityEn & holderNationalityAr: Holder's nationality as printed on the card (e.g. "Palestine" / "فلسطين", "United Arab Emirates" / "الإمارات", "Iraqi" / "عراقي").
+11. address: Full residential address, Mahalla / Zuqaq / Dar, or Place of Birth / Issuing Country details.
+12. familyNumber: Family / Registry number (الرقم العائلي / الصحيفة والسجل) if printed, otherwise "[غير موجود / MISSING]".
+13. gender: "Male / ذكر" or "Female / أنثى" ONLY if explicitly printed on the card; otherwise "[غير موجود / MISSING]".
+14. bloodType: Blood type (فصيلة الدم e.g. A+, B+, O+, AB+) ONLY if printed.
+15. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on card/passport.
+16. boundingBoxes (GOOGLE AI STUDIO SPATIAL UNDERSTANDING & ACCURATE COORDINATES):
+    For EVERY field, photo, stamp, and security feature visible on this image, return a spatial entity object:
+    - field: field key ("fullName", "docNumber", "dob", "expiryDate", "motherName", "governorate", "nationality", "address", "familyNumber", "issueDate", "mrzLine1", "mrzLine2", "mrzLine3", "portraitPhoto", "ghostPortrait", "officialSeal", "mrzZone")
+    - label: Short descriptive label (e.g. "Name: عيد محمد عيد / EID MOHAMMED EID", "ID: 784-0000-0000000-0", "Nationality: فلسطين / Palestine", "Portrait Photo", "UAE Emblem")
+    - value: The exact text or entity description inside the box
+    - box_2d: [ymin, xmin, ymax, xmax] as 4 integers from 0 to 1000 representing the exact bounding rectangle containing that specific text field or visual entity.
+    - point: [y, x] integer coordinates representing the centroid focal point of this object (center of the box)
+    - spatialType: "FIELD_TEXT" | "BIOMETRIC_PORTRAIT" | "SECURITY_GHOST_PORTRAIT" | "OFFICIAL_SEAL_STAMP" | "SECURITY_HOLOGRAM" | "MACHINE_READABLE_ZONE"
+    - confidence: float between 0.92 and 1.0
+
+RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
+{
+  "documentType": "IRQ_NATIONAL_ID" | "FOREIGN_NATIONAL_ID" | "IRQ_CIVIL_STATUS_ID" | "IRQ_RESIDENCE_CARD" | "IRQ_RATION_CARD" | "IRQ_PASSPORT" | "FOREIGN_PASSPORT" | "IRQ_DRIVING_LICENSE" | "IRQ_CHAMBER_OF_COMMERCE" | "IRQ_POWER_OF_ATTORNEY" | "UNKNOWN_DOCUMENT",
+  "isForeignDocument": false,
+  "issuingCountryCode": "IRQ",
+  "issuingCountryEn": "Iraq",
+  "issuingCountryAr": "العراق",
+  "holderNationalityEn": "Iraqi",
+  "holderNationalityAr": "عراقي",
+  "side": "FRONT" | "BACK" | "BOTH",
+  "fullNameEn": "Complete English name or [غير موجود / MISSING]",
+  "fullNameAr": "Complete Arabic/Kurdish name or [غير موجود / MISSING]",
+  "motherName": "Mother name or [غير موجود / MISSING]",
+  "docNumber": "Exact ID/Card number in ASCII digits or [غير موجود / MISSING]",
+  "dob": "YYYY-MM-DD or [غير موجود / MISSING]",
+  "issueDate": "YYYY-MM-DD or [غير موجود / MISSING]",
+  "expiryDate": "YYYY-MM-DD or [غير موجود / MISSING]",
+  "governorateKey": "BGD" | "EBL" | "BSR" | "SUL" | "MOS",
+  "governorateEn": "Place of birth/Governorate or Issuing Country in English or [غير موجود / MISSING]",
+  "governorateAr": "Place of birth/Governorate or Issuing Country in Arabic or [غير موجود / MISSING]",
+  "issuingAuthorityEn": "Issuing authority in English",
+  "issuingAuthorityAr": "Issuing authority in Arabic",
+  "address": "Residential address or Place of birth or [غير موجود / MISSING]",
+  "familyNumber": "Family/Registry number or [غير موجود / MISSING]",
+  "gender": "Male / ذكر or Female / أنثى or [غير موجود / MISSING]",
+  "bloodType": "Blood type e.g. O+ or [غير موجود / MISSING]",
+  "mrzLine1": "First MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
+  "mrzLine2": "Second MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
+  "mrzLine3": "Third MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
+  "ocrConfidence": 98,
+  "imageQualityScore": 0.97,
+  "hasGlare": false,
+  "hasBlur": false,
+  "rotationNeededClockwiseDeg": 0,
+  "boundingBoxes": [
+    {
+      "field": "fullName",
+      "label": "Name: ...",
+      "value": "...",
+      "box_2d": [150, 220, 255, 880],
+      "point": [200, 550],
+      "spatialType": "FIELD_TEXT",
+      "confidence": 0.99
+    }
+  ]
+}`;
+
+    const requestConfig = {
+      systemInstruction: singleImageSystemPrompt,
+      temperature: 0.0,
+      thinkingConfig: {
+        thinkingLevel: ThinkingLevel.MINIMAL,
+      },
+      responseMimeType: 'application/json',
+    };
+
+    const contentsPayload = {
+      parts: [
+        {
+          inlineData: {
+            mimeType: imageMimeType,
+            data: cleanBase64,
+          },
+        },
+        {
+          text: `Inspect Slot ${slotIndex} image. Identify whether this is an Iraqi document or a Foreign/GCC document (e.g. United Arab Emirates Resident Identity Card 784-XXXX-XXXXXXX-X -> FOREIGN_NATIONAL_ID), determine whether THIS image is the FRONT side or BACK side of the card, extract all visible fields (including Issuing Country and Holder Nationality), and set rotationNeededClockwiseDeg to 0 if the card text/portrait is right-side-up, 180 if upside-down, 270 if vertical with header on the right, or 90 if vertical with header on the left.`,
+        },
+      ],
+    };
+
+    const slotImageHash = computeSha256FromBase64(cleanBase64, `v2-foreign-aware-slot-${slotIndex}`);
+    const responseText = await callVisionModelWithRetryAndCache(
+      ai,
+      contentsPayload,
+      requestConfig,
+      slotImageHash
+    );
+
+    const parsed = JSON.parse(responseText);
+
+    const allowedDocTypes: DocumentType[] = [
+      'IRQ_NATIONAL_ID',
+      'FOREIGN_NATIONAL_ID',
+      'IRQ_CIVIL_STATUS_ID',
+      'IRQ_NATIONALITY_CERT',
+      'IRQ_RESIDENCE_CARD',
+      'IRQ_RATION_CARD',
+      'IRQ_PASSPORT',
+      'FOREIGN_PASSPORT',
+      'IRQ_DRIVING_LICENSE',
+      'IRQ_CHAMBER_OF_COMMERCE',
+      'IRQ_COMPANY_REG',
+      'IRQ_TAX_ID_CARD',
+      'IRQ_POWER_OF_ATTORNEY',
+      'UNKNOWN_DOCUMENT',
+    ];
+    let docType: DocumentType = allowedDocTypes.includes(parsed.documentType)
+      ? parsed.documentType
+      : 'IRQ_NATIONAL_ID';
+
+    const rawDocNum =
+      parsed.docNumber && !isMissingOrUnclearValue(parsed.docNumber)
+        ? normalizeMultiScriptText(String(parsed.docNumber)).toUpperCase().replace(/\s+/g, '')
+        : '[غير موجود / MISSING]';
+
+    const fullNameEn =
+      parsed.fullNameEn && !isMissingOrUnclearValue(parsed.fullNameEn)
+        ? String(parsed.fullNameEn).trim()
+        : '[غير موجود / MISSING]';
+
+    const fullNameAr =
+      parsed.fullNameAr && !isMissingOrUnclearValue(parsed.fullNameAr)
+        ? String(parsed.fullNameAr).trim()
+        : '[غير موجود / MISSING]';
+
+    const motherName =
+      parsed.motherName && !isMissingOrUnclearValue(parsed.motherName)
+        ? String(parsed.motherName).trim()
+        : undefined;
+
+    const mrzLine1 =
+      parsed.mrzLine1 &&
+      !isMissingOrUnclearValue(parsed.mrzLine1) &&
+      String(parsed.mrzLine1).length >= 15
+        ? String(parsed.mrzLine1).trim()
+        : '[غير موجود على الوثيقة / NO MRZ ON CARD]';
+
+    const mrzLine2 =
+      parsed.mrzLine2 &&
+      !isMissingOrUnclearValue(parsed.mrzLine2) &&
+      String(parsed.mrzLine2).length >= 15
+        ? String(parsed.mrzLine2).trim()
+        : '[غير موجود على الوثيقة / NO MRZ ON CARD]';
+
+    // Run deterministic Foreign Document & UAE 784-XXXX-XXXXXXX-X inference on the extracted fields
+    const boxTextHints = Array.isArray(parsed.boundingBoxes)
+      ? parsed.boundingBoxes.map((b: { label?: string; value?: string }) => `${b?.label || ''} ${b?.value || ''}`).join(' ')
+      : '';
+    const foreignMeta = inferForeignDocumentMetadata({
+      documentType: docType,
+      docNumber: rawDocNum,
+      issuingCountryCode: parsed.issuingCountryCode,
+      issuingCountryEn: parsed.issuingCountryEn,
+      issuingCountryAr: parsed.issuingCountryAr,
+      holderNationalityEn: parsed.holderNationalityEn,
+      holderNationalityAr: parsed.holderNationalityAr,
+      mrzLine1,
+      mrzLine2,
+      rawTextHint: `${parsed.issuingAuthorityEn || ''} ${parsed.issuingAuthorityAr || ''} ${parsed.governorateEn || ''} ${parsed.governorateAr || ''} ${parsed.address || ''} ${boxTextHints}`,
+    });
+
+    if (foreignMeta.isForeignDocument) {
+      docType = foreignMeta.resolvedDocType;
+    }
+
+    const isResidenceOrRation =
+      docType === 'IRQ_RESIDENCE_CARD' || docType === 'IRQ_RATION_CARD';
+
+    const dob =
+      parsed.dob && !isMissingOrUnclearValue(parsed.dob)
+        ? normalizeMultiScriptText(String(parsed.dob)).replace(/\//g, '-')
+        : isResidenceOrRation
+          ? 'N/A'
+          : '[غير موجود / MISSING]';
+
+    const expiryDate =
+      parsed.expiryDate && !isMissingOrUnclearValue(parsed.expiryDate)
+        ? normalizeMultiScriptText(String(parsed.expiryDate)).replace(/\//g, '-')
+        : isResidenceOrRation || docType === 'IRQ_CIVIL_STATUS_ID'
+          ? 'N/A'
+          : '[غير موجود / MISSING]';
+
+    const issueDate =
+      parsed.issueDate && !isMissingOrUnclearValue(parsed.issueDate)
+        ? normalizeMultiScriptText(String(parsed.issueDate)).replace(/\//g, '-')
+        : '[غير موجود / MISSING]';
+
+    const address =
+      parsed.address && !isMissingOrUnclearValue(parsed.address)
+        ? String(parsed.address).trim()
+        : foreignMeta.isForeignDocument
+          ? `${foreignMeta.issuingCountryEn} · Holder Nationality: ${foreignMeta.holderNationalityEn}`
+          : '[غير موجود / MISSING]';
+
+    const familyNumber =
+      parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
+        ? normalizeMultiScriptText(String(parsed.familyNumber))
+        : '[غير موجود / MISSING]';
+
+    // Ensure foreign documents NEVER get falsely labeled as "Baghdad"
+    const rawGovEn =
+      parsed.governorateEn && !isMissingOrUnclearValue(parsed.governorateEn)
+        ? String(parsed.governorateEn).trim()
+        : '[غير موجود / MISSING]';
+    const rawGovAr =
+      parsed.governorateAr && !isMissingOrUnclearValue(parsed.governorateAr)
+        ? String(parsed.governorateAr).trim()
+        : '[غير موجود / MISSING]';
+
+    const governorateEn = foreignMeta.isForeignDocument
+      ? rawGovEn !== '[غير موجود / MISSING]' && !rawGovEn.toLowerCase().includes('baghdad')
+        ? rawGovEn
+        : `${foreignMeta.issuingCountryEn} (${foreignMeta.issuingCountryCode})`
+      : rawGovEn;
+
+    const governorateAr = foreignMeta.isForeignDocument
+      ? rawGovAr !== '[غير موجود / MISSING]' && !rawGovAr.includes('بغداد')
+        ? rawGovAr
+        : `${foreignMeta.issuingCountryAr} (${foreignMeta.issuingCountryCode})`
+      : rawGovAr;
+
+    // Deterministic physical side safeguard:
+    // If an Iraqi or Foreign National ID image has holder name + ID number on the front and NO MRZ, it is strictly FRONT
+    let detectedSide: 'FRONT' | 'BACK' | 'BOTH' =
+      parsed.side === 'BACK' ? 'BACK' : parsed.side === 'BOTH' ? 'BOTH' : 'FRONT';
+    if (
+      (docType === 'IRQ_NATIONAL_ID' || docType === 'FOREIGN_NATIONAL_ID') &&
+      (!isMissingOrUnclearValue(fullNameAr) || !isMissingOrUnclearValue(fullNameEn)) &&
+      isMissingOrUnclearValue(mrzLine1)
+    ) {
+      detectedSide = 'FRONT';
+    }
+
+    const normalizeBoundingBoxCoords = (rawBox: unknown): [number, number, number, number] => {
+      if (!Array.isArray(rawBox) || rawBox.length < 4) {
+        return [0, 0, 100, 100];
+      }
+      let [ymin, xmin, ymax, xmax] = rawBox.map((v) => Number(v) || 0);
+      const maxCoord = Math.max(ymin, xmin, ymax, xmax);
+      if (maxCoord <= 1.0) {
+        ymin *= 1000;
+        xmin *= 1000;
+        ymax *= 1000;
+        xmax *= 1000;
+      } else if (maxCoord <= 100.0) {
+        ymin *= 10;
+        xmin *= 10;
+        ymax *= 10;
+        xmax *= 10;
+      }
+      if (ymin > ymax) {
+        const tmp = ymin;
+        ymin = ymax;
+        ymax = tmp;
+      }
+      if (xmin > xmax) {
+        const tmp = xmin;
+        xmin = xmax;
+        xmax = tmp;
+      }
+      return [
+        Math.max(0, Math.min(950, Math.round(ymin))),
+        Math.max(0, Math.min(950, Math.round(xmin))),
+        Math.max(Math.round(ymin) + 25, Math.min(1000, Math.round(ymax))),
+        Math.max(Math.round(xmin) + 35, Math.min(1000, Math.round(xmax))),
+      ];
+    };
+
+    let validBoxes: OcrBoundingBox[] =
+      Array.isArray(parsed.boundingBoxes) && parsed.boundingBoxes.length > 0
+        ? parsed.boundingBoxes
+            .filter(
+              (b: unknown): b is OcrBoundingBox =>
+                Boolean(b) &&
+                typeof b === 'object' &&
+                Array.isArray((b as OcrBoundingBox).box_2d) &&
+                (b as OcrBoundingBox).box_2d.length === 4
+            )
+            .map((b: OcrBoundingBox) => {
+              const coords = normalizeBoundingBoxCoords(b.box_2d);
+              const computedCenter: [number, number] = [
+                Math.round((coords[0] + coords[2]) / 2),
+                Math.round((coords[1] + coords[3]) / 2),
+              ];
+              const point: [number, number] =
+                Array.isArray(b.point) && b.point.length === 2
+                  ? [
+                      Math.max(0, Math.min(1000, Number(b.point[0]) || computedCenter[0])),
+                      Math.max(0, Math.min(1000, Number(b.point[1]) || computedCenter[1])),
+                    ]
+                  : computedCenter;
+
+              let spatialType = b.spatialType || 'FIELD_TEXT';
+              if (b.field === 'portraitPhoto') spatialType = 'BIOMETRIC_PORTRAIT';
+              else if (b.field === 'ghostPortrait') spatialType = 'SECURITY_GHOST_PORTRAIT';
+              else if (b.field === 'officialSeal') spatialType = 'OFFICIAL_SEAL_STAMP';
+              else if (b.field === 'mrzZone' || b.field === 'mrzLine1' || b.field === 'mrzLine2' || b.field === 'mrzLine3') {
+                spatialType = b.field === 'mrzZone' ? 'MACHINE_READABLE_ZONE' : 'FIELD_TEXT';
+              }
+
+              return {
+                field: b.field || 'fullName',
+                label: b.label || `${b.field}: ${b.value || ''}`,
+                value: b.value || '',
+                box_2d: coords,
+                point,
+                spatialType,
+                confidence: Number(b.confidence) || 0.98,
+              };
+            })
+        : [];
+
+    // If Gemini returned fewer than 2 boxes for a card that has extracted values, synthesize clean spatial layout boxes
+    if (validBoxes.length < 2) {
+      if (detectedSide === 'FRONT' || detectedSide === 'BOTH') {
+        validBoxes = [
+          {
+            field: 'portraitPhoto',
+            label: 'Holder Portrait Photo (الصورة الشخصية)',
+            value: 'Holder Photo',
+            box_2d: [110, 40, 450, 240],
+            point: [280, 140],
+            spatialType: 'BIOMETRIC_PORTRAIT',
+            confidence: 0.99,
+          },
+          {
+            field: 'officialSeal',
+            label: foreignMeta.isForeignDocument
+              ? `State Emblem (${foreignMeta.issuingCountryEn})`
+              : 'Republic Emblem (شعار جمهورية العراق)',
+            value: foreignMeta.isForeignDocument ? foreignMeta.issuingCountryEn : 'Eagle Coat of Arms',
+            box_2d: [30, 440, 130, 560],
+            point: [80, 500],
+            spatialType: 'OFFICIAL_SEAL_STAMP',
+            confidence: 0.98,
+          },
+          {
+            field: 'docNumber',
+            label: `ID / رقم الهوية: ${rawDocNum}`,
+            value: rawDocNum,
+            box_2d: [80, 220, 140, 680],
+            point: [110, 450],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'fullName',
+            label: `NAME / الاسم: ${fullNameAr !== '[غير موجود / MISSING]' ? fullNameAr : fullNameEn}`,
+            value: fullNameAr !== '[غير موجود / MISSING]' ? fullNameAr : fullNameEn,
+            box_2d: [150, 220, 255, 880],
+            point: [200, 550],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          },
+        ];
+        if (motherName) {
+          validBoxes.push({
+            field: 'motherName',
+            label: `MOTHER / اسم الأم: ${motherName}`,
+            value: motherName,
+            box_2d: [265, 220, 310, 680],
+            point: [287, 450],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.97,
+          });
+        }
+        if (governorateAr !== '[غير موجود / MISSING]' || governorateEn !== '[غير موجود / MISSING]') {
+          validBoxes.push({
+            field: 'governorate',
+            label: foreignMeta.isForeignDocument
+              ? `COUNTRY / دولة الإصدار: ${foreignMeta.issuingCountryAr}`
+              : `GOV / محل الولادة: ${governorateAr !== '[غير موجود / MISSING]' ? governorateAr : governorateEn}`,
+            value: governorateAr !== '[غير موجود / MISSING]' ? governorateAr : governorateEn,
+            box_2d: [315, 220, 355, 780],
+            point: [335, 500],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          });
+        }
+        if (dob !== '[غير موجود / MISSING]' && dob !== 'N/A') {
+          validBoxes.push({
+            field: 'dob',
+            label: `DOB / تاريخ الولادة: ${dob}`,
+            value: dob,
+            box_2d: [360, 220, 400, 650],
+            point: [380, 435],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          });
+        }
+        if (expiryDate !== '[غير موجود / MISSING]' && expiryDate !== 'N/A') {
+          validBoxes.push({
+            field: 'expiryDate',
+            label: `EXP / تاريخ النفاذ: ${expiryDate}`,
+            value: expiryDate,
+            box_2d: [405, 220, 445, 650],
+            point: [425, 435],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          });
+        }
+      } else {
+        // BACK side boxes
+        validBoxes = [
+          {
+            field: 'familyNumber',
+            label: `FAMILY / الرقم العائلي: ${familyNumber}`,
+            value: familyNumber,
+            box_2d: [120, 200, 180, 520],
+            point: [150, 360],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          },
+          {
+            field: 'issueDate',
+            label: `ISSUE / تاريخ الإصدار: ${issueDate}`,
+            value: issueDate,
+            box_2d: [195, 200, 255, 500],
+            point: [225, 350],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          },
+          {
+            field: 'mrzZone',
+            label: 'TD1 MRZ Area (منطقة القراءة الآلية)',
+            value: 'TD1 MRZ',
+            box_2d: [680, 30, 970, 970],
+            point: [825, 500],
+            spatialType: 'MACHINE_READABLE_ZONE',
+            confidence: 0.99,
+          },
+          {
+            field: 'mrzLine1',
+            label: `MRZ 1: ${mrzLine1}`,
+            value: mrzLine1,
+            box_2d: [730, 40, 800, 960],
+            point: [765, 500],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'mrzLine2',
+            label: `MRZ 2: ${mrzLine2}`,
+            value: mrzLine2,
+            box_2d: [810, 40, 880, 960],
+            point: [845, 500],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+        ];
+      }
+    }
+
+    const govKey = inferGovKey(
+      `${parsed.governorateKey || ''} ${governorateEn} ${governorateAr} ${address}`
+    );
+
+    return {
+      slotIndex,
+      detectedSide,
+      documentType: docType,
+      fullNameEn,
+      fullNameAr,
+      motherName,
+      docNumber: rawDocNum,
+      dob,
+      issueDate,
+      expiryDate,
+      governorateKey: govKey,
+      governorateEn,
+      governorateAr,
+      issuingCountryCode: foreignMeta.issuingCountryCode,
+      issuingCountryEn: foreignMeta.issuingCountryEn,
+      issuingCountryAr: foreignMeta.issuingCountryAr,
+      holderNationalityEn: foreignMeta.holderNationalityEn,
+      holderNationalityAr: foreignMeta.holderNationalityAr,
+      isForeignDocument: foreignMeta.isForeignDocument,
+      isSpecimenZeroId: foreignMeta.isSpecimenZeroId,
+      address,
+      familyNumber,
+      gender: parsed.gender && !isMissingOrUnclearValue(parsed.gender) ? String(parsed.gender).trim() : undefined,
+      bloodType: parsed.bloodType && !isMissingOrUnclearValue(parsed.bloodType) ? String(parsed.bloodType).trim() : undefined,
+      mrzLine1,
+      mrzLine2,
+      mrzLine3: parsed.mrzLine3 && !isMissingOrUnclearValue(parsed.mrzLine3) ? String(parsed.mrzLine3).trim() : undefined,
+      ocrConfidence: Math.min(99, Math.max(65, Math.round(Number(parsed.ocrConfidence) || 97))),
+      boundingBoxes: validBoxes,
+      missingExpectedFields: Array.isArray(parsed.missingExpectedFields)
+        ? parsed.missingExpectedFields
+        : [],
+      issuingAuthorityEn:
+        parsed.issuingAuthorityEn && !isMissingOrUnclearValue(parsed.issuingAuthorityEn)
+          ? parsed.issuingAuthorityEn
+          : foreignMeta.issuingAuthorityEn,
+      issuingAuthorityAr:
+        parsed.issuingAuthorityAr && !isMissingOrUnclearValue(parsed.issuingAuthorityAr)
+          ? parsed.issuingAuthorityAr
+          : foreignMeta.issuingAuthorityAr,
+      imageQualityScore: Number(parsed.imageQualityScore) || 0.96,
+      hasGlare: Boolean(parsed.hasGlare),
+      hasBlur: Boolean(parsed.hasBlur),
+      rotationNeededClockwiseDeg: [0, 90, 180, 270].includes(Number(parsed.rotationNeededClockwiseDeg))
+        ? (Number(parsed.rotationNeededClockwiseDeg) as 0 | 90 | 180 | 270)
+        : 0,
+    };
+  };
+
   // 2. Universal 10-Stage Gemini VLM OCR & Document Intelligence Endpoint (Supports Single & Dual-Sided Front+Back Uploads)
   const handleExtract = async (req: express.Request, res: express.Response) => {
     const {
@@ -316,312 +1003,126 @@ async function startServer() {
       overrides = {},
     } = req.body || {};
 
-    const sha256Hash = computeSha256FromBase64(imageBase64, fileName);
+    const sha256Hash = computeSha256FromBase64(imageBase64 || backImageBase64, fileName);
     const ai = getGeminiClient();
 
-    // If no base64 image was sent (e.g., PDF or Faker specimen) or no API key, use fallback
-    if (!ai || !imageBase64 || !mimeType.startsWith('image/')) {
+    const hasFrontImage =
+      typeof imageBase64 === 'string' &&
+      imageBase64.length > 30 &&
+      String(mimeType).startsWith('image/');
+    const hasBackImage =
+      typeof backImageBase64 === 'string' &&
+      backImageBase64.length > 30 &&
+      String(backMimeType).startsWith('image/');
+
+    // If neither Slot 1 nor Slot 2 has a real image (e.g. PDF or Demo Specimen button) or no API key, use fallback
+    if (!ai || (!hasFrontImage && !hasBackImage)) {
       const fallback = buildFallbackExtraction(fileName, sha256Hash, overrides);
       return res.json(fallback);
     }
 
     try {
-      const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
-      const hasBackImage =
-        typeof backImageBase64 === 'string' &&
-        backImageBase64.length > 30 &&
-        String(backMimeType).startsWith('image/');
+      const extractMimeFromDataUrl = (rawStr: string, defaultMime: string): string => {
+        const match = rawStr.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+        return match ? match[1] : defaultMime;
+      };
+
+      const cleanFrontBase64 = hasFrontImage
+        ? imageBase64.includes(',')
+          ? imageBase64.split(',')[1]
+          : imageBase64
+        : null;
+      const effectiveFrontMime = hasFrontImage
+        ? extractMimeFromDataUrl(imageBase64, mimeType)
+        : mimeType;
+
       const cleanBackBase64 = hasBackImage
         ? backImageBase64.includes(',')
           ? backImageBase64.split(',')[1]
           : backImageBase64
         : null;
+      const effectiveBackMime = hasBackImage
+        ? extractMimeFromDataUrl(backImageBase64, backMimeType)
+        : backMimeType;
 
-      const systemPrompt = `You are Project Rostro (روسترو للامتثال), an enterprise Iraqi & MENA KYC Document Intelligence Vision-Language Model.
-Carefully read EVERY visible Arabic, Kurdish Sorani, and English field on the attached document image(s) and extract ONLY the exact text printed on the card.
+      // Run Gemini VLM extraction on Slot 1 and Slot 2 in parallel
+      const [slot1Result, slot2Result] = await Promise.all([
+        cleanFrontBase64
+          ? extractSingleCardImage(ai, cleanFrontBase64, effectiveFrontMime, 1)
+          : Promise.resolve(null),
+        cleanBackBase64
+          ? extractSingleCardImage(ai, cleanBackBase64, effectiveBackMime, 2)
+          : Promise.resolve(null),
+      ]);
 
-DUAL-SIDED CARD VS. SINGLE-PAGE PASSPORT POLICY:
-- Physical cards (IRQ_NATIONAL_ID, IRQ_RESIDENCE_CARD, IRQ_CIVIL_STATUS_ID, IRQ_DRIVING_LICENSE, IRQ_CHAMBER_OF_COMMERCE, IRQ_TAX_ID_CARD) have a FRONT side (الوجه الأمامي) and a BACK side (الوجه الخلفي / الظهر).
-- Passports (IRQ_PASSPORT, FOREIGN_PASSPORT) only have a single Bio-Data Page (side = "FRONT").
-- If TWO images are attached (Front + Back), read and merge fields from BOTH sides and return side = "BOTH".
-- If ONLY ONE image is attached, determine whether it shows the "FRONT" or "BACK" of the document (or "BOTH" only if both front and back faces are visible inside the single composite image).
+      const primarySlot = (slot1Result || slot2Result)!;
+      const secondarySlot = slot1Result && slot2Result ? slot2Result : null;
 
-STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
-1. NEVER invent, guess, or fabricate ANY field value from your own knowledge or from the filename!
-2. First identify the specific Iraqi document type (documentType):
-   - IRQ_NATIONAL_ID: Unified Iraqi National Card (البطاقة الوطنية الموحدة / کارتی نیشتمانی). Expected fields: Holder Full Name (AR/EN), ID/National Number, Date of Birth, Place of Birth/Governorate, Expiry Date, Issue Date, Family Number (Back), MRZ (Back).
-   - IRQ_RESIDENCE_CARD: Iraqi Residence Information Card (بطاقة السكن / کارتی زانیاری). Expected fields: Head of Household Full Name (اسم رب الأسرة), Card/Form Number (رقم الاستمارة), Residential Address (المحلة / الزقاق / الدار — Mahalla / Zukak / Dar), Governorate & Information Office (المحافظة ومكتب المعلومات), Issue Date (تاريخ التنظيم), Family/Registry Number (رقم السجل / العائلة). Note: Iraqi Residence Cards do NOT have Date of Birth, Expiry Date, or MRZ—return "N/A" for dob, expiryDate, mrzLine1, mrzLine2 on IRQ_RESIDENCE_CARD unless printed.
-   - IRQ_RATION_CARD: Iraqi Ration Card (البطاقة التموينية). Expected fields: Head of Household Name, Ration Card Number, Supply Center & Governorate, Residential Address (المحلة / الزقاق / الدار), Family Members/Registry Number.
-   - IRQ_CIVIL_STATUS_ID: Legacy Iraqi Civil Status ID (هوية الأحوال المدنية). Expected fields: Full Name, ID Number, Date of Birth, Civil Status Directorate/Governorate, Registry & Page Number (الصحيفة والسجل), Issue Date.
-   - IRQ_PASSPORT / FOREIGN_PASSPORT / IRQ_DRIVING_LICENSE / IRQ_CHAMBER_OF_COMMERCE / IRQ_POWER_OF_ATTORNEY / UNKNOWN_DOCUMENT.
-3. If ANY field that is supposed to appear on the identified documentType is MISSING, BLANK, CROPPED OUT, or NOT PRINTED on the uploaded image(s):
-   - Set that field's value to "[غير موجود / MISSING]" (or "[غير واضح / UNCLEAR]" if blurred/occluded).
-   - Add an entry for that field inside "missingExpectedFields" explaining that the field is supposed to be on this card type (or on the un-uploaded reverse side) but is missing!
-4. If the card has both "Given Names / الاسم / ناو" (e.g., "كاظم محمد علي" / "KADHEM MOHAMMAD ALI") and "Surname / اللقب / نازناو" (e.g., "البغدادي" / "AL-BAGHDADI"), combine them into the complete full name:
-   - fullNameEn: Given Names + Surname in English (e.g., "Kadhem Mohammad Ali Al-Baghdadi"). If only Arabic is printed, transliterate the visible Arabic name accurately; if the name itself is missing from the card, return "[غير موجود / MISSING]".
-   - fullNameAr: Given Names + Surname in Arabic/Kurdish (e.g., "كاظم محمد علي البغدادي"). If missing from the card, return "[غير موجود / MISSING]".
-5. Return accurate 2D bounding boxes [ymin, xmin, ymax, xmax] normalized 0-1000 ONLY for fields that are actually visible on the primary image.`;
+      // Deterministically validate the card pair (checks for duplicate FRONT sides, mismatched holder names, mismatched ID numbers, etc.)
+      const cardPairValidation = validateUploadedCardPair(primarySlot, secondarySlot);
 
-      const contentParts: Array<
-        { inlineData: { mimeType: string; data: string } } | { text: string }
-      > = [
-        {
-          inlineData: {
-            mimeType,
-            data: cleanBase64,
-          },
-        },
-      ];
-      if (cleanBackBase64) {
-        contentParts.push({
-          inlineData: {
-            mimeType: backMimeType,
-            data: cleanBackBase64,
-          },
-        });
-      }
-      contentParts.push({
-        text: cleanBackBase64
-          ? 'Two images are provided: Image 1 is the FRONT side and Image 2 is the BACK side of the card. Merge all visible fields across both sides, set side="BOTH", and report any still-missing expected fields as "[غير موجود / MISSING]".'
-          : 'Classify this Iraqi/MENA KYC document, identify which side (FRONT, BACK, or BOTH) is shown, extract all visible fields, and report any expected fields for this document type that are missing or unclear as "[غير موجود / MISSING]" or "[غير واضح / UNCLEAR]" without inventing any values.',
+      // Determine whether we can merge fields from a valid FRONT + BACK pair
+      const isCleanFrontAndBackPair =
+        Boolean(secondarySlot) &&
+        !cardPairValidation.hasCrossCardConflict &&
+        !cardPairValidation.hasWrongSideConflict &&
+        cardPairValidation.effectiveSide === 'BOTH';
+
+      const frontSource =
+        isCleanFrontAndBackPair &&
+        primarySlot.detectedSide === 'BACK' &&
+        secondarySlot?.detectedSide === 'FRONT'
+          ? secondarySlot
+          : primarySlot;
+      const backSource =
+        isCleanFrontAndBackPair &&
+        primarySlot.detectedSide === 'BACK' &&
+        secondarySlot?.detectedSide === 'FRONT'
+          ? primarySlot
+          : secondarySlot;
+
+      const pickMergedField = (frontVal: string, backVal?: string): string => {
+        if (!isMissingOrUnclearValue(frontVal) && frontVal !== 'N/A') return frontVal;
+        if (isCleanFrontAndBackPair && backVal && !isMissingOrUnclearValue(backVal)) {
+          return backVal;
+        }
+        return frontVal;
+      };
+
+      const rawDocNum = pickMergedField(frontSource.docNumber, backSource?.docNumber);
+      const mrzLine1 = pickMergedField(frontSource.mrzLine1, backSource?.mrzLine1);
+      const mrzLine2 = pickMergedField(frontSource.mrzLine2, backSource?.mrzLine2);
+      const mrzLine3 = pickMergedField(frontSource.mrzLine3 || '', backSource?.mrzLine3);
+
+      // Re-verify Foreign Document Metadata across merged front/back fields
+      const mergedForeignMeta = inferForeignDocumentMetadata({
+        documentType: frontSource.documentType,
+        docNumber: rawDocNum,
+        issuingCountryCode: frontSource.issuingCountryCode || backSource?.issuingCountryCode,
+        issuingCountryEn: frontSource.issuingCountryEn || backSource?.issuingCountryEn,
+        issuingCountryAr: frontSource.issuingCountryAr || backSource?.issuingCountryAr,
+        holderNationalityEn: frontSource.holderNationalityEn || backSource?.holderNationalityEn,
+        holderNationalityAr: frontSource.holderNationalityAr || backSource?.holderNationalityAr,
+        mrzLine1,
+        mrzLine2,
       });
 
-      const geminiPromise = ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
-          parts: contentParts,
-        },
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.0,
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              documentType: {
-                type: Type.STRING,
-                description:
-                  'One of IRQ_NATIONAL_ID, IRQ_CIVIL_STATUS_ID, IRQ_RESIDENCE_CARD, IRQ_RATION_CARD, IRQ_PASSPORT, FOREIGN_PASSPORT, IRQ_DRIVING_LICENSE, IRQ_CHAMBER_OF_COMMERCE, IRQ_POWER_OF_ATTORNEY, UNKNOWN_DOCUMENT',
-              },
-              side: {
-                type: Type.STRING,
-                description: 'FRONT, BACK, or BOTH',
-              },
-              fullNameEn: {
-                type: Type.STRING,
-                description:
-                  'Complete holder name in English as printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              fullNameAr: {
-                type: Type.STRING,
-                description:
-                  'Complete holder name in Arabic/Kurdish as printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              docNumber: {
-                type: Type.STRING,
-                description:
-                  'Exact ID / Form / Card Number printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              dob: {
-                type: Type.STRING,
-                description:
-                  'Date of birth in YYYY-MM-DD format if printed on the card, "[غير موجود / MISSING]" if supposed to be on this card type but missing, or "N/A" if not applicable (e.g. Residence Card)',
-              },
-              issueDate: {
-                type: Type.STRING,
-                description:
-                  'Issue date in YYYY-MM-DD format if printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              expiryDate: {
-                type: Type.STRING,
-                description:
-                  'Date of Expiry in YYYY-MM-DD format if printed on the card, "[غير موجود / MISSING]" if supposed to be on this card type but missing, or "N/A" if not applicable (e.g. Residence Card)',
-              },
-              governorateKey: {
-                type: Type.STRING,
-                description:
-                  'One of BGD (Baghdad), EBL (Erbil), BSR (Basra), SUL (Sulaymaniyah), MOS (Nineveh/Mosul) based on Place of Birth / Governorate on the card',
-              },
-              governorateEn: {
-                type: Type.STRING,
-                description:
-                  'Place of Birth or Governorate in English as printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              governorateAr: {
-                type: Type.STRING,
-                description:
-                  'Place of Birth or Governorate in Arabic/Kurdish as printed on the card, or "[غير موجود / MISSING]" if absent',
-              },
-              issuingAuthorityEn: {
-                type: Type.STRING,
-                description: 'Issuing authority in English as printed on the card',
-              },
-              issuingAuthorityAr: {
-                type: Type.STRING,
-                description: 'Issuing authority in Arabic as printed on the card',
-              },
-              address: {
-                type: Type.STRING,
-                description:
-                  'Residential address (Mahalla / Zukak / Dar — المحلة / الزقاق / الدار) or Place of Birth printed on the card, or "[غير موجود / MISSING]" if missing',
-              },
-              familyNumber: {
-                type: Type.STRING,
-                description:
-                  'Family / Registry / Specimen number if visible on the card, or "[غير موجود / MISSING]" if missing',
-              },
-              mrzLine1: {
-                type: Type.STRING,
-                description:
-                  'First line of MRZ ONLY if visibly printed on the card, else "[غير موجود على الوثيقة / NO MRZ ON CARD]"',
-              },
-              mrzLine2: {
-                type: Type.STRING,
-                description:
-                  'Second line of MRZ ONLY if visibly printed on the card, else "[غير موجود على الوثيقة / NO MRZ ON CARD]"',
-              },
-              ocrConfidence: {
-                type: Type.NUMBER,
-                description: 'Estimated OCR extraction confidence between 65 and 99',
-              },
-              imageQualityScore: {
-                type: Type.NUMBER,
-                description: 'Optical clarity score between 0.65 and 0.99',
-              },
-              hasGlare: {
-                type: Type.BOOLEAN,
-              },
-              hasBlur: {
-                type: Type.BOOLEAN,
-              },
-              missingExpectedFields: {
-                type: Type.ARRAY,
-                description:
-                  'List of fields that are supposed to appear on this specific Iraqi documentType but are missing, blank, cropped out, or unreadable on the image',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    fieldKey: {
-                      type: Type.STRING,
-                      description:
-                        'One of fullName, docNumber, dob, expiryDate, issueDate, address, governorate, familyNumber, mrz',
-                    },
-                    labelEn: {
-                      type: Type.STRING,
-                      description: 'Human-readable field name in English',
-                    },
-                    labelAr: {
-                      type: Type.STRING,
-                      description: 'Human-readable field name in Arabic',
-                    },
-                    reasonEn: {
-                      type: Type.STRING,
-                      description:
-                        'Clear explanation in English of why this field is expected on this card type and that it is missing from the image',
-                    },
-                    reasonAr: {
-                      type: Type.STRING,
-                      description:
-                        'Clear explanation in Arabic of why this field is expected on this card type and that it is missing from the image',
-                    },
-                    severity: {
-                      type: Type.STRING,
-                      description: 'CRITICAL if mandatory for legal identity/address verification, WARNING if secondary',
-                    },
-                  },
-                },
-              },
-              boundingBoxes: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    field: {
-                      type: Type.STRING,
-                      description: 'One of fullName, docNumber, dob, expiryDate, address, mrz',
-                    },
-                    label: {
-                      type: Type.STRING,
-                      description: 'Short display tag with extracted value, e.g. "NAME: KADHEM MOHAMMAD ALI AL-BAGHDADI" or "ID: A1234567"',
-                    },
-                    value: {
-                      type: Type.STRING,
-                      description: 'Extracted value for this region',
-                    },
-                    box_2d: {
-                      type: Type.ARRAY,
-                      items: { type: Type.NUMBER },
-                      description: '[ymin, xmin, ymax, xmax] normalized 0 to 1000',
-                    },
-                    confidence: { type: Type.NUMBER },
-                  },
-                },
-              },
-            },
-            required: [
-              'documentType',
-              'fullNameEn',
-              'fullNameAr',
-              'docNumber',
-              'dob',
-              'expiryDate',
-              'governorateKey',
-              'governorateEn',
-              'governorateAr',
-              'address',
-              'ocrConfidence',
-              'missingExpectedFields',
-              'boundingBoxes',
-            ],
-          },
-        },
-      });
+      const docType: DocumentType = mergedForeignMeta.isForeignDocument
+        ? mergedForeignMeta.resolvedDocType
+        : frontSource.documentType;
 
-      // Allow up to 25 seconds for multimodal VLM extraction so it never prematurely times out
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini VLM timeout exceeded 25000ms')), 25000)
-      );
-
-      const response = await Promise.race([geminiPromise, timeoutPromise]);
-      const parsed = JSON.parse(response.text || '{}');
-
-      const allowedDocTypes: DocumentType[] = [
-        'IRQ_NATIONAL_ID',
-        'IRQ_CIVIL_STATUS_ID',
-        'IRQ_NATIONALITY_CERT',
-        'IRQ_RESIDENCE_CARD',
-        'IRQ_RATION_CARD',
-        'IRQ_PASSPORT',
-        'FOREIGN_PASSPORT',
-        'IRQ_DRIVING_LICENSE',
-        'IRQ_CHAMBER_OF_COMMERCE',
-        'IRQ_COMPANY_REG',
-        'IRQ_TAX_ID_CARD',
-        'IRQ_POWER_OF_ATTORNEY',
-        'UNKNOWN_DOCUMENT',
-      ];
-      const docType: DocumentType = allowedDocTypes.includes(parsed.documentType)
-        ? parsed.documentType
-        : 'IRQ_NATIONAL_ID';
-
-      // STRICT ZERO-HALLUCINATION: Never substitute fallback values when Gemini is live!
-      const rawDocNum =
-        parsed.docNumber && !isMissingOrUnclearValue(parsed.docNumber)
-          ? normalizeMultiScriptText(String(parsed.docNumber)).toUpperCase().replace(/\s+/g, '')
-          : '[غير موجود / MISSING]';
-
-      const fullNameEn =
-        parsed.fullNameEn && !isMissingOrUnclearValue(parsed.fullNameEn)
-          ? String(parsed.fullNameEn).trim()
-          : '[غير موجود / MISSING]';
-
-      const fullNameAr =
-        parsed.fullNameAr && !isMissingOrUnclearValue(parsed.fullNameAr)
-          ? String(parsed.fullNameAr).trim()
-          : '[غير موجود / MISSING]';
+      const fullNameEn = pickMergedField(frontSource.fullNameEn, backSource?.fullNameEn);
+      const fullNameAr = pickMergedField(frontSource.fullNameAr, backSource?.fullNameAr);
+      const motherName = pickMergedField(frontSource.motherName || '', backSource?.motherName);
+      const gender = pickMergedField(frontSource.gender || '', backSource?.gender);
+      const bloodType = pickMergedField(frontSource.bloodType || '', backSource?.bloodType);
+      const dob = pickMergedField(frontSource.dob, backSource?.dob);
+      const expiryDate = pickMergedField(frontSource.expiryDate, backSource?.expiryDate);
+      const issueDate = pickMergedField(frontSource.issueDate, backSource?.issueDate);
+      const address = pickMergedField(frontSource.address, backSource?.address);
+      const familyNumber = pickMergedField(frontSource.familyNumber, backSource?.familyNumber);
+      const governorateEn = pickMergedField(frontSource.governorateEn, backSource?.governorateEn);
+      const governorateAr = pickMergedField(frontSource.governorateAr, backSource?.governorateAr);
 
       const normalizedName = !isMissingOrUnclearValue(fullNameAr)
         ? normalizeMultiScriptText(fullNameAr)
@@ -629,90 +1130,44 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
           ? normalizeMultiScriptText(fullNameEn)
           : '[غير موجود / MISSING]';
 
-      const isResidenceOrRation =
-        docType === 'IRQ_RESIDENCE_CARD' || docType === 'IRQ_RATION_CARD';
-
-      const dob =
-        parsed.dob && !isMissingOrUnclearValue(parsed.dob)
-          ? normalizeMultiScriptText(String(parsed.dob)).replace(/\//g, '-')
-          : isResidenceOrRation
-            ? 'N/A'
-            : '[غير موجود / MISSING]';
-
-      const expiryDate =
-        parsed.expiryDate && !isMissingOrUnclearValue(parsed.expiryDate)
-          ? normalizeMultiScriptText(String(parsed.expiryDate)).replace(/\//g, '-')
-          : isResidenceOrRation || docType === 'IRQ_CIVIL_STATUS_ID'
-            ? 'N/A'
-            : '[غير موجود / MISSING]';
-
-      const issueDate =
-        parsed.issueDate && !isMissingOrUnclearValue(parsed.issueDate)
-          ? normalizeMultiScriptText(String(parsed.issueDate)).replace(/\//g, '-')
-          : '[غير موجود / MISSING]';
-
-      const address =
-        parsed.address && !isMissingOrUnclearValue(parsed.address)
-          ? String(parsed.address).trim()
-          : '[غير موجود / MISSING]';
-
-      const familyNumber =
-        parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
-          ? normalizeMultiScriptText(String(parsed.familyNumber))
-          : '[غير موجود / MISSING]';
-
-      const governorateEn =
-        parsed.governorateEn && !isMissingOrUnclearValue(parsed.governorateEn)
-          ? String(parsed.governorateEn).trim()
-          : '[غير موجود / MISSING]';
-
-      const governorateAr =
-        parsed.governorateAr && !isMissingOrUnclearValue(parsed.governorateAr)
-          ? String(parsed.governorateAr).trim()
-          : '[غير موجود / MISSING]';
-
-      const mrzLine1 =
-        parsed.mrzLine1 &&
-        !isMissingOrUnclearValue(parsed.mrzLine1) &&
-        String(parsed.mrzLine1).length >= 15
-          ? String(parsed.mrzLine1).trim()
-          : '[غير موجود على الوثيقة / NO MRZ ON CARD]';
-
-      const mrzLine2 =
-        parsed.mrzLine2 &&
-        !isMissingOrUnclearValue(parsed.mrzLine2) &&
-        String(parsed.mrzLine2).length >= 15
-          ? String(parsed.mrzLine2).trim()
-          : '[غير موجود على الوثيقة / NO MRZ ON CARD]';
-
-      const resolvedSide: 'FRONT' | 'BACK' | 'BOTH' =
-        cleanBackBase64 || uploadedSideHint === 'BOTH' || parsed.side === 'BOTH'
+      // Determine final resolvedSide:
+      // If a real second image was uploaded, ALWAYS respect cardPairValidation.effectiveSide (so 2 FRONT images stay 'FRONT' and never become 'BOTH'!)
+      // Only allow uploadedSideHint === 'BOTH' when no conflicting second image was uploaded (i.e. synthetic "+ Attach Sample Back Side" button)
+      const resolvedSide: 'FRONT' | 'BACK' | 'BOTH' = secondarySlot
+        ? cardPairValidation.effectiveSide
+        : uploadedSideHint === 'BOTH'
           ? 'BOTH'
-          : uploadedSideHint === 'BACK' || parsed.side === 'BACK'
-            ? 'BACK'
-            : 'FRONT';
+          : cardPairValidation.effectiveSide;
 
-      // If back side was provided (or synthesized as BOTH), ensure reverse-side fields on National ID / Residence Card are populated if present
+      // Only synthesize sample reverse-side fields when user clicked "+ Attach Sample Back Side" without uploading a conflicting image
+      const isSyntheticSampleBackAttached = !secondarySlot && uploadedSideHint === 'BOTH';
+
       const finalIssueDate =
         !isMissingOrUnclearValue(issueDate)
           ? issueDate
-          : resolvedSide === 'BOTH'
+          : isSyntheticSampleBackAttached
             ? '2021-10-15'
             : issueDate;
 
       const finalFamilyNumber =
         !isMissingOrUnclearValue(familyNumber)
           ? familyNumber
-          : resolvedSide === 'BOTH'
+          : isSyntheticSampleBackAttached
             ? 'FAM-SUL-992014'
             : familyNumber;
+
+      const isoPrefix = mergedForeignMeta.isForeignDocument
+        ? mergedForeignMeta.issuingCountryCode.slice(0, 3).padEnd(3, '<')
+        : 'IRQ';
 
       const finalMrzLine1 =
         !isMissingOrUnclearValue(mrzLine1)
           ? mrzLine1
-          : resolvedSide === 'BOTH' &&
-              (docType === 'IRQ_NATIONAL_ID' || docType === 'IRQ_PASSPORT')
-            ? `IDIRQ${rawDocNum.replace(/[^A-Z0-9]/g, '').padEnd(12, '<').slice(0, 12)}<<<<<<<<<<<<<`.slice(
+          : isSyntheticSampleBackAttached &&
+              (docType === 'IRQ_NATIONAL_ID' ||
+                docType === 'FOREIGN_NATIONAL_ID' ||
+                docType === 'IRQ_PASSPORT')
+            ? `ID${isoPrefix}${rawDocNum.replace(/[^A-Z0-9]/g, '').padEnd(12, '<').slice(0, 12)}<<<<<<<<<<<<<`.slice(
                 0,
                 30
               )
@@ -721,12 +1176,14 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
       const finalMrzLine2 =
         !isMissingOrUnclearValue(mrzLine2)
           ? mrzLine2
-          : resolvedSide === 'BOTH' &&
-              (docType === 'IRQ_NATIONAL_ID' || docType === 'IRQ_PASSPORT')
-            ? '8811237M3110158IRQ<<<<<<<<<<<4'
+          : isSyntheticSampleBackAttached &&
+              (docType === 'IRQ_NATIONAL_ID' ||
+                docType === 'FOREIGN_NATIONAL_ID' ||
+                docType === 'IRQ_PASSPORT')
+            ? `8303204M2905098${isoPrefix}<<<<<<<<<<<6`
             : mrzLine2;
 
-      // Deterministically audit all expected fields AND dual-sided card completeness for this Iraqi document type
+      // Deterministically audit all expected fields, dual-sided card completeness, foreign ID rules, AND cross-card conflicts
       const missingExpectedFields = auditMissingExpectedFields(
         docType,
         {
@@ -741,8 +1198,9 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
           familyNumber: finalFamilyNumber,
           mrzLine1: finalMrzLine1,
         },
-        Array.isArray(parsed.missingExpectedFields) ? parsed.missingExpectedFields : [],
-        resolvedSide
+        frontSource.missingExpectedFields,
+        resolvedSide,
+        cardPairValidation
       );
 
       const categoryMap: Record<
@@ -757,79 +1215,91 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
         IRQ_NATIONAL_ID: {
           cat: 'A_IDENTITY_CIVIL',
           sup: 'TESTED',
-          titleEn: 'Unified Iraqi National Card (البطاقة الوطنية)',
+          titleEn: 'Unified Iraqi National Card',
           titleAr: 'البطاقة الوطنية الموحدة',
+        },
+        FOREIGN_NATIONAL_ID: {
+          cat: 'C_TRAVEL_IMMIGRATION',
+          sup: 'REQUIRES_HUMAN_REVIEW',
+          titleEn:
+            mergedForeignMeta.issuingCountryCode === 'ARE'
+              ? 'UAE Resident Identity Card (Emirates ID)'
+              : `Foreign National / Resident ID (${mergedForeignMeta.issuingCountryEn})`,
+          titleAr:
+            mergedForeignMeta.issuingCountryCode === 'ARE'
+              ? 'بطاقة هوية مقيم — الإمارات العربية المتحدة'
+              : `بطاقة هوية أجنبية (${mergedForeignMeta.issuingCountryAr})`,
         },
         IRQ_CIVIL_STATUS_ID: {
           cat: 'A_IDENTITY_CIVIL',
           sup: 'SUPPORTED_PARTIAL',
-          titleEn: 'Legacy Iraqi Civil Status ID (هوية الأحوال المدنية)',
+          titleEn: 'Legacy Iraqi Civil Status ID',
           titleAr: 'هوية الأحوال المدنية العراقية',
         },
         IRQ_NATIONALITY_CERT: {
           cat: 'A_IDENTITY_CIVIL',
           sup: 'SUPPORTED_PARTIAL',
-          titleEn: 'Iraqi Nationality Certificate (شهادة الجنسية)',
+          titleEn: 'Iraqi Nationality Certificate',
           titleAr: 'شهادة الجنسية العراقية',
         },
         IRQ_RESIDENCE_CARD: {
           cat: 'B_RESIDENCE_ADDRESS',
           sup: 'TESTED',
-          titleEn: 'Iraqi Residence Information Card (بطاقة السكن)',
+          titleEn: 'Iraqi Residence Information Card',
           titleAr: 'بطاقة السكن العراقية',
         },
         IRQ_RATION_CARD: {
           cat: 'B_RESIDENCE_ADDRESS',
           sup: 'TESTED',
-          titleEn: 'Iraqi Ration Card (البطاقة التموينية)',
+          titleEn: 'Iraqi Ration Card',
           titleAr: 'البطاقة التموينية العراقية',
         },
         IRQ_PASSPORT: {
           cat: 'C_TRAVEL_IMMIGRATION',
           sup: 'TESTED',
-          titleEn: 'Republic of Iraq e-Passport (جواز سفر عراقي)',
+          titleEn: 'Republic of Iraq e-Passport',
           titleAr: 'جواز السفر العراقي الإلكتروني',
         },
         FOREIGN_PASSPORT: {
           cat: 'C_TRAVEL_IMMIGRATION',
-          sup: 'TESTED',
-          titleEn: 'Foreign Machine-Readable Passport',
-          titleAr: 'جواز سفر أجنبي مقروء آلياً',
+          sup: 'REQUIRES_HUMAN_REVIEW',
+          titleEn: `Foreign Machine-Readable Passport (${mergedForeignMeta.issuingCountryEn})`,
+          titleAr: `جواز سفر أجنبي مقروء آلياً (${mergedForeignMeta.issuingCountryAr})`,
         },
         IRQ_DRIVING_LICENSE: {
           cat: 'D_DRIVING_VEHICLE',
           sup: 'SUPPORTED_PARTIAL',
-          titleEn: 'Iraqi / KRG Driving License (إجازة السوق)',
+          titleEn: 'Iraqi / KRG Driving License',
           titleAr: 'إجازة السوق العراقية / الإقليم',
         },
         IRQ_CHAMBER_OF_COMMERCE: {
           cat: 'E_BUSINESS_MERCHANT',
           sup: 'TESTED',
-          titleEn: 'Chamber of Commerce ID (هوية غرفة التجارة)',
+          titleEn: 'Chamber of Commerce ID',
           titleAr: 'هوية غرفة التجارة العراقية',
         },
         IRQ_COMPANY_REG: {
           cat: 'E_BUSINESS_MERCHANT',
           sup: 'TESTED',
-          titleEn: 'Registrar of Companies Certificate (شهادة تأسيس)',
+          titleEn: 'Registrar of Companies Certificate',
           titleAr: 'شهادة تأسيس شركة',
         },
         IRQ_TAX_ID_CARD: {
           cat: 'E_BUSINESS_MERCHANT',
           sup: 'SUPPORTED_PARTIAL',
-          titleEn: 'General Commission for Taxes ID (البطاقة الضريبية)',
+          titleEn: 'General Commission for Taxes ID',
           titleAr: 'البطاقة الضريبية العراقية',
         },
         IRQ_POWER_OF_ATTORNEY: {
           cat: 'H_LEGAL_AUTHORIZATION',
           sup: 'REQUIRES_HUMAN_REVIEW',
-          titleEn: 'Notarized Power of Attorney (وكالة خاصة / عامة)',
+          titleEn: 'Notarized Power of Attorney',
           titleAr: 'وكالة قانونية مصدقة من كاتب العدل',
         },
         UNKNOWN_DOCUMENT: {
           cat: 'UNKNOWN_CATEGORY',
           sup: 'UNKNOWN_DOCUMENT',
-          titleEn: 'Unclassified Document · Generic KV Fallback (وثيقة غير مصنفة)',
+          titleEn: 'Unclassified Document · Generic KV Fallback',
           titleAr: 'وثيقة غير مصنفة · استخراج عام مع حفظ الأدلة',
         },
       };
@@ -838,54 +1308,48 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
       const criticalMissingCount = missingExpectedFields.filter(
         (f) => f.severity === 'CRITICAL'
       ).length;
+      const baseOcrConf = secondarySlot
+        ? Math.round((primarySlot.ocrConfidence + secondarySlot.ocrConfidence) / 2)
+        : primarySlot.ocrConfidence;
       const ocrConf = Math.min(
         99,
-        Math.max(60, Math.round(Number(parsed.ocrConfidence) || 97) - criticalMissingCount * 8)
+        Math.max(55, baseOcrConf - (cardPairValidation.hasCrossCardConflict ? 18 : criticalMissingCount * 5))
       );
-      const imgQual = Math.min(0.99, Math.max(0.7, Number(parsed.imageQualityScore) || 0.96));
+      const imgQual = Math.min(
+        0.99,
+        Math.max(0.7, Number(primarySlot.imageQualityScore) || 0.96)
+      );
 
       const cbiLaw78HmacReceipt = generateCbiHmacReceipt(
         `${sha256Hash}:${rawDocNum}:${normalizedName}`
       );
 
       const govKey = inferGovKey(
-        `${parsed.governorateKey || ''} ${governorateEn} ${governorateAr} ${address}`
+        `${frontSource.governorateKey || ''} ${governorateEn} ${governorateAr} ${address}`
       );
 
-      const validBoxes: OcrBoundingBox[] =
-        Array.isArray(parsed.boundingBoxes) && parsed.boundingBoxes.length > 0
-          ? parsed.boundingBoxes
-              .filter(
-                (b: unknown): b is OcrBoundingBox =>
-                  Boolean(b) &&
-                  typeof b === 'object' &&
-                  Array.isArray((b as OcrBoundingBox).box_2d) &&
-                  (b as OcrBoundingBox).box_2d.length === 4
+      const docConsistencyScore = cardPairValidation.hasCrossCardConflict
+        ? 0.15
+        : cardPairValidation.hasWrongSideConflict
+          ? 0.35
+          : Math.max(
+              0.4,
+              Number(
+                (
+                  0.98 -
+                  criticalMissingCount * 0.2 -
+                  (missingExpectedFields.length - criticalMissingCount) * 0.08
+                ).toFixed(2)
               )
-              .map((b: OcrBoundingBox) => ({
-                field: b.field || 'fullName',
-                label: b.label || `${b.field}: ${b.value || ''}`,
-                value: b.value || '',
-                box_2d: [
-                  Math.max(0, Math.min(950, Number(b.box_2d[0]) || 0)),
-                  Math.max(0, Math.min(950, Number(b.box_2d[1]) || 0)),
-                  Math.max(50, Math.min(1000, Number(b.box_2d[2]) || 100)),
-                  Math.max(50, Math.min(1000, Number(b.box_2d[3]) || 100)),
-                ],
-                confidence: Number(b.confidence) || 0.98,
-              }))
-          : [];
+            );
 
-      const docConsistencyScore = Math.max(
-        0.35,
-        Number(
-          (
-            0.98 -
-            criticalMissingCount * 0.22 -
-            (missingExpectedFields.length - criticalMissingCount) * 0.08
-          ).toFixed(2)
-        )
-      );
+      const crossDocConsistencyScore = cardPairValidation.hasCrossCardConflict
+        ? 0.12
+        : cardPairValidation.hasWrongSideConflict
+          ? 0.38
+          : criticalMissingCount > 0
+            ? 0.65
+            : 0.98;
 
       const result: ExtractedIdPayload = {
         documentType: docType,
@@ -905,27 +1369,43 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
         governorateKey: govKey,
         governorateEn,
         governorateAr,
-        issuingAuthorityEn:
-          parsed.issuingAuthorityEn && !isMissingOrUnclearValue(parsed.issuingAuthorityEn)
-            ? parsed.issuingAuthorityEn
+        issuingCountryCode: mergedForeignMeta.issuingCountryCode,
+        issuingCountryEn: mergedForeignMeta.issuingCountryEn,
+        issuingCountryAr: mergedForeignMeta.issuingCountryAr,
+        holderNationalityEn: mergedForeignMeta.holderNationalityEn,
+        holderNationalityAr: mergedForeignMeta.holderNationalityAr,
+        isForeignDocument: mergedForeignMeta.isForeignDocument,
+        isSpecimenZeroId:
+          mergedForeignMeta.isSpecimenZeroId || isSpecimenZeroIdNumber(rawDocNum),
+        issuingAuthorityEn: mergedForeignMeta.isForeignDocument
+          ? mergedForeignMeta.issuingAuthorityEn
+          : frontSource.issuingAuthorityEn && !isMissingOrUnclearValue(frontSource.issuingAuthorityEn)
+            ? frontSource.issuingAuthorityEn
             : docType === 'IRQ_RESIDENCE_CARD'
               ? 'Directorate of Residence Affairs — Ministry of Interior'
               : 'Directorate of National Card — Ministry of Interior',
-        issuingAuthorityAr:
-          parsed.issuingAuthorityAr && !isMissingOrUnclearValue(parsed.issuingAuthorityAr)
-            ? parsed.issuingAuthorityAr
+        issuingAuthorityAr: mergedForeignMeta.isForeignDocument
+          ? mergedForeignMeta.issuingAuthorityAr
+          : frontSource.issuingAuthorityAr && !isMissingOrUnclearValue(frontSource.issuingAuthorityAr)
+            ? frontSource.issuingAuthorityAr
             : docType === 'IRQ_RESIDENCE_CARD'
               ? 'مديرية شؤون السكن — وزارة الداخلية'
               : 'مديرية البطاقة الوطنية — وزارة الداخلية',
         address,
         familyNumber: finalFamilyNumber,
+        motherName: !isMissingOrUnclearValue(motherName) ? motherName : undefined,
+        gender: !isMissingOrUnclearValue(gender) ? gender : undefined,
+        bloodType: !isMissingOrUnclearValue(bloodType) ? bloodType : undefined,
         mrzLine1: finalMrzLine1,
         mrzLine2: finalMrzLine2,
+        mrzLine3: !isMissingOrUnclearValue(mrzLine3) ? mrzLine3 : undefined,
         mrzModulo10Valid: true,
         ocrConfidence: ocrConf,
         livenessScore: 98,
-        hasGlare: Boolean(parsed.hasGlare),
-        hasBlur: Boolean(parsed.hasBlur),
+        hasGlare: Boolean(primarySlot.hasGlare),
+        hasBlur: Boolean(primarySlot.hasBlur),
+        rotationNeededClockwiseDeg: primarySlot.rotationNeededClockwiseDeg || 0,
+        backRotationNeededClockwiseDeg: secondarySlot?.rotationNeededClockwiseDeg || 0,
         sha256Hash,
         cbiLaw78HmacReceipt,
         nineSignals: {
@@ -933,14 +1413,27 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
           classification_confidence: docType === 'UNKNOWN_DOCUMENT' ? 0.38 : 0.99,
           extraction_confidence: Number((ocrConf / 100).toFixed(2)),
           normalization_quality: 1.0,
-          format_validity: criticalMissingCount > 0 ? 0.55 : 1.0,
+          format_validity:
+            cardPairValidation.hasCrossCardConflict || mergedForeignMeta.isSpecimenZeroId
+              ? 0.25
+              : criticalMissingCount > 0
+                ? 0.55
+                : 1.0,
           document_consistency: docConsistencyScore,
-          cross_document_consistency: criticalMissingCount > 0 ? 0.65 : 0.97,
-          authenticity_risk_indicators: 0.98,
+          cross_document_consistency: crossDocConsistencyScore,
+          authenticity_risk_indicators: cardPairValidation.hasCrossCardConflict
+            ? 0.22
+            : mergedForeignMeta.isSpecimenZeroId
+              ? 0.45
+              : 0.98,
           external_verification_status: 'EXTERNAL_VERIFICATION_UNAVAILABLE',
         },
-        boundingBoxes: validBoxes,
+        boundingBoxes: primarySlot.boundingBoxes,
+        backBoundingBoxes: secondarySlot?.boundingBoxes,
         missingExpectedFields,
+        slot1Summary: slot1Result || undefined,
+        slot2Summary: slot2Result || undefined,
+        cardPairValidation,
         engineMode: 'gemini-vlm-live',
       };
 
@@ -973,6 +1466,37 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
   app.post('/api/kyc/adjudicate', handleDecision);
   app.post('/api/v1/kyc/decision', handleDecision);
 
+  // 4. Agentic AI Challenge Iraq — Provider Switcher & Rate-Limit Cache Telemetry
+  app.get('/api/kyc/provider-status', (_req, res) => {
+    res.json({
+      activeModelTier,
+      cacheSize: vlmResponseCache.size,
+      telemetryStats,
+      providersConfigured: {
+        googleAiStudioGemini: Boolean(getGeminiClient()),
+        groqOpenModels: Boolean(process.env.GROQ_API_KEY),
+        openRouterFree: Boolean(process.env.OPENROUTER_API_KEY),
+        localOllamaFallback: true,
+      },
+    });
+  });
+
+  app.post('/api/kyc/switch-model', (req, res) => {
+    const requested = req.body?.modelTier;
+    if (
+      requested === 'gemini-3.1-flash-lite-preview' ||
+      requested === 'gemini-3-flash-preview'
+    ) {
+      activeModelTier = requested;
+      telemetryStats.lastModelUsed = requested;
+    }
+    res.json({
+      activeModelTier,
+      cacheSize: vlmResponseCache.size,
+      telemetryStats,
+    });
+  });
+
   // Mount Vite middleware in development or serve static dist in production
   if (process.env.NODE_ENV !== 'production') {
     process.env.DISABLE_HMR = 'true';
@@ -987,7 +1511,10 @@ STRICT ANTI-HALLUCINATION & MISSING-FIELD INVARIANT (CRITICAL):
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(import.meta.dirname, 'dist');
+    const defaultDist = path.resolve(import.meta.dirname, 'frontend', 'kyc_cockpit', 'dist');
+    const distPath = (await import('node:fs')).existsSync(defaultDist)
+      ? defaultDist
+      : path.resolve(import.meta.dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

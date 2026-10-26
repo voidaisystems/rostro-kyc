@@ -1,14 +1,3 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file src/components/CompetitionShowcaseTab.tsx
- * @module @rostro/ui/CompetitionShowcaseTab
- * @description
- * Competition Showcase Tab demonstrating end-to-end Iraqi KYC architecture,
- * dual-side card capture, edge forensics, and deterministic risk routing.
- */
-
 import React, { useState } from 'react';
 import {
   CheckCircle2,

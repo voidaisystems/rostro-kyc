@@ -75,15 +75,6 @@ export const translations = {
     docSpecimenHeader: 'High-Resolution Document Specimen',
     extractedOcrHeader: 'Zero-Hallucination OCR & Multi-Script Normalization',
     fieldFullName: 'Extracted Legal Name',
-    fieldGivenName: 'Given Name (First Name)',
-    fieldFatherName: "Father's Name",
-    fieldGrandfatherName: "Grandfather's Name",
-    fieldSurname: 'Surname / Tribal Affiliation',
-    fieldMotherName: "Mother's & Maternal Grandfather Name",
-    fieldGender: 'Gender / Sex',
-    fieldBloodType: 'Blood Type',
-    fieldCardSerialBottomLeft: 'Card Serial / Tracking No. (Bottom-Left)',
-    fieldEdgeNumber: 'Vertical Edge Serial Number',
     fieldNormalizedName: 'Canonical Normalized Name',
     fieldDocNumber: 'Document / 12-Digit ID No.',
     fieldDob: 'Date of Birth (ASCII Normalized)',
@@ -226,15 +217,6 @@ export const translations = {
     docSpecimenHeader: 'معاينة الوثيقة العراقية عالية الدقة',
     extractedOcrHeader: 'الاستخراج الضوئي الخالي من الهلوسة وتوحيد النصوص',
     fieldFullName: 'الاسم القانوني المستخرج',
-    fieldGivenName: 'الاسم الأول',
-    fieldFatherName: 'اسم الأب',
-    fieldGrandfatherName: 'اسم الجد',
-    fieldSurname: 'اللقب / العشيرة',
-    fieldMotherName: 'اسم الأم والجد للأم',
-    fieldGender: 'الجنس',
-    fieldBloodType: 'فصيلة الدم',
-    fieldCardSerialBottomLeft: 'رقم البطاقة / الصحيفة (أسفل اليسار)',
-    fieldEdgeNumber: 'الرقم التسلسلي الجانبي',
     fieldNormalizedName: 'الاسم القياسي الموحد',
     fieldDocNumber: 'رقم الوثيقة / البطاقة الموحدة (12 رقماً)',
     fieldDob: 'تاريخ الميلاد (أرقام قياسية)',
@@ -585,8 +567,409 @@ const ENGLISH_TO_ARABIC_TERM_MAP: Array<[RegExp, string]> = [
 ];
 
 /**
+ * Common Iraqi & MENA Name / Term Dictionary for high-accuracy transliteration
+ */
+const ARABIC_NAME_DICT: Record<string, string> = {
+  'تاج الدين': 'Taj Al-Din',
+  'تاج': 'Taj',
+  'الدين': 'Al-Din',
+  'يوسف': 'Yousif',
+  'عزالدين': 'Izz Al-Din',
+  'عز الدين': 'Izz Al-Din',
+  'عز': 'Izz',
+  'اورچ': 'Ourch',
+  'اورج': 'Ourj',
+  'أورج': 'Ourj',
+  'أورچ': 'Ourch',
+  'ناهدة': 'Nahida',
+  'ناهده': 'Nahida',
+  'وداد': 'Widad',
+  'سليمان': 'Sulaiman',
+  'عبدالله': 'Abdullah',
+  'عبد الله': 'Abdullah',
+  'عبدالرحمن': 'Abdul-Rahman',
+  'عبد الرحمن': 'Abdul-Rahman',
+  'عبدالكريم': 'Abdul-Kareem',
+  'عبد الكريم': 'Abdul-Kareem',
+  'أيهم': 'Ayham',
+  'ايهم': 'Ayham',
+  'شامل': 'Shamil',
+  'يونس': 'Younis',
+  'إسراء': 'Israa',
+  'اسراء': 'Israa',
+  'آل قره غولي': 'Al-Qaragholi',
+  'ال قره غولي': 'Al-Qaragholi',
+  'قره غولي': 'Qaragholi',
+  'القره غولي': 'Al-Qaragholi',
+  'آل': 'Al',
+  'قره': 'Qarah',
+  'غولي': 'Gholi',
+  'محمد': 'Mohammad',
+  'كاظم': 'Kadhem',
+  'علي': 'Ali',
+  'حسين': 'Hussein',
+  'أحمد': 'Ahmed',
+  'احمد': 'Ahmed',
+  'حسن': 'Hassan',
+  'زيد': 'Zaid',
+  'طارق': 'Tariq',
+  'مصطفى': 'Mustafa',
+  'عمر': 'Omar',
+  'خالد': 'Khalid',
+  'سعيد': 'Saeed',
+  'جاسم': 'Jassim',
+  'كريم': 'Kareem',
+  'قاسم': 'Qasim',
+  'فاطمة': 'Fatima',
+  'فاطمه': 'Fatima',
+  'زينب': 'Zainab',
+  'مريم': 'Maryam',
+  'هدى': 'Huda',
+  'سعاد': 'Suad',
+  'نور': 'Noor',
+  'سارة': 'Sara',
+  'ساره': 'Sara',
+  'محمود': 'Mahmoud',
+  'إبراهيم': 'Ibrahim',
+  'ابراهيم': 'Ibrahim',
+  'عباس': 'Abbas',
+  'حمزة': 'Hamza',
+  'حمزه': 'Hamza',
+  'حيدر': 'Haider',
+  'عمار': 'Ammar',
+  'ياسر': 'Yasser',
+  'وسام': 'Wissam',
+  'باسم': 'Basim',
+  'جمال': 'Jamal',
+  'جواد': 'Jawad',
+  'طالب': 'Talib',
+  'صالح': 'Salih',
+  'فلاح': 'Falah',
+  'مهدي': 'Mahdi',
+  'الربيعي': 'Al-Rubaye',
+  'الدليمي': 'Al-Dulaimi',
+  'البغدادي': 'Al-Baghdadi',
+  'بغداد': 'Baghdad',
+  'الكرخ': 'Al-Karkh',
+  'الرصافة': 'Al-Rusafa',
+  'البصرة': 'Basra',
+  'أربيل': 'Erbil',
+  'اربيل': 'Erbil',
+  'السليمانية': 'Sulaymaniyah',
+  'الموصل': 'Mosul',
+  'نينوى': 'Nineveh',
+  'ذكر': 'Male',
+  'أنثى': 'Female',
+};
+
+const LATIN_TO_ARABIC_NAME_DICT: Record<string, string> = {
+  'ayham': 'أيهم',
+  'shamil': 'شامل',
+  'younis': 'يونس',
+  'yunis': 'يونس',
+  'younus': 'يونس',
+  'yunus': 'يونس',
+  'israa': 'إسراء',
+  'isra': 'إسراء',
+  'esraa': 'إسراء',
+  'muhammad': 'محمد',
+  'mohammad': 'محمد',
+  'mohammed': 'محمد',
+  'mohamed': 'محمد',
+  'al-qaragholi': 'آل قره غولي',
+  'qaragholi': 'قره غولي',
+  'qarah': 'قره',
+  'gholi': 'غولي',
+  'kadhem': 'كاظم',
+  'kadhim': 'كاظم',
+  'ali': 'علي',
+  'hussein': 'حسين',
+  'hussain': 'حسين',
+  'ahmed': 'أحمد',
+  'ahmad': 'أحمد',
+  'hassan': 'حسن',
+  'hasan': 'حسن',
+  'zaid': 'زيد',
+  'zayd': 'زيد',
+  'tariq': 'طارق',
+  'mustafa': 'مصطفى',
+  'omar': 'عمر',
+  'umar': 'عمر',
+  'khalid': 'خالد',
+  'khaled': 'خالد',
+  'saeed': 'سعيد',
+  'jassim': 'جاسم',
+  'jasim': 'جاسم',
+  'kareem': 'كريم',
+  'karim': 'كريم',
+  'qasim': 'قاسم',
+  'qassem': 'قاسم',
+  'fatima': 'فاطمة',
+  'fatimah': 'فاطمة',
+  'zainab': 'زينب',
+  'zeinab': 'زينب',
+  'maryam': 'مريم',
+  'mariam': 'مريم',
+  'huda': 'هدى',
+  'suad': 'سعاد',
+  'noor': 'نور',
+  'nur': 'نور',
+  'sara': 'سارة',
+  'sarah': 'سارة',
+  'mahmoud': 'محمود',
+  'mahmud': 'محمود',
+  'ibrahim': 'إبراهيم',
+  'abbas': 'عباس',
+  'hamza': 'حمزة',
+  'haider': 'حيدر',
+  'hayder': 'حيدر',
+  'ammar': 'عمار',
+  'yasser': 'ياسر',
+  'yasir': 'ياسر',
+  'wissam': 'وسام',
+  'basim': 'باسم',
+  'bassim': 'باسم',
+  'jamal': 'جمال',
+  'jawad': 'جواد',
+  'talib': 'طالب',
+  'salih': 'صالح',
+  'saleh': 'صالح',
+  'falah': 'فلاح',
+  'mahdi': 'مهدي',
+  'nahida': 'ناهدة',
+  'widad': 'وداد',
+  'sulaiman': 'سليمان',
+  'sulayman': 'سليمان',
+  'abdullah': 'عبد الله',
+  'yousif': 'يوسف',
+  'yousef': 'يوسف',
+  'yusuf': 'يوسف',
+  'al-rubaye': 'الربيعي',
+  'al-rubaie': 'الربيعي',
+  'al-dulaimi': 'الدليمي',
+  'al-baghdadi': 'البغدادي',
+};
+
+const ARABIC_LETTER_MAP: Record<string, string> = {
+  'أ': 'A', 'إ': 'I', 'آ': 'Aa', 'ا': 'A',
+  'ب': 'B', 'ت': 'T', 'ث': 'Th', 'ج': 'J',
+  'ح': 'H', 'خ': 'Kh', 'د': 'D', 'ذ': 'Dh',
+  'ر': 'R', 'ز': 'Z', 'س': 'S', 'ش': 'Sh',
+  'ص': 'S', 'ض': 'Dh', 'ط': 'T', 'ظ': 'Dh',
+  'ع': 'A', 'غ': 'Gh', 'ف': 'F', 'ق': 'Q',
+  'ك': 'K', 'ل': 'L', 'م': 'M', 'ن': 'N',
+  'ه': 'H', 'و': 'W', 'ي': 'Y', 'ى': 'A',
+  'ة': 'a', 'ء': '', 'ئ': 'Y', 'ؤ': 'W',
+  'چ': 'Ch', 'پ': 'P', 'گ': 'G', 'ژ': 'Zh', 'ڤ': 'V',
+};
+
+export function transliterateArabicToLatin(arabicText: string): string {
+  if (!arabicText || !arabicText.trim()) return '';
+  const trimmed = arabicText.trim();
+
+  // Check whole phrase dictionary first
+  if (ARABIC_NAME_DICT[trimmed]) {
+    return ARABIC_NAME_DICT[trimmed];
+  }
+
+  // Tokenize words
+  const words = trimmed.split(/\s+/);
+  const resultWords: string[] = [];
+
+  for (let i = 0; i < words.length; i++) {
+    // Check 3-word combinations e.g. "آل قره غولي"
+    if (i + 2 < words.length) {
+      const threeWord = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+      if (ARABIC_NAME_DICT[threeWord]) {
+        resultWords.push(ARABIC_NAME_DICT[threeWord]);
+        i += 2;
+        continue;
+      }
+    }
+    // Check 2-word combinations e.g. "عبد الله", "تاج الدين", "عز الدين"
+    if (i + 1 < words.length) {
+      const twoWord = `${words[i]} ${words[i + 1]}`;
+      if (ARABIC_NAME_DICT[twoWord]) {
+        resultWords.push(ARABIC_NAME_DICT[twoWord]);
+        i++; // skip next word
+        continue;
+      }
+    }
+
+    const w = words[i];
+    if (ARABIC_NAME_DICT[w]) {
+      resultWords.push(ARABIC_NAME_DICT[w]);
+      continue;
+    }
+
+    // Letter-by-letter phonetic transliteration
+    let wordTrans = '';
+    for (let c = 0; c < w.length; c++) {
+      const char = w[c];
+      const nextChar = w[c + 1] || '';
+      // Handle prefix "ال" -> "Al-"
+      if (c === 0 && char === 'ا' && nextChar === 'ل' && w.length > 2) {
+        wordTrans += 'Al-';
+        c++;
+        continue;
+      }
+      wordTrans += ARABIC_LETTER_MAP[char] || char;
+    }
+
+    // Clean double characters and capitalize first letter
+    wordTrans = wordTrans.replace(/(.)\1{2,}/g, '$1$1');
+    if (wordTrans.length > 0) {
+      wordTrans = wordTrans.charAt(0).toUpperCase() + wordTrans.slice(1).toLowerCase();
+      // Keep Al- capitalized correctly
+      if (wordTrans.startsWith('Al-') && wordTrans.length > 3) {
+        wordTrans = 'Al-' + wordTrans.charAt(3).toUpperCase() + wordTrans.slice(4);
+      }
+    }
+    resultWords.push(wordTrans);
+  }
+
+  return resultWords.filter(Boolean).join(' ');
+}
+
+export function transliterateLatinToArabic(latinText: string): string {
+  if (!latinText || !latinText.trim()) return '';
+  const cleaned = latinText
+    .trim()
+    .replace(/[/·|()-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  const lowerFull = cleaned.toLowerCase();
+  if (LATIN_TO_ARABIC_NAME_DICT[lowerFull]) {
+    return LATIN_TO_ARABIC_NAME_DICT[lowerFull];
+  }
+
+  const words = cleaned.split(/\s+/);
+  const outWords: string[] = [];
+
+  for (const rawW of words) {
+    const w = rawW.toLowerCase();
+    if (!w) continue;
+    if (LATIN_TO_ARABIC_NAME_DICT[w]) {
+      outWords.push(LATIN_TO_ARABIC_NAME_DICT[w]);
+      continue;
+    }
+    if (w.startsWith('al-') && w.length > 3) {
+      const stem = w.slice(3);
+      if (LATIN_TO_ARABIC_NAME_DICT[stem]) {
+        outWords.push(`ال${LATIN_TO_ARABIC_NAME_DICT[stem]}`);
+        continue;
+      }
+    }
+    // Phonetic Latin-to-Arabic fallback for Iraqi names
+    let phonetic = w
+      .replace(/^al-/, 'ال')
+      .replace(/sh/g, 'ش')
+      .replace(/kh/g, 'خ')
+      .replace(/gh/g, 'غ')
+      .replace(/th/g, 'ث')
+      .replace(/dh/g, 'ذ')
+      .replace(/ch/g, 'چ')
+      .replace(/aa/g, 'ا')
+      .replace(/ee/g, 'ي')
+      .replace(/oo|ou/g, 'و')
+      .replace(/a/g, 'ا')
+      .replace(/b/g, 'ب')
+      .replace(/t/g, 'ت')
+      .replace(/j/g, 'ج')
+      .replace(/h/g, 'ح')
+      .replace(/d/g, 'د')
+      .replace(/r/g, 'ر')
+      .replace(/z/g, 'ز')
+      .replace(/s/g, 'س')
+      .replace(/f/g, 'ف')
+      .replace(/q/g, 'ق')
+      .replace(/k/g, 'ك')
+      .replace(/c/g, 'ك')
+      .replace(/l/g, 'ل')
+      .replace(/m/g, 'م')
+      .replace(/n/g, 'ن')
+      .replace(/w/g, 'و')
+      .replace(/u/g, 'و')
+      .replace(/y/g, 'ي')
+      .replace(/i/g, 'ي')
+      .replace(/e/g, 'ي')
+      .replace(/o/g, 'و');
+    phonetic = phonetic.replace(/(.)\1+/g, '$1');
+    outWords.push(phonetic);
+  }
+
+  return outWords.filter(Boolean).join(' ');
+}
+
+/**
+ * Formats any personal/lineage name (Full Name, First Name, Father's Name, Grandfather's Name,
+ * Surname, Mother's Name, Maternal Grandfather's Name) so that BOTH English and Arabic scripts
+ * are always displayed side-by-side (e.g. "Israa Muhammad · إسراء محمد" or "Younis · يونس").
+ */
+export function formatBilingualName(
+  rawText?: string,
+  explicitAr?: string,
+  explicitEn?: string
+): string {
+  const combinedSource = [rawText, explicitAr, explicitEn]
+    .filter((v) => v && !v.includes('MISSING') && !v.includes('غير موجود') && !v.includes('UNCLEAR') && !v.includes('غير واضح'))
+    .join(' · ')
+    .trim();
+
+  if (!combinedSource) {
+    return rawText || '[غير موجود / MISSING]';
+  }
+
+  // Extract Arabic script tokens and Latin script tokens
+  const arabicMatches = combinedSource.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+(?:\s+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+)*/g);
+  const latinMatches = combinedSource.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*(?:\s+[A-Za-z]+(?:[-'][A-Za-z]+)?)*/g);
+
+  // Deduplicate tokens while preserving order
+  const uniquePhrases = (arr: string[] | null): string => {
+    if (!arr || arr.length === 0) return '';
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of arr) {
+      const norm = item.trim().replace(/\s+/g, ' ');
+      const key = norm.toLowerCase();
+      if (norm && !seen.has(key)) {
+        seen.add(key);
+        out.push(norm);
+      }
+    }
+    return out.join(' ');
+  };
+
+  let arPart = uniquePhrases(arabicMatches);
+  let enPart = uniquePhrases(latinMatches);
+
+  // Format English part in clean Title Case if it was ALL CAPS (e.g. "ISRAA MUHAMMAD" -> "Israa Muhammad")
+  if (enPart && enPart === enPart.toUpperCase() && enPart.length > 1) {
+    enPart = enPart
+      .split(/\s+/)
+      .map((w) =>
+        w
+          .split('-')
+          .map((sub) => (sub ? sub.charAt(0).toUpperCase() + sub.slice(1).toLowerCase() : sub))
+          .join('-')
+      )
+      .join(' ');
+  }
+
+  if (arPart && !enPart) {
+    enPart = transliterateArabicToLatin(arPart);
+  } else if (enPart && !arPart) {
+    arPart = transliterateLatinToArabic(enPart);
+  }
+
+  if (enPart && arPart) {
+    return `${enPart} · ${arPart}`;
+  }
+  return enPart || arPart || rawText || '[غير موجود / MISSING]';
+}
+
+/**
  * Ensures strict single-language text output:
- * - When lang === 'en': removes all Arabic/Kurdish script characters.
+ * - When lang === 'en': removes all Arabic/Kurdish script characters or transliterates Arabic names to English Latin.
  * - When lang === 'ar': replaces technical terms with Arabic equivalents and removes all Latin words.
  */
 export function sanitizeTextForLanguage(input: string, lang: Language): string {
@@ -600,13 +983,6 @@ export function sanitizeTextForLanguage(input: string, lang: Language): string {
 
   if (lang === 'en') {
     if (!ARABIC_CHAR_REGEX.test(out)) return out;
-
-    // If the input has NO Latin characters (e.g. an Arabic-only legal name or address),
-    // preserve the original input rather than reducing it to an empty string or placeholder!
-    if (!/[A-Za-z]/.test(out)) {
-      return input.trim();
-    }
-
     out = out
       .replace(/\[غير واضح\s*\/\s*UNCLEAR\]/gi, '[UNCLEAR]')
       .replace(/\[غير موجود\s*\/\s*MISSING\]/gi, '[MISSING]')
@@ -622,17 +998,18 @@ export function sanitizeTextForLanguage(input: string, lang: Language): string {
       .replace(/^\s*·\s*/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
-    return out || input.trim();
+
+    // If removing Arabic erased all characters (e.g. an Arabic-only name), transliterate it accurately to Latin
+    if (!out) {
+      const transliterated = transliterateArabicToLatin(input);
+      if (transliterated) return transliterated;
+      return input.trim();
+    }
+    return out;
   }
 
   // lang === 'ar'
   if (!/[A-Za-z]/.test(out)) return out;
-
-  // If the input has NO Arabic characters (e.g. alphanumeric code AA9792984, MRZ line, or English name),
-  // preserve the original input so we don't destroy alphanumeric codes or English-only documents!
-  if (!ARABIC_CHAR_REGEX.test(out)) {
-    return input.trim();
-  }
 
   out = out
     .replace(/\[غير واضح\s*\/\s*UNCLEAR\]/gi, '[غير واضح]')

@@ -1,15 +1,3 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file src/components/ZainCashEdgeForensicsLab.tsx
- * @module @rostro/ui/ZainCashEdgeForensicsLab
- * @description
- * ZainCash Mobile Edge & Document Forensics Lab simulator.
- * Real-time canvas simulation of phone camera edge gates: Laplacian blur,
- * HSV specular glare, 4-corner perspective correction, CLAHE, and FFT Moiré filter.
- */
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Camera,
@@ -29,6 +17,7 @@ import {
   FileWarning,
   Send,
 } from 'lucide-react';
+import { LiveCameraScannerModal } from './LiveCameraScannerModal';
 import {
   applyClaheAndSealEnhancementToPixels,
   createDeterministic512DEmbedding,
@@ -607,34 +596,53 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
     reader.readAsDataURL(file);
   };
 
-  const handleToggleWebcam = async () => {
+  const handleToggleWebcam = () => {
     setCameraError(null);
-    if (isWebcamActive) {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => t.stop());
-      }
-      setIsWebcamActive(false);
-      return;
-    }
+    setIsWebcamActive((prev) => !prev);
+  };
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 400 } },
+  const handleSmartCameraCaptured = (frontDataUrl: string, fileName: string) => {
+    setIsWebcamActive(false);
+    setCustomFileName(fileName);
+    const img = new Image();
+    img.onload = () => {
+      if (!canvasRef.current) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      canvas.width = 420;
+      canvas.height = 260;
+      ctx.drawImage(img, 0, 0, 420, 260);
+      const imgData = ctx.getImageData(0, 0, 420, 260);
+
+      const primaryPatch = new Float32Array(64).fill(115);
+      const ghostPatch = new Float32Array(64).fill(112);
+      const idEmbed = createDeterministic512DEmbedding(101, 0.02);
+      const selfieEmbed = createDeterministic512DEmbedding(101, 0.06);
+
+      const liveReport = runCompleteEdgeAndForensicsPipeline({
+        scenarioId: 'LIVE_WEBCAM_FRAME',
+        pixels: imgData.data,
+        width: 420,
+        height: 260,
+        expectedDocType: 'IRQ_NATIONAL_ID',
+        uploadedSide: 'BOTH',
+        mrzLine1: activeScenario.mrzLine1,
+        mrzLine2: activeScenario.mrzLine2,
+        frontFields: {
+          docNumber: activeScenario.docNumber,
+          dob: activeScenario.dob,
+          expiryDate: activeScenario.expiryDate,
+        },
+        primaryPortraitPatch: primaryPatch,
+        ghostPortraitPatch: ghostPatch,
+        idEmbedding: idEmbed,
+        selfieEmbedding: selfieEmbed,
+        passiveLivenessScore: 98.1,
       });
-      setIsWebcamActive(true);
-      setCustomFileName(null);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch {
-      setCameraError(
-        lang === 'ar'
-          ? 'الكاميرا غير متاحة في هذه البيئة؛ استخدم محاكي السيناريوهات الـ 6 أو ارفع صورة من جهازك.'
-          : 'Live camera hardware not detected in this browser container — use the 6 Live Pixel Scenarios or upload any image file.'
-      );
-    }
+      setReport(liveReport);
+    };
+    img.src = frontDataUrl;
   };
 
   const handleSnapWebcamFrame = () => {
@@ -1656,6 +1664,18 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
           </div>
         )}
       </div>
+
+      <LiveCameraScannerModal
+        isOpen={isWebcamActive}
+        lang={lang}
+        requiresBackSide={true}
+        expectedDocLabelEn="Iraqi Unified National Card"
+        expectedDocLabelAr="البطاقة الوطنية الموحدة"
+        slotLabelEn="Anti-Forgery Lab — Live Camera Gate"
+        slotLabelAr="مختبر كشف التزوير — الكاميرا الذكية"
+        onClose={() => setIsWebcamActive(false)}
+        onCaptureDataUrl={(frontUrl, fileName) => handleSmartCameraCaptured(frontUrl, fileName)}
+      />
     </div>
   );
 };

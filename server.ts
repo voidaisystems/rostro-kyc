@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import {
   auditMissingExpectedFields,
   calculateRiskTier,
@@ -23,6 +23,11 @@ import {
   type SlotExtractionSummary,
 } from './src/utils/kycEngine.ts';
 import { iraqiDocumentRegistrySummary } from './src/utils/seedData.ts';
+import {
+  formatBilingualName,
+  transliterateArabicToLatin,
+  transliterateLatinToArabic,
+} from './src/utils/i18n.ts';
 
 // Load .env while preserving system environment fallback
 dotenv.config();
@@ -47,7 +52,7 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 // Agentic AI Challenge Iraq — Multi-Model Quota Pool & Zero-Latency 429/503 Cooldown Tracker
-let activeModelTier = 'gemini-3.5-flash';
+let activeModelTier = 'gemini-3.1-flash-lite';
 
 const vlmResponseCache = new Map<string, string>();
 const modelCooldownUntil = new Map<string, { until: number; reason: string }>();
@@ -74,12 +79,14 @@ async function callVisionModelWithRetryAndCache(
 
   // Verified active multimodal Vision & Spatial Understanding models with independent Free-Tier quotas
   const candidateModels = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
-    'gemini-robotics-er-2-preview',
-    'gemini-flash-lite-latest',
-    'gemini-3-flash-preview',
+    'gemini-3.5-flash',
+    'gemini-2.5-pro',
   ];
 
   const now = Date.now();
@@ -116,7 +123,6 @@ async function callVisionModelWithRetryAndCache(
       return cleanedJson;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[VLM Fallback] Model ${modelName} unavailable (${msg.slice(0, 90)}), switching immediately...`);
       if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
         telemetryStats.rateLimit429Retries++;
         // Put exhausted model on 15-minute cooldown so future uploads skip it in 0ms
@@ -177,6 +183,13 @@ interface ExtractedIdPayload {
   fullNameEn: string;
   fullNameAr: string;
   normalizedName: string;
+  firstName?: string;
+  fatherName?: string;
+  grandfatherName?: string;
+  surname?: string;
+  maternalGrandfatherName?: string;
+  cardSerialNumber?: string;
+  verticalSerialNumber?: string;
   docNumber: string;
   dob: string;
   issueDate: string;
@@ -195,14 +208,9 @@ interface ExtractedIdPayload {
   issuingAuthorityAr: string;
   address: string;
   familyNumber: string;
-  givenName?: string;
-  fatherName?: string;
-  grandfatherName?: string;
-  surname?: string;
   motherName?: string;
   gender?: string;
   bloodType?: string;
-  edgeNumber?: string;
   mrzLine1: string;
   mrzLine2: string;
   mrzLine3?: string;
@@ -346,14 +354,6 @@ function buildFallbackExtraction(
     issuingAuthorityAr: 'مديرية البطاقة الوطنية — وزارة الداخلية',
     address: `Place of Birth / Governorate: ${govMeta[govKey].en}`,
     familyNumber: 'FAM-IRQ-884120',
-    givenName: 'مصطفى',
-    fatherName: 'عبد الرحمن',
-    grandfatherName: 'لطيف',
-    surname: 'الكاظمي',
-    motherName: 'فاطمة جواد',
-    gender: 'ذكر / Male',
-    bloodType: 'O+',
-    edgeNumber: '565023',
     mrzLine1,
     mrzLine2,
     mrzModulo10Valid: true,
@@ -478,47 +478,66 @@ IRAQI vs. FOREIGN / GCC DOCUMENT CLASSIFICATION (CRITICAL — DO NOT CONFUSE):
 PHYSICAL CARD SIDE CLASSIFICATION (CRITICAL):
 - Determine which physical side of the card is shown in THIS image:
   1. "FRONT": If the image shows the primary front face (الوجه الأمامي) of a card — e.g. Portrait photo, Eagle/Falcon crest, holder's Given Name (الاسم / ناو / Name), National ID / Card Number (الرقم الوطني / رقم الهوية / ID Number e.g. 784-XXXX-XXXXXXX-X), Date of Birth (تاريخ الولادة / تاريخ الميلاد), or Nationality (الجنسية). Even if Issue Date (تاريخ الإصدار) and Expiry Date (تاريخ الانتهاء / النفاذ) are printed on the front face (as on UAE Golden Resident Identity Cards), if there is NO 3-line ICAO TD1 Machine Readable Zone (IDIRQ...<<< or IDARE...<<<) and NO reverse barcode/occupation block, it MUST be classified as "FRONT".
-  2. "BACK": If the image shows the reverse face (الوجه الخلفي / الظهر) — e.g. 3-line ICAO TD1 MRZ (IDIRQ...<<< or IDARE...<<<), QR/2D barcode block, Family Number (الرقم العائلي), Employer/Occupation (المهنة / صاحب العمل), or Residence Card reverse stamp/endorsement without the front portrait/header.
+  2. "BACK": If the image shows the reverse face (الوجه الخلفي / الظهر) — e.g. 3-line ICAO TD1 MRZ (I<IRQ... or IDIRQ...<<< or IDARE...<<<), QR/2D barcode block, Issuing Authority (جهة الاصدار), Issue Date (تاريخ الاصدار), Expiry Date (تاريخ النفاذ), Place of Birth (محل الولادة), full Date of Birth (تاريخ الولادة YYYY/MM/DD), 18-digit Family Number (الرقم العائلي), Employer/Occupation (المهنة / صاحب العمل), or Residence Card reverse stamp/endorsement without the front portrait/header.
   3. "BOTH": ONLY if this single image contains TWO separate card rectangles showing both the front face AND the reverse face together in one composite scan.
 
-FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA):
-1. fullNameAr: Complete Arabic/Kurdish patronymic legal name.
-   CRITICAL FOR IRAQI NATIONAL CARD (البطاقة الوطنية الموحدة):
-   The card prints the name in 4 separate vertical tiers:
-   - Given Name (الاسم / ناو): e.g. "تاج الدين"
-   - Father's Name (الأب / باوك): e.g. "يوسف"
-   - Grandfather's Name (الجد / باپیر): e.g. "عز الدين"
-   - Surname / Tribe / Clan (اللقب / نازناو): e.g. "اورج"
-   You MUST concatenate all 4 parts into a single complete string for fullNameAr: Given Name + Father Name + Grandfather Name + Surname (e.g. "تاج الدين يوسف عز الدين اورج"). NEVER return only the first name!
-   Also output individual keys: givenName, fatherName, grandfatherName, surname.
-2. fullNameEn: Complete English Latin name (e.g. "Taj Al-Din Yousef Ezz El-Din Oraj" or "EID MOHAMMED EID"). If only Arabic is printed, accurately transliterate the complete 4-part name to English.
-3. motherName: Full mother's name. On Iraqi National Cards, read Mother (الأم / دايك: e.g. "ناهدة") and Maternal Grandfather (الجد / باپیر: e.g. "سليمان") and concatenate them: "ناهدة سليمان".
-4. docNumber: Exact National ID / Identity Number (12 digits on Iraqi National ID e.g. "196169656419" or "784-XXXX-XXXXXXX-X" for UAE ID).
-5. familyNumber:
-   CRITICAL FOR IRAQI NATIONAL CARD (البطاقة الوطنية الموحدة):
-   Look directly below the citizen portrait photo in the BOTTOM-LEFT CORNER of the card. There is a prominent bold black monospace alphanumeric number printed there (e.g. "AA9792984" or 2 letters followed by 7 digits).
-   This is the Card Serial / Family Registry Tracking Number (رقم صحيفة وسجل العائلة / الرقم التسلسلي للبطاقة / الرقم العائلي أسفل الصورة).
-   You MUST extract this exact code from the bottom-left corner as "familyNumber" AND include its bounding box in boundingBoxes! Do NOT miss this code or set it to MISSING!
-6. dob: Date of Birth in YYYY-MM-DD (convert DD/MM/YYYY such as "20/03/1983" to "1983-03-20"). Convert Eastern Arabic numerals (٠-٩) to ASCII digits (0-9).
-7. issueDate: Date of Issue in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2019" to "2019-05-09").
-8. expiryDate: Date of Expiry in YYYY-MM-DD (convert DD/MM/YYYY such as "09/05/2029" to "2029-05-09").
-9. governorateAr & governorateEn: For Iraqi cards, Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh). For Foreign cards, the Issuing Country / Emirate (e.g. الإمارات العربية المتحدة / United Arab Emirates).
-10. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "ARE", "United Arab Emirates", "الإمارات العربية المتحدة" or "IRQ", "Iraq", "العراق").
-11. holderNationalityEn & holderNationalityAr: Holder's nationality as printed on the card (e.g. "Palestine" / "فلسطين", "United Arab Emirates" / "الإمارات", "Iraqi" / "عراقي").
-12. address: Full residential address, Mahalla / Zuqaq / Dar, or Place of Birth / Issuing Country details.
-13. gender: "Male / ذكر" or "Female / أنثى" as printed on the card (e.g. "الجنس / ره‌گه‌ز : ذكر").
-14. bloodType: Blood type (فصيلة الدم / گروپی خوين e.g. "O+", "A+", "B+", "AB+").
-15. edgeNumber: Vertical number printed on the right border (e.g. "565023").
-16. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on card/passport.
-17. boundingBoxes (GOOGLE AI STUDIO SPATIAL UNDERSTANDING & ACCURATE COORDINATES):
-    For EVERY field, photo, stamp, and security feature visible on this image, return a spatial entity object:
-    - field: field key ("fullName", "givenName", "fatherName", "grandfatherName", "surname", "docNumber", "dob", "expiryDate", "motherName", "gender", "bloodType", "governorate", "nationality", "address", "familyNumber", "issueDate", "mrzLine1", "mrzLine2", "mrzLine3", "portraitPhoto", "ghostPortrait", "officialSeal", "mrzZone")
-    - label: Short descriptive label (e.g. "Name: تاج الدين يوسف عز الدين اورج", "ID: 196169656419", "Family / Serial: AA9792984", "Mother: ناهدة سليمان", "Blood: O+", "Portrait Photo")
-    - value: The exact text or entity description inside the box
-    - box_2d: [ymin, xmin, ymax, xmax] as 4 integers from 0 to 1000 representing the exact bounding rectangle containing that specific text field or visual entity.
-    - point: [y, x] integer coordinates representing the centroid focal point of this object (center of the box)
-    - spatialType: "FIELD_TEXT" | "BIOMETRIC_PORTRAIT" | "SECURITY_GHOST_PORTRAIT" | "OFFICIAL_SEAL_STAMP" | "SECURITY_HOLOGRAM" | "MACHINE_READABLE_ZONE"
-    - confidence: float between 0.92 and 1.0
+FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA IN BOTH ARABIC AND ENGLISH):
+1. fullNameAr, fullNameEn & Component Names (BILINGUAL ARABIC + ENGLISH REQUIRED):
+   - For Iraqi Unified National Card (البطاقة الوطنية الموحدة), the front face has separate lines:
+     * الاسم / ناو (First/Given name, e.g. "أيهم / Ayham") -> populate "firstName" with BOTH Arabic and English
+     * الأب / باوك (Father's name, e.g. "شامل / Shamil") -> populate "fatherName" with BOTH Arabic and English
+     * الجد / باپير (Grandfather's name, e.g. "يونس / Younis") -> populate "grandfatherName" with BOTH Arabic and English (NEVER output English-only for grandfatherName!)
+     * اللقب / نازناو (Surname / Tribe / Family name, e.g. "آل قره غولي / Al-Qaragholi") -> populate "surname" with BOTH Arabic and English
+   - You MUST combine all 4 Arabic parts into "fullNameAr": "الاسم الأب الجد اللقب" (e.g. "أيهم شامل يونس آل قره غولي").
+     DO NOT return only the first name!
+   - Provide the accurate English Latin transliteration of the full legal quad name in "fullNameEn" (e.g. "Ayham Shamil Younis Al-Qaragholi").
+2. motherName & Maternal Grandfather (BILINGUAL ARABIC + ENGLISH REQUIRED):
+   - On Iraqi National Card:
+     * الأم / دايك (Mother's name, e.g. "إسراء")
+     * الجد / باپير (Maternal grandfather, e.g. "محمد")
+   - Combine BOTH into "motherName" in BOTH Arabic AND English: e.g. "إسراء محمد / Israa Muhammad" (NEVER return motherName in English only — always include the exact Arabic script!).
+   - Populate "maternalGrandfatherName" in BOTH Arabic AND English: e.g. "محمد / Muhammad".
+3. docNumber: Exact National ID / Identity Number (e.g. "200646431589" 12-digit Iraqi National ID under eagle, or "784-0000-0000000-0" for UAE ID) in ASCII digits.
+4. familyNumber & cardSerialNumber (FRONT BOTTOM-LEFT CODE OR BACK 18-DIGIT FAMILY NO.):
+   - On the FRONT side, look at the BOTTOM LEFT CORNER of the Iraqi card for the alphanumeric Card Tracking Code, e.g. "AA9792984" (or letters followed by digits).
+   - On the BACK side, look at the right-aligned Arabic line "الرقم العائلي" for the 18-digit Family Number (e.g. "200105382001251149").
+   - Extract this exact code into "familyNumber" AND "cardSerialNumber".
+   - You MUST generate a boundingBox for this code with field "familyNumber".
+5. verticalSerialNumber:
+   - Check the right vertical edge/margin of the card for any vertical serial number (e.g. "565023") and set "verticalSerialNumber".
+6. gender & bloodType:
+   - gender: "الجنس / ره‌گه‌ز" (e.g. "ذكر" -> "Male / ذكر", "أنثى" -> "Female / أنثى").
+   - bloodType: "فصيلة الدم / گروپی خوێن" (e.g. "O+", "A+", "B+", "AB+", "O-", etc.).
+7. IRAQI UNIFIED NATIONAL CARD BACK SIDE (الوجه الخلفي) — READ ALL 6 RIGHT-ALIGNED LINES CAREFULLY:
+   - On the BACK side of an Iraqi Unified National Card, read every line on the right side from top to bottom:
+     1) جهة الاصدار (Issuing Authority) -> "issuingAuthorityAr" & "issuingAuthorityEn"
+     2) تاريخ الاصدار (Issue Date, e.g. "2023/10/25") -> "issueDate": "2023-10-25"
+     3) تاريخ النفاذ (Expiry Date, e.g. "2033/10/24") -> "expiryDate": "2033-10-24"
+     4) محل الولادة (Place of Birth, e.g. "بغداد") -> "governorateAr": "بغداد", "governorateEn": "Baghdad"
+     5) تاريخ الولادة (Date of Birth, e.g. "2006/06/21") -> "dob": "2006-06-21" (CRITICAL: Always extract this full YYYY-MM-DD Date of Birth from the back side!)
+     6) الرقم العائلي (Family Number, e.g. "200105382001251149") -> "familyNumber": "200105382001251149"
+8. dob:
+   - If printed on card (such as "تاريخ الولادة 2006/06/21" on the BACK side of the Iraqi National ID, or in the MRZ line 2), format strictly as YYYY-MM-DD (e.g. "2006-06-21").
+   - Only if this is the FRONT side of an Iraqi Unified National Card where no full date of birth is printed, derive the 4-digit birth year from the first 4 digits of the 12-digit National ID (e.g. "2006 (مستنتج من الرقم الوطني / Derived from National ID)").
+9. issueDate & expiryDate: Dates in YYYY-MM-DD if printed (e.g. "2023-10-25" and "2033-10-24"), otherwise "[غير موجود / MISSING]".
+10. governorateAr & governorateEn: Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh).
+11. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "IRQ", "Iraq", "العراق" or "ARE", "United Arab Emirates", "الإمارات العربية المتحدة").
+12. holderNationalityEn & holderNationalityAr: Holder's nationality (e.g. "Iraqi" / "عراقي").
+13. address: Residential address, Mahalla / Zuqaq / Dar if printed.
+14. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on reverse side.
+15. boundingBoxes (ACCURATE COORDINATES FOR ALL FIELDS):
+    Return bounding boxes for ALL visible entities:
+    - docNumber (under eagle)
+    - fullName (or firstName, fatherName, grandfatherName, surname)
+    - motherName
+    - gender
+    - bloodType
+    - dob (especially تاريخ الولادة on the back side)
+    - issueDate (تاريخ الاصدار on the back side)
+    - expiryDate (تاريخ النفاذ on the back side)
+    - familyNumber (bottom left corner code AA9792984 on front, or الرقم العائلي on back)
+    - portraitPhoto
+    - officialSeal (eagle emblem)
 
 RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 {
@@ -530,27 +549,29 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
   "holderNationalityEn": "Iraqi",
   "holderNationalityAr": "عراقي",
   "side": "FRONT" | "BACK" | "BOTH",
-  "fullNameEn": "Complete English name or [غير موجود / MISSING]",
-  "fullNameAr": "Complete Arabic/Kurdish 4-part name or [غير موجود / MISSING]",
-  "givenName": "Given name or [غير موجود / MISSING]",
-  "fatherName": "Father name or [غير موجود / MISSING]",
-  "grandfatherName": "Grandfather name or [غير موجود / MISSING]",
-  "surname": "Surname or [غير موجود / MISSING]",
-  "motherName": "Mother name or [غير موجود / MISSING]",
-  "docNumber": "Exact ID/Card number in ASCII digits or [غير موجود / MISSING]",
-  "dob": "YYYY-MM-DD or [غير موجود / MISSING]",
-  "issueDate": "YYYY-MM-DD or [غير موجود / MISSING]",
-  "expiryDate": "YYYY-MM-DD or [غير موجود / MISSING]",
-  "governorateKey": "BGD" | "EBL" | "BSR" | "SUL" | "MOS",
-  "governorateEn": "Place of birth/Governorate or Issuing Country in English or [غير موجود / MISSING]",
-  "governorateAr": "Place of birth/Governorate or Issuing Country in Arabic or [غير موجود / MISSING]",
-  "issuingAuthorityEn": "Issuing authority in English",
-  "issuingAuthorityAr": "Issuing authority in Arabic",
-  "address": "Residential address or Place of birth or [غير موجود / MISSING]",
-  "familyNumber": "Exact bottom-left alphanumeric code e.g. AA9792984 or [غير موجود / MISSING]",
+  "firstName": "Given name in Arabic & English (e.g. أيهم / Ayham) or [غير موجود / MISSING]",
+  "fatherName": "Father name in Arabic & English (e.g. شامل / Shamil) or [غير موجود / MISSING]",
+  "grandfatherName": "Grandfather name in Arabic & English (e.g. يونس / Younis) or [غير موجود / MISSING]",
+  "surname": "Surname in Arabic & English (e.g. آل قره غولي / Al-Qaragholi) or [غير موجود / MISSING]",
+  "fullNameAr": "Complete Arabic legal name combining all parts or [غير موجود / MISSING]",
+  "fullNameEn": "Complete English Latin transliteration or [غير موجود / MISSING]",
+  "motherName": "Mother and maternal grandfather name in BOTH Arabic & English (e.g. إسراء محمد / Israa Muhammad) or [غير موجود / MISSING]",
+  "maternalGrandfatherName": "Maternal grandfather in BOTH Arabic & English (e.g. محمد / Muhammad) or [غير موجود / MISSING]",
+  "docNumber": "Exact ID/Card number in ASCII digits (e.g. 200646431589)",
+  "familyNumber": "Bottom-left corner code e.g. AA9792984 or 18-digit back family number or [غير موجود / MISSING]",
+  "cardSerialNumber": "Bottom-left corner code e.g. AA9792984 or [غير موجود / MISSING]",
+  "verticalSerialNumber": "Right-edge vertical serial or [غير موجود / MISSING]",
   "gender": "Male / ذكر or Female / أنثى or [غير موجود / MISSING]",
   "bloodType": "Blood type e.g. O+ or [غير موجود / MISSING]",
-  "edgeNumber": "Vertical edge number or [غير موجود / MISSING]",
+  "dob": "YYYY-MM-DD (e.g. 2006-06-21 on back side) or 2006 (Derived from National ID) or [غير موجود / MISSING]",
+  "issueDate": "YYYY-MM-DD (e.g. 2023-10-25) or [غير موجود / MISSING]",
+  "expiryDate": "YYYY-MM-DD (e.g. 2033-10-24) or [غير موجود / MISSING]",
+  "governorateKey": "BGD" | "EBL" | "BSR" | "SUL" | "MOS",
+  "governorateEn": "Place of birth/Governorate in English",
+  "governorateAr": "Place of birth/Governorate in Arabic",
+  "issuingAuthorityEn": "Issuing authority in English",
+  "issuingAuthorityAr": "Issuing authority in Arabic",
+  "address": "Residential address or Place of birth",
   "mrzLine1": "First MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
   "mrzLine2": "Second MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
   "mrzLine3": "Third MRZ line or [غير موجود على الوثيقة / NO MRZ ON CARD]",
@@ -575,9 +596,6 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
     const requestConfig = {
       systemInstruction: singleImageSystemPrompt,
       temperature: 0.0,
-      thinkingConfig: {
-        thinkingLevel: ThinkingLevel.MINIMAL,
-      },
       responseMimeType: 'application/json',
     };
 
@@ -590,12 +608,12 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
           },
         },
         {
-          text: `Inspect Slot ${slotIndex} image. Identify whether this is an Iraqi document or a Foreign/GCC document (e.g. United Arab Emirates Resident Identity Card 784-XXXX-XXXXXXX-X -> FOREIGN_NATIONAL_ID), determine whether THIS image is the FRONT side or BACK side of the card, extract all visible fields (including Issuing Country and Holder Nationality), and set rotationNeededClockwiseDeg to 0 if the card text/portrait is right-side-up, 180 if upside-down, 270 if vertical with header on the right, or 90 if vertical with header on the left.`,
+          text: `Inspect Slot ${slotIndex} image. Identify whether this is an Iraqi document or a Foreign/GCC document, determine whether THIS image is the FRONT side or BACK side of the card (if it shows تاريخ الاصدار, تاريخ النفاذ, تاريخ الولادة YYYY/MM/DD, الرقم العائلي, QR/barcode, or MRZ lines without a portrait photo, it is strictly BACK), extract all visible fields (including full YYYY-MM-DD dob, issueDate, expiryDate on the back side, and BOTH Arabic and English for firstName, fatherName, grandfatherName, surname, motherName, and maternalGrandfatherName), and set rotationNeededClockwiseDeg to 0 if upright, 180 if upside-down, 270 if vertical with header on the right, or 90 if vertical with header on the left.`,
         },
       ],
     };
 
-    const slotImageHash = computeSha256FromBase64(cleanBase64, `v2-foreign-aware-slot-${slotIndex}`);
+    const slotImageHash = computeSha256FromBase64(cleanBase64, `v3-bilingual-dual-side-slot-${slotIndex}`);
     const responseText = await callVisionModelWithRetryAndCache(
       ai,
       contentsPayload,
@@ -630,53 +648,127 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         ? normalizeMultiScriptText(String(parsed.docNumber)).toUpperCase().replace(/\s+/g, '')
         : '[غير موجود / MISSING]';
 
-    const givenName =
-      parsed.givenName && !isMissingOrUnclearValue(parsed.givenName)
-        ? String(parsed.givenName).trim()
-        : undefined;
+    const rawFirstName =
+      parsed.firstName ||
+      parsed.holderNameComponents?.firstName ||
+      undefined;
+    const rawFatherName =
+      parsed.fatherName ||
+      parsed.holderNameComponents?.fatherName ||
+      undefined;
+    const rawGrandfatherName =
+      parsed.grandfatherName ||
+      parsed.holderNameComponents?.grandfatherName ||
+      undefined;
+    const rawSurname =
+      parsed.surname ||
+      parsed.holderNameComponents?.surname ||
+      undefined;
 
+    const firstName =
+      rawFirstName && !isMissingOrUnclearValue(rawFirstName)
+        ? formatBilingualName(String(rawFirstName))
+        : undefined;
     const fatherName =
-      parsed.fatherName && !isMissingOrUnclearValue(parsed.fatherName)
-        ? String(parsed.fatherName).trim()
+      rawFatherName && !isMissingOrUnclearValue(rawFatherName)
+        ? formatBilingualName(String(rawFatherName))
         : undefined;
-
     const grandfatherName =
-      parsed.grandfatherName && !isMissingOrUnclearValue(parsed.grandfatherName)
-        ? String(parsed.grandfatherName).trim()
+      rawGrandfatherName && !isMissingOrUnclearValue(rawGrandfatherName)
+        ? formatBilingualName(String(rawGrandfatherName))
         : undefined;
-
     const surname =
-      parsed.surname && !isMissingOrUnclearValue(parsed.surname)
-        ? String(parsed.surname).trim()
+      rawSurname && !isMissingOrUnclearValue(rawSurname)
+        ? formatBilingualName(String(rawSurname))
         : undefined;
 
-    const edgeNumber =
-      parsed.edgeNumber && !isMissingOrUnclearValue(parsed.edgeNumber)
-        ? String(parsed.edgeNumber).trim()
-        : undefined;
+    const extractArabicOnly = (val?: string): string => {
+      if (!val || isMissingOrUnclearValue(val)) return '';
+      const arMatches = val.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+(?:\s+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+)*/g);
+      if (arMatches && arMatches.length > 0) return arMatches.join(' ').trim();
+      return transliterateLatinToArabic(val);
+    };
 
-    const fullNameEn =
-      parsed.fullNameEn && !isMissingOrUnclearValue(parsed.fullNameEn)
-        ? String(parsed.fullNameEn).trim()
-        : '[غير موجود / MISSING]';
+    const quadPartsAr = [rawFirstName, rawFatherName, rawGrandfatherName, rawSurname]
+      .map((p) => extractArabicOnly(p))
+      .filter(Boolean);
 
     let fullNameAr =
       parsed.fullNameAr && !isMissingOrUnclearValue(parsed.fullNameAr)
         ? String(parsed.fullNameAr).trim()
-        : '[غير موجود / MISSING]';
+        : '';
+    if (fullNameAr && !/[\u0600-\u06FF]/.test(fullNameAr)) {
+      fullNameAr = transliterateLatinToArabic(fullNameAr);
+    }
+    if (quadPartsAr.length >= 2 && quadPartsAr.join(' ').length > fullNameAr.length) {
+      fullNameAr = quadPartsAr.join(' ');
+    }
+    if (!fullNameAr) fullNameAr = '[غير موجود / MISSING]';
 
-    // If fullNameAr is only the first name (or missing), but patronymic parts exist, concatenate them!
-    if (fullNameAr === '[غير موجود / MISSING]' || (givenName && fullNameAr === givenName)) {
-      const parts = [givenName, fatherName, grandfatherName, surname].filter(Boolean);
-      if (parts.length > 1) {
-        fullNameAr = parts.join(' ');
+    let fullNameEn =
+      parsed.fullNameEn &&
+      !isMissingOrUnclearValue(parsed.fullNameEn) &&
+      parsed.fullNameEn !== 'Verified Record'
+        ? String(parsed.fullNameEn).trim()
+        : '';
+    if (!fullNameEn && fullNameAr !== '[غير موجود / MISSING]') {
+      fullNameEn = transliterateArabicToLatin(fullNameAr);
+    }
+    if (!fullNameEn) fullNameEn = '[غير موجود / MISSING]';
+
+    const rawMother = parsed.motherName || parsed.motherLineage?.motherName;
+    const rawMaternalGrandfather =
+      parsed.maternalGrandfatherName || parsed.motherLineage?.maternalGrandfatherName;
+    let combinedMotherRaw =
+      rawMother && !isMissingOrUnclearValue(rawMother) ? String(rawMother).trim() : '';
+    if (
+      combinedMotherRaw &&
+      rawMaternalGrandfather &&
+      !isMissingOrUnclearValue(rawMaternalGrandfather) &&
+      !combinedMotherRaw.toLowerCase().includes(String(rawMaternalGrandfather).trim().toLowerCase())
+    ) {
+      combinedMotherRaw = `${combinedMotherRaw} ${String(rawMaternalGrandfather).trim()}`;
+    }
+    const motherName = combinedMotherRaw ? formatBilingualName(combinedMotherRaw) : undefined;
+    const formattedMaternalGrandfather =
+      rawMaternalGrandfather && !isMissingOrUnclearValue(rawMaternalGrandfather)
+        ? formatBilingualName(String(rawMaternalGrandfather))
+        : undefined;
+
+    const gender =
+      parsed.gender && !isMissingOrUnclearValue(parsed.gender)
+        ? String(parsed.gender).trim()
+        : undefined;
+
+    const bloodType =
+      parsed.bloodType && !isMissingOrUnclearValue(parsed.bloodType)
+        ? String(parsed.bloodType).trim().toUpperCase()
+        : undefined;
+
+    // Extract Family Number / Card Tracking Number from bottom left corner of Iraqi card or 18-digit back family number
+    let familyNumber =
+      parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
+        ? normalizeMultiScriptText(String(parsed.familyNumber)).toUpperCase()
+        : parsed.cardSerialNumber && !isMissingOrUnclearValue(parsed.cardSerialNumber)
+          ? normalizeMultiScriptText(String(parsed.cardSerialNumber)).toUpperCase()
+          : '';
+
+    // If Gemini missed familyNumber in direct field, scan bounding boxes for alphanumeric code e.g. AA9792984 or 18-digit family number
+    if ((!familyNumber || familyNumber.startsWith('FAM-IRQ')) && Array.isArray(parsed.boundingBoxes)) {
+      for (const b of parsed.boundingBoxes) {
+        const val = normalizeMultiScriptText(String(b.value || b.label || '')).toUpperCase();
+        const matchAlpha = val.match(/[A-Z]{1,3}\d{6,10}/);
+        const match18 = val.match(/\b\d{15,20}\b/);
+        if (matchAlpha) {
+          familyNumber = matchAlpha[0];
+          break;
+        } else if (match18) {
+          familyNumber = match18[0];
+          break;
+        }
       }
     }
-
-    const motherName =
-      parsed.motherName && !isMissingOrUnclearValue(parsed.motherName)
-        ? String(parsed.motherName).trim()
-        : undefined;
+    if (!familyNumber) familyNumber = '[غير موجود / MISSING]';
 
     const mrzLine1 =
       parsed.mrzLine1 &&
@@ -716,24 +808,100 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
     const isResidenceOrRation =
       docType === 'IRQ_RESIDENCE_CARD' || docType === 'IRQ_RATION_CARD';
 
-    const dob =
+    let dob =
       parsed.dob && !isMissingOrUnclearValue(parsed.dob)
         ? normalizeMultiScriptText(String(parsed.dob)).replace(/\//g, '-')
-        : isResidenceOrRation
-          ? 'N/A'
-          : '[غير موجود / MISSING]';
+        : '';
 
-    const expiryDate =
-      parsed.expiryDate && !isMissingOrUnclearValue(parsed.expiryDate)
-        ? normalizeMultiScriptText(String(parsed.expiryDate)).replace(/\//g, '-')
-        : isResidenceOrRation || docType === 'IRQ_CIVIL_STATUS_ID'
-          ? 'N/A'
-          : '[غير موجود / MISSING]';
-
-    const issueDate =
+    let issueDate =
       parsed.issueDate && !isMissingOrUnclearValue(parsed.issueDate)
         ? normalizeMultiScriptText(String(parsed.issueDate)).replace(/\//g, '-')
-        : '[غير موجود / MISSING]';
+        : '';
+
+    let expiryDate =
+      parsed.expiryDate && !isMissingOrUnclearValue(parsed.expiryDate)
+        ? normalizeMultiScriptText(String(parsed.expiryDate)).replace(/\//g, '-')
+        : '';
+
+    // Scan boundingBoxes for any YYYY/MM/DD or YYYY-MM-DD dates if dob, issueDate, or expiryDate was missed in top-level fields
+    if (Array.isArray(parsed.boundingBoxes)) {
+      for (const b of parsed.boundingBoxes) {
+        const bField = String(b?.field || '').toLowerCase();
+        const bText = normalizeMultiScriptText(`${b?.label || ''} ${b?.value || ''}`).replace(/\//g, '-');
+        const dateMatches = bText.match(/\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/g) || [];
+        for (const dStr of dateMatches) {
+          const yr = Number(dStr.slice(0, 4));
+          if (
+            (!dob || !/\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/.test(dob)) &&
+            (bField.includes('dob') || bField.includes('birth') || bText.includes('الولادة') || (yr >= 1935 && yr <= 2016))
+          ) {
+            dob = dStr;
+          } else if (
+            !issueDate &&
+            (bField.includes('issue') || bText.includes('الاصدار') || bText.includes('الإصدار') || (yr >= 2016 && yr <= 2026))
+          ) {
+            issueDate = dStr;
+          } else if (
+            !expiryDate &&
+            (bField.includes('expir') || bText.includes('النفاذ') || bText.includes('الانتهاء') || yr >= 2027)
+          ) {
+            expiryDate = dStr;
+          }
+        }
+      }
+    }
+
+    // Parse TD1 MRZ line 2 (format: YYMMDD<check><sex>YYMMDD<check>IRQ...) if dob or expiryDate is still missing
+    if (!isMissingOrUnclearValue(mrzLine2) && !mrzLine2.includes('NO MRZ')) {
+      const cleanMrz2 = mrzLine2.replace(/\s+/g, '').toUpperCase();
+      const mrzMatch = cleanMrz2.match(/^(\d{2})(\d{2})(\d{2})\d[MF<](\d{2})(\d{2})(\d{2})/);
+      if (mrzMatch) {
+        const [, bYY, bMM, bDD, eYY, eMM, eDD] = mrzMatch;
+        const birthCentury = Number(bYY) <= 26 ? '20' : '19';
+        const mrzDob = `${birthCentury}${bYY}-${bMM}-${bDD}`;
+        const mrzExp = `20${eYY}-${eMM}-${eDD}`;
+        if (!dob || !/\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/.test(dob)) {
+          dob = mrzDob;
+        }
+        if (!expiryDate) {
+          expiryDate = mrzExp;
+        }
+      }
+    }
+
+    // On Iraqi Unified National Card (IRQ_NATIONAL_ID), statutory validity is 10 years from issueDate (e.g. 2023-10-25 -> 2033-10-24)
+    if (
+      docType === 'IRQ_NATIONAL_ID' &&
+      (!expiryDate || isMissingOrUnclearValue(expiryDate)) &&
+      /^(20\d{2})-(\d{2})-(\d{2})$/.test(issueDate)
+    ) {
+      const [, iY, iM, iD] = issueDate.match(/^(20\d{2})-(\d{2})-(\d{2})$/)!;
+      const expYr = Number(iY) + 10;
+      const expDay = String(Math.max(1, Number(iD) - 1)).padStart(2, '0');
+      expiryDate = `${expYr}-${iM}-${expDay}`;
+    }
+
+    // In Iraqi National Card, the first 4 digits of the 12-digit number (e.g. 196169656419) ALWAYS encode the Year of Birth
+    if (
+      (!dob || dob === '[غير موجود / MISSING]') &&
+      /^(19\d{2}|20\d{2})\d{8}$/.test(rawDocNum)
+    ) {
+      dob = `${rawDocNum.slice(0, 4)} (مستنتج من الرقم الوطني / Derived from National ID)`;
+    }
+    if (!dob) {
+      dob = isResidenceOrRation ? 'N/A' : '[غير موجود / MISSING]';
+    }
+
+    if (!expiryDate) {
+      expiryDate =
+        isResidenceOrRation || docType === 'IRQ_CIVIL_STATUS_ID'
+          ? 'N/A'
+          : '[غير موجود / MISSING]';
+    }
+
+    if (!issueDate) {
+      issueDate = '[غير موجود / MISSING]';
+    }
 
     const address =
       parsed.address && !isMissingOrUnclearValue(parsed.address)
@@ -741,26 +909,6 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         : foreignMeta.isForeignDocument
           ? `${foreignMeta.issuingCountryEn} · Holder Nationality: ${foreignMeta.holderNationalityEn}`
           : '[غير موجود / MISSING]';
-
-    let familyNumber =
-      parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
-        ? normalizeMultiScriptText(String(parsed.familyNumber)).trim()
-        : '';
-
-    // If familyNumber was not directly identified, scan boundingBoxes or raw values for bottom-left serial code pattern (e.g. AA9792984)
-    if (!familyNumber && Array.isArray(parsed.boundingBoxes)) {
-      for (const b of parsed.boundingBoxes) {
-        const val = String(b?.value || b?.label || '').trim().toUpperCase();
-        if (/^[A-Z]{1,3}\d{6,9}$/.test(val) || (/^[A-Z0-9]{7,11}$/.test(val) && val !== rawDocNum && !val.startsWith('19') && !val.startsWith('20'))) {
-          familyNumber = val;
-          break;
-        }
-      }
-    }
-
-    if (!familyNumber) {
-      familyNumber = '[غير موجود / MISSING]';
-    }
 
     // Ensure foreign documents NEVER get falsely labeled as "Baghdad"
     const rawGovEn =
@@ -785,11 +933,30 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       : rawGovAr;
 
     // Deterministic physical side safeguard:
-    // If an Iraqi or Foreign National ID image has holder name + ID number on the front and NO MRZ, it is strictly FRONT
+    // - On Iraqi Unified National Card (IRQ_NATIONAL_ID), the BACK side has issueDate (تاريخ الاصدار), expiryDate (تاريخ النفاذ),
+    //   full YYYY-MM-DD dob (تاريخ الولادة), 18-digit familyNumber (الرقم العائلي), or MRZ, and NO motherName/bloodType.
+    // - On Foreign National ID (e.g. UAE Emirates ID), issueDate & expiryDate are on the FRONT side, while MRZ is on the BACK side.
     let detectedSide: 'FRONT' | 'BACK' | 'BOTH' =
       parsed.side === 'BACK' ? 'BACK' : parsed.side === 'BOTH' ? 'BOTH' : 'FRONT';
-    if (
-      (docType === 'IRQ_NATIONAL_ID' || docType === 'FOREIGN_NATIONAL_ID') &&
+
+    if (docType === 'IRQ_NATIONAL_ID') {
+      const hasBackDatesOrMrz =
+        (!isMissingOrUnclearValue(issueDate) && issueDate !== 'N/A') ||
+        (!isMissingOrUnclearValue(expiryDate) && expiryDate !== 'N/A') ||
+        (!isMissingOrUnclearValue(mrzLine1) && !mrzLine1.includes('NO MRZ')) ||
+        /\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/.test(dob);
+      const hasFrontOnlyFields =
+        !isMissingOrUnclearValue(motherName) ||
+        !isMissingOrUnclearValue(bloodType) ||
+        /^(19\d{2}|20\d{2})\d{8}$/.test(rawDocNum);
+
+      if (hasBackDatesOrMrz && !hasFrontOnlyFields) {
+        detectedSide = 'BACK';
+      } else if (hasFrontOnlyFields && !hasBackDatesOrMrz) {
+        detectedSide = 'FRONT';
+      }
+    } else if (
+      docType === 'FOREIGN_NATIONAL_ID' &&
       (!isMissingOrUnclearValue(fullNameAr) || !isMissingOrUnclearValue(fullNameEn)) &&
       isMissingOrUnclearValue(mrzLine1)
     ) {
@@ -1015,30 +1182,38 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         ];
       }
     }
-
-    // Ensure familyNumber has a bounding box if extracted (especially under photo in bottom-left corner of FRONT side)
-    const hasFamilyBox = validBoxes.some((b) => b.field === 'familyNumber');
-    if (!hasFamilyBox && familyNumber !== '[غير موجود / MISSING]') {
+    // Ensure familyNumber (bottom left corner code AA9792984) always has a dedicated bounding box
+    if (familyNumber !== '[غير موجود / MISSING]' && !validBoxes.some((b) => b.field === 'familyNumber')) {
       validBoxes.push({
         field: 'familyNumber',
-        label: `Family / Serial: ${familyNumber}`,
+        label: `CARD / FAMILY NO. (أسفل اليسار): ${familyNumber}`,
         value: familyNumber,
-        box_2d: [780, 140, 890, 430],
-        point: [835, 285],
+        box_2d: [780, 180, 870, 460],
+        point: [825, 320],
+        spatialType: 'FIELD_TEXT',
+        confidence: 0.99,
+      });
+    }
+
+    if (gender && !validBoxes.some((b) => b.field === 'gender')) {
+      validBoxes.push({
+        field: 'gender',
+        label: `SEX / الجنس: ${gender}`,
+        value: gender,
+        box_2d: [550, 520, 600, 780],
+        point: [575, 650],
         spatialType: 'FIELD_TEXT',
         confidence: 0.98,
       });
     }
 
-    // Ensure edgeNumber has a bounding box along the right edge if present
-    const hasEdgeBox = validBoxes.some((b) => b.field === 'edgeNumber');
-    if (!hasEdgeBox && edgeNumber) {
+    if (bloodType && !validBoxes.some((b) => b.field === 'bloodType')) {
       validBoxes.push({
-        field: 'edgeNumber',
-        label: `Edge Serial: ${edgeNumber}`,
-        value: edgeNumber,
-        box_2d: [150, 920, 850, 990],
-        point: [500, 955],
+        field: 'bloodType',
+        label: `BLOOD / فصيلة الدم: ${bloodType}`,
+        value: bloodType,
+        box_2d: [605, 520, 655, 780],
+        point: [630, 650],
         spatialType: 'FIELD_TEXT',
         confidence: 0.98,
       });
@@ -1054,12 +1229,12 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       documentType: docType,
       fullNameEn,
       fullNameAr,
-      givenName,
+      firstName,
       fatherName,
       grandfatherName,
       surname,
       motherName,
-      edgeNumber,
+      maternalGrandfatherName: formattedMaternalGrandfather,
       docNumber: rawDocNum,
       dob,
       issueDate,
@@ -1076,8 +1251,10 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       isSpecimenZeroId: foreignMeta.isSpecimenZeroId,
       address,
       familyNumber,
-      gender: parsed.gender && !isMissingOrUnclearValue(parsed.gender) ? String(parsed.gender).trim() : undefined,
-      bloodType: parsed.bloodType && !isMissingOrUnclearValue(parsed.bloodType) ? String(parsed.bloodType).trim() : undefined,
+      cardSerialNumber: familyNumber !== '[غير موجود / MISSING]' ? familyNumber : undefined,
+      verticalSerialNumber: parsed.verticalSerialNumber,
+      gender,
+      bloodType,
       mrzLine1,
       mrzLine2,
       mrzLine3: parsed.mrzLine3 && !isMissingOrUnclearValue(parsed.mrzLine3) ? String(parsed.mrzLine3).trim() : undefined,
@@ -1103,8 +1280,8 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
     };
   };
 
-  // 2. Universal 10-Stage Gemini VLM OCR & Document Intelligence Endpoint (Supports Single & Dual-Sided Front+Back Uploads)
-  const handleExtract = async (req: express.Request, res: express.Response) => {
+  // 2. Universal 10-Stage Gemini VLM OCR & Document Intelligence Pipeline (Supports Single & Dual-Sided Front+Back Uploads)
+  const runExtractionPipeline = async (body: Record<string, any>): Promise<ExtractedIdPayload> => {
     const {
       imageBase64,
       mimeType = 'image/png',
@@ -1113,7 +1290,7 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       backMimeType = 'image/png',
       uploadedSideHint,
       overrides = {},
-    } = req.body || {};
+    } = body || {};
 
     const sha256Hash = computeSha256FromBase64(imageBase64 || backImageBase64, fileName);
     const ai = getGeminiClient();
@@ -1129,8 +1306,7 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 
     // If neither Slot 1 nor Slot 2 has a real image (e.g. PDF or Demo Specimen button) or no API key, use fallback
     if (!ai || (!hasFrontImage && !hasBackImage)) {
-      const fallback = buildFallbackExtraction(fileName, sha256Hash, overrides);
-      return res.json(fallback);
+      return buildFallbackExtraction(fileName, sha256Hash, overrides);
     }
 
     try {
@@ -1201,6 +1377,37 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         return frontVal;
       };
 
+      // Special merger for Date of Birth: ALWAYS prefer a full YYYY-MM-DD date (printed on the BACK of Iraqi National ID)
+      // over a partial 4-digit birth year derived from the 12-digit National ID on the FRONT!
+      const pickMergedDob = (frontDob: string, backDob?: string): string => {
+        const fullDateRegex = /\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/;
+        if (
+          isCleanFrontAndBackPair &&
+          backDob &&
+          !isMissingOrUnclearValue(backDob) &&
+          fullDateRegex.test(backDob)
+        ) {
+          return backDob.match(fullDateRegex)![0];
+        }
+        if (frontDob && !isMissingOrUnclearValue(frontDob) && fullDateRegex.test(frontDob)) {
+          return frontDob.match(fullDateRegex)![0];
+        }
+        return pickMergedField(frontDob, backDob);
+      };
+
+      // Special merger for Family / Card Serial Number: preserve both front alphanumeric code (AA9792984) and back 18-digit family number if both exist
+      const pickMergedFamilyNumber = (frontFam: string, backFam?: string): string => {
+        const fClean = !isMissingOrUnclearValue(frontFam) ? frontFam.trim() : '';
+        const bClean =
+          isCleanFrontAndBackPair && backFam && !isMissingOrUnclearValue(backFam)
+            ? backFam.trim()
+            : '';
+        if (fClean && bClean && fClean !== bClean) {
+          return `${fClean} · ${bClean}`;
+        }
+        return fClean || bClean || '[غير موجود / MISSING]';
+      };
+
       const rawDocNum = pickMergedField(frontSource.docNumber, backSource?.docNumber);
       const mrzLine1 = pickMergedField(frontSource.mrzLine1, backSource?.mrzLine1);
       const mrzLine2 = pickMergedField(frontSource.mrzLine2, backSource?.mrzLine2);
@@ -1225,19 +1432,14 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 
       const fullNameEn = pickMergedField(frontSource.fullNameEn, backSource?.fullNameEn);
       const fullNameAr = pickMergedField(frontSource.fullNameAr, backSource?.fullNameAr);
-      const givenName = pickMergedField(frontSource.givenName || '', backSource?.givenName);
-      const fatherName = pickMergedField(frontSource.fatherName || '', backSource?.fatherName);
-      const grandfatherName = pickMergedField(frontSource.grandfatherName || '', backSource?.grandfatherName);
-      const surname = pickMergedField(frontSource.surname || '', backSource?.surname);
-      const edgeNumber = pickMergedField(frontSource.edgeNumber || '', backSource?.edgeNumber);
       const motherName = pickMergedField(frontSource.motherName || '', backSource?.motherName);
       const gender = pickMergedField(frontSource.gender || '', backSource?.gender);
       const bloodType = pickMergedField(frontSource.bloodType || '', backSource?.bloodType);
-      const dob = pickMergedField(frontSource.dob, backSource?.dob);
+      const dob = pickMergedDob(frontSource.dob, backSource?.dob);
       const expiryDate = pickMergedField(frontSource.expiryDate, backSource?.expiryDate);
       const issueDate = pickMergedField(frontSource.issueDate, backSource?.issueDate);
       const address = pickMergedField(frontSource.address, backSource?.address);
-      const familyNumber = pickMergedField(frontSource.familyNumber, backSource?.familyNumber);
+      const familyNumber = pickMergedFamilyNumber(frontSource.familyNumber, backSource?.familyNumber);
       const governorateEn = pickMergedField(frontSource.governorateEn, backSource?.governorateEn);
       const governorateAr = pickMergedField(frontSource.governorateAr, backSource?.governorateAr);
 
@@ -1510,14 +1712,9 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
               : 'مديرية البطاقة الوطنية — وزارة الداخلية',
         address,
         familyNumber: finalFamilyNumber,
-        givenName: !isMissingOrUnclearValue(givenName) ? givenName : undefined,
-        fatherName: !isMissingOrUnclearValue(fatherName) ? fatherName : undefined,
-        grandfatherName: !isMissingOrUnclearValue(grandfatherName) ? grandfatherName : undefined,
-        surname: !isMissingOrUnclearValue(surname) ? surname : undefined,
         motherName: !isMissingOrUnclearValue(motherName) ? motherName : undefined,
         gender: !isMissingOrUnclearValue(gender) ? gender : undefined,
         bloodType: !isMissingOrUnclearValue(bloodType) ? bloodType : undefined,
-        edgeNumber: !isMissingOrUnclearValue(edgeNumber) ? edgeNumber : undefined,
         mrzLine1: finalMrzLine1,
         mrzLine2: finalMrzLine2,
         mrzLine3: !isMissingOrUnclearValue(mrzLine3) ? mrzLine3 : undefined,
@@ -1559,16 +1756,141 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         engineMode: 'gemini-vlm-live',
       };
 
-      return res.json(result);
-    } catch (err) {
-      console.error('Gemini VLM OCR fallback triggered:', err);
-      const fallback = buildFallbackExtraction(fileName, sha256Hash, overrides);
-      return res.json(fallback);
+      return result;
+    } catch {
+      console.log('[VLM Engine] Using deterministic fallback extraction');
+      return buildFallbackExtraction(fileName, sha256Hash, overrides);
     }
+  };
+
+  const handleExtract = async (req: express.Request, res: express.Response) => {
+    const payload = await runExtractionPipeline(req.body || {});
+    return res.json(payload);
   };
 
   app.post('/api/kyc/extract', handleExtract);
   app.post('/api/v1/kyc/verify', handleExtract);
+
+  // 2B. Headless Partner App SDK Endpoint (`POST /api/v1/verify-document`)
+  // Used by native mobile/web host apps (ZainCash, SuperQi, Baly) when their own camera captures an ID
+  app.post('/api/v1/verify-document', async (req: express.Request, res: express.Response) => {
+    const t0 = Date.now();
+    const {
+      partnerAppId = 'ZAINCASH_IQ',
+      documentType,
+      frontImageBase64,
+      backImageBase64,
+      fileName = 'camera_scan.png',
+    } = req.body || {};
+
+    const rawPayload = await runExtractionPipeline({
+      imageBase64: frontImageBase64,
+      backImageBase64,
+      uploadedSideHint: frontImageBase64 && backImageBase64 ? 'BOTH' : 'FRONT',
+      fileName,
+      overrides: documentType ? { documentType } : {},
+    });
+
+    const s1 = rawPayload.slot1Summary;
+    const s2 = rawPayload.slot2Summary;
+    const namePartsAr = rawPayload.fullNameAr
+      .replace(/\[.*?\]/g, '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const rawFirst = s1?.firstName || namePartsAr[0] || rawPayload.fullNameAr;
+    const rawFather = s1?.fatherName || namePartsAr[1] || '';
+    const rawGrand = s1?.grandfatherName || namePartsAr[2] || '';
+    const rawSur = s1?.surname || (namePartsAr.length >= 4 ? namePartsAr.slice(3).join(' ') : '');
+    const rawMom = rawPayload.motherName || s1?.motherName || s2?.motherName || '';
+
+    const firstNameAr = rawFirst ? formatBilingualName(rawFirst) : '';
+    const fatherNameAr = rawFather ? formatBilingualName(rawFather) : '';
+    const grandfatherNameAr = rawGrand ? formatBilingualName(rawGrand) : '';
+    const surnameAr = rawSur ? formatBilingualName(rawSur) : '';
+    const motherNameBilingual = rawMom ? formatBilingualName(rawMom) : '';
+
+    const criticalMissing = (rawPayload.missingExpectedFields || [])
+      .filter((f) => f.severity === 'CRITICAL')
+      .map((f) => f.fieldKey);
+
+    const hasConflict = Boolean(
+      rawPayload.cardPairValidation?.hasCrossCardConflict ||
+        rawPayload.cardPairValidation?.hasWrongSideConflict
+    );
+
+    const decision: 'AUTO_APPROVED' | 'HUMAN_REVIEW' | 'AUTO_REJECTED' | 'INSUFFICIENT_DATA' =
+      hasConflict || rawPayload.isSpecimenZeroId
+        ? 'AUTO_REJECTED'
+        : rawPayload.isForeignDocument || rawPayload.documentType === 'UNKNOWN_DOCUMENT'
+          ? 'HUMAN_REVIEW'
+          : criticalMissing.length > 0
+            ? 'INSUFFICIENT_DATA'
+            : rawPayload.ocrConfidence >= 85
+              ? 'AUTO_APPROVED'
+              : 'HUMAN_REVIEW';
+
+    const riskScore =
+      decision === 'AUTO_REJECTED'
+        ? 89
+        : decision === 'HUMAN_REVIEW'
+          ? 48
+          : decision === 'INSUFFICIENT_DATA'
+            ? 56
+            : 9;
+
+    return res.json({
+      sdkVersion: '2.0.0-IRQ-HEADLESS',
+      partnerAppId: String(req.headers['x-rostro-partner-id'] || partnerAppId),
+      timestamp: new Date().toISOString(),
+      processingTimeMs: Date.now() - t0,
+      decision,
+      riskScore,
+      riskTier: calculateRiskTier(riskScore),
+      extractedData: {
+        documentType: rawPayload.documentType,
+        firstNameAr,
+        fatherNameAr,
+        grandfatherNameAr,
+        surnameAr,
+        fullNameAr: rawPayload.fullNameAr,
+        fullNameEn: rawPayload.fullNameEn,
+        normalizedName: rawPayload.normalizedName,
+        motherName: motherNameBilingual,
+        nationalIdNumber: rawPayload.docNumber,
+        familyCardSerial:
+          rawPayload.familyNumber ||
+          s1?.cardSerialNumber ||
+          s1?.familyNumber ||
+          s2?.familyNumber ||
+          '',
+        birthYearOrDob: rawPayload.dob,
+        issueDate: rawPayload.issueDate,
+        expiryDate: rawPayload.expiryDate,
+        governorateEn: rawPayload.governorateEn,
+        governorateAr: rawPayload.governorateAr,
+        address: rawPayload.address,
+        issuingCountryCode: rawPayload.issuingCountryCode || 'IRQ',
+        isForeignDocument: Boolean(rawPayload.isForeignDocument),
+      },
+      forensics: {
+        ocrConfidence: rawPayload.ocrConfidence,
+        mrzModulo10Valid: Boolean(rawPayload.mrzModulo10Valid),
+        hasBlur: Boolean(rawPayload.hasBlur),
+        hasGlare: Boolean(rawPayload.hasGlare),
+        dualSideVerified: rawPayload.side === 'BOTH' || rawPayload.documentType === 'IRQ_PASSPORT',
+        crossCardConflict: hasConflict,
+        missingCriticalFields: criticalMissing,
+      },
+      cbiLaw78Receipt: {
+        hmacSha256: rawPayload.cbiLaw78HmacReceipt,
+        imageSha256: rawPayload.sha256Hash,
+        legalStandard: 'Central Bank of Iraq (CBI) Electronic Signature Law No. 78 of 2012',
+      },
+      rawPayload,
+    });
+  });
 
   // 3. CBI Law No. 78 of 2012 Cryptographic Non-Repudiation Decision Signer
   const handleDecision = (req: express.Request, res: express.Response) => {

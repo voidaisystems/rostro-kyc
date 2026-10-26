@@ -484,18 +484,26 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  // 5c. Universal 10-Stage Gemini VLM OCR & Dual-Side Card Extraction (/api/kyc/extract & /api/v1/kyc/verify)
-  if ((pathname === '/api/kyc/extract' || pathname === '/api/v1/kyc/verify') && req.method === 'POST') {
+  // 5c. Universal 10-Stage Gemini VLM OCR, Dual-Side Card Extraction & Headless SDK (/api/kyc/extract, /api/v1/kyc/verify, /api/v1/verify-document)
+  if ((pathname === '/api/kyc/extract' || pathname === '/api/v1/kyc/verify' || pathname === '/api/v1/verify-document' || pathname === '/api/verify-document') && req.method === 'POST') {
+    const t0 = Date.now();
     try {
       const body = await parseJsonBody(req);
       const {
-        imageBase64,
+        imageBase64: rawImageBase64,
+        frontImageBase64,
         mimeType = 'image/png',
         fileName = 'uploaded_specimen.png',
         backImageBase64,
         uploadedSideHint,
+        documentType,
+        partnerAppId = 'ZAINCASH_IQ',
         overrides = {}
       } = body || {};
+      const imageBase64 = rawImageBase64 || frontImageBase64;
+      if (documentType && !overrides.docType) {
+        overrides.docType = documentType;
+      }
 
       let sha256Hash = crypto.createHash('sha256').update(fileName + String(Date.now())).digest('hex');
       if (imageBase64) {
@@ -675,7 +683,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      return sendJson(res, 200, {
+      const rawPayload = {
         documentType: docType,
         categoryCode: docType === 'IRQ_RESIDENCE_CARD' || docType === 'IRQ_RATION_CARD' ? 'B_RESIDENCE_ADDRESS' : docType === 'IRQ_PASSPORT' || docType === 'FOREIGN_PASSPORT' ? 'C_TRAVEL_IMMIGRATION' : docType === 'IRQ_CHAMBER_OF_COMMERCE' ? 'E_BUSINESS_MERCHANT' : 'A_IDENTITY_CIVIL',
         supportStatus: docType === 'UNKNOWN_DOCUMENT' ? 'UNKNOWN_DOCUMENT' : docType === 'IRQ_POWER_OF_ATTORNEY' ? 'REQUIRES_HUMAN_REVIEW' : 'TESTED',
@@ -686,10 +694,14 @@ const server = http.createServer(async (req, res) => {
         fullNameEn,
         fullNameAr,
         normalizedName: fullNameAr,
+        firstName: givenName,
         givenName,
         fatherName,
         grandfatherName,
         surname,
+        maternalGrandfatherName: maternalGrandfather,
+        cardSerialNumber: familyNumber,
+        verticalSerialNumber: edgeNumber,
         motherName,
         gender,
         bloodType,
@@ -728,7 +740,67 @@ const server = http.createServer(async (req, res) => {
         boundingBoxes,
         missingExpectedFields,
         engineMode: isLive ? 'gemini-vlm-live' : 'deterministic-fallback'
-      });
+      };
+
+      if (pathname === '/api/v1/verify-document' || pathname === '/api/verify-document') {
+        const criticalMissing = missingExpectedFields.filter(f => f.severity === 'CRITICAL').map(f => f.fieldKey);
+        const decision = docType === 'UNKNOWN_DOCUMENT' || docType === 'FOREIGN_PASSPORT'
+          ? 'HUMAN_REVIEW'
+          : criticalMissing.length > 0
+            ? 'INSUFFICIENT_DATA'
+            : rawPayload.ocrConfidence >= 85
+              ? 'AUTO_APPROVED'
+              : 'HUMAN_REVIEW';
+        const riskScore = decision === 'AUTO_REJECTED' ? 89 : decision === 'HUMAN_REVIEW' ? 48 : decision === 'INSUFFICIENT_DATA' ? 56 : 9;
+        const namePartsAr = String(fullNameAr || '').replace(/\[.*?\]/g, '').trim().split(/\s+/).filter(Boolean);
+        return sendJson(res, 200, {
+          sdkVersion: '2.0.0-IRQ-HEADLESS',
+          partnerAppId: String(req.headers['x-rostro-partner-id'] || partnerAppId),
+          timestamp: new Date().toISOString(),
+          processingTimeMs: Date.now() - t0,
+          decision,
+          riskScore,
+          riskTier: riskScore <= 26 ? 'low' : riskScore <= 60 ? 'medium' : 'high',
+          extractedData: {
+            documentType: rawPayload.documentType,
+            firstNameAr: givenName || namePartsAr[0] || '',
+            fatherNameAr: fatherName || namePartsAr[1] || '',
+            grandfatherNameAr: grandfatherName || namePartsAr[2] || '',
+            surnameAr: surname || (namePartsAr.length >= 4 ? namePartsAr.slice(3).join(' ') : ''),
+            fullNameAr: rawPayload.fullNameAr,
+            fullNameEn: rawPayload.fullNameEn,
+            normalizedName: rawPayload.normalizedName,
+            motherName: rawPayload.motherName || '',
+            nationalIdNumber: rawPayload.docNumber,
+            familyCardSerial: rawPayload.familyNumber || '',
+            birthYearOrDob: rawPayload.dob,
+            issueDate: rawPayload.issueDate,
+            expiryDate: rawPayload.expiryDate,
+            governorateEn: rawPayload.governorateEn,
+            governorateAr: rawPayload.governorateAr,
+            address: rawPayload.address,
+            issuingCountryCode: 'IRQ',
+            isForeignDocument: false
+          },
+          forensics: {
+            ocrConfidence: rawPayload.ocrConfidence,
+            mrzModulo10Valid: Boolean(rawPayload.mrzModulo10Valid),
+            hasBlur: Boolean(rawPayload.hasBlur),
+            hasGlare: Boolean(rawPayload.hasGlare),
+            dualSideVerified: rawPayload.side === 'BOTH' || rawPayload.documentType === 'IRQ_PASSPORT',
+            crossCardConflict: false,
+            missingCriticalFields: criticalMissing
+          },
+          cbiLaw78Receipt: {
+            hmacSha256: rawPayload.cbiLaw78HmacReceipt,
+            imageSha256: rawPayload.sha256Hash,
+            legalStandard: 'Central Bank of Iraq (CBI) Electronic Signature Law No. 78 of 2012'
+          },
+          rawPayload
+        });
+      }
+
+      return sendJson(res, 200, rawPayload);
     } catch (err) {
       return sendJson(res, 500, { error: 'Extraction failed', message: err.message });
     }

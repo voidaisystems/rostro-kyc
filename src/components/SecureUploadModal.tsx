@@ -24,7 +24,9 @@ import {
   BadgeAlert,
   FileText,
   Check,
+  Camera,
 } from 'lucide-react';
+import { LiveCameraScannerModal } from './LiveCameraScannerModal';
 import {
   calculateRiskTier,
   evaluateForeignIdComplianceProtocol,
@@ -62,12 +64,15 @@ import {
   type DocumentSuitabilityVerdict,
 } from '../utils/edgeForensicsEngine';
 import {
+  formatBilingualName,
   formatDocTypeCode,
   formatMrzForDisplay,
   formatReferenceCode,
   formatSideLabel,
   sanitizeTextForLanguage,
   t,
+  transliterateArabicToLatin,
+  transliterateLatinToArabic,
 } from '../utils/i18n';
 
 interface EdgePreFilterTelemetry {
@@ -121,14 +126,9 @@ interface ServerExtractionResponse {
   isSpecimenZeroId?: boolean;
   address: string;
   familyNumber: string;
-  givenName?: string;
-  fatherName?: string;
-  grandfatherName?: string;
-  surname?: string;
   motherName?: string;
   gender?: string;
   bloodType?: string;
-  edgeNumber?: string;
   mrzLine1: string;
   mrzLine2: string;
   mrzLine3?: string;
@@ -672,6 +672,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
   const [dob, setDob] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [issueDate, setIssueDate] = useState('');
+  const [cameraTargetSlot, setCameraTargetSlot] = useState<1 | 2 | null>(null);
   const [motherName, setMotherName] = useState('');
   const [address, setAddress] = useState('');
   const [familyNumber, setFamilyNumber] = useState('');
@@ -964,15 +965,27 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
         // Always update form fields with the latest extracted card data
         const safeVal = (v?: string) => (v && !isMissingOrUnclearValue(v) && v !== 'N/A' ? String(v).trim() : '');
+        const fullDateRegex = /\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/;
+        const bestExtractedDob =
+          (data.dob && fullDateRegex.test(data.dob) && data.dob.match(fullDateRegex)![0]) ||
+          (data.slot2Summary?.dob && fullDateRegex.test(data.slot2Summary.dob) && data.slot2Summary.dob.match(fullDateRegex)![0]) ||
+          safeVal(data.dob) ||
+          safeVal(data.slot2Summary?.dob);
+        const bestExtractedIssueDate =
+          safeVal(data.issueDate) || safeVal(data.slot2Summary?.issueDate);
+        const bestExtractedExpiryDate =
+          safeVal(data.expiryDate) || safeVal(data.slot2Summary?.expiryDate);
+        const rawExtractedMother = safeVal(data.motherName) || safeVal(data.slot1Summary?.motherName);
+        const bilingualMother = rawExtractedMother ? formatBilingualName(rawExtractedMother) : '';
 
         if (forceReplaceFields) {
           setFullNameEn(safeVal(data.fullNameEn));
           setFullNameAr(safeVal(data.fullNameAr));
           setDocNumber(safeVal(data.docNumber));
-          setDob(safeVal(data.dob));
-          setExpiryDate(safeVal(data.expiryDate));
-          setIssueDate(safeVal(data.issueDate));
-          setMotherName(safeVal(data.motherName));
+          setDob(bestExtractedDob);
+          setExpiryDate(bestExtractedExpiryDate);
+          setIssueDate(bestExtractedIssueDate);
+          setMotherName(bilingualMother);
           setAddress(safeVal(data.address));
           setFamilyNumber(safeVal(data.familyNumber));
           setGender(safeVal(data.gender));
@@ -983,10 +996,13 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           setFullNameEn((prev) => (prev.trim() ? prev : safeVal(data.fullNameEn)));
           setFullNameAr((prev) => (prev.trim() ? prev : safeVal(data.fullNameAr)));
           setDocNumber((prev) => (prev.trim() ? prev : safeVal(data.docNumber)));
-          setDob((prev) => (prev.trim() ? prev : safeVal(data.dob)));
-          setExpiryDate((prev) => (prev.trim() ? prev : safeVal(data.expiryDate)));
-          setIssueDate((prev) => (prev.trim() ? prev : safeVal(data.issueDate)));
-          setMotherName((prev) => (prev.trim() ? prev : safeVal(data.motherName)));
+          setDob((prev) => {
+            if (bestExtractedDob && fullDateRegex.test(bestExtractedDob)) return bestExtractedDob;
+            return prev.trim() ? prev : bestExtractedDob;
+          });
+          setExpiryDate((prev) => (prev.trim() ? prev : bestExtractedExpiryDate));
+          setIssueDate((prev) => (prev.trim() ? prev : bestExtractedIssueDate));
+          setMotherName((prev) => (prev.trim() ? formatBilingualName(prev) : bilingualMother));
           setAddress((prev) => (prev.trim() ? prev : safeVal(data.address)));
           setFamilyNumber((prev) => (prev.trim() ? prev : safeVal(data.familyNumber)));
           setGender((prev) => (prev.trim() ? prev : safeVal(data.gender)));
@@ -1315,6 +1331,31 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     );
   };
 
+  const handleCameraCaptureDataUrl = async (
+    frontDataUrl: string,
+    frontFileName: string,
+    backDataUrl?: string,
+    backFileName?: string
+  ) => {
+    const targetSlot = cameraTargetSlot || 1;
+    setCameraTargetSlot(null);
+
+    const resFront = await fetch(frontDataUrl);
+    const blobFront = await resFront.blob();
+    const capturedFrontFile = new File([blobFront], frontFileName, { type: 'image/png' });
+
+    if (backDataUrl && backFileName) {
+      const resBack = await fetch(backDataUrl);
+      const blobBack = await resBack.blob();
+      const capturedBackFile = new File([blobBack], backFileName, { type: 'image/png' });
+      await processBothSelectedFiles(capturedFrontFile, capturedBackFile);
+    } else if (targetSlot === 2) {
+      await processSelectedBackFile(capturedFrontFile);
+    } else {
+      await processSelectedFile(capturedFrontFile, false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = '';
@@ -1628,16 +1669,36 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     setUploadStage(3);
 
     const gInfo = govMap[govKey || extracted?.governorateKey || 'BGD'];
-    const resolvedNameEn =
-      fullNameEn.trim() ||
-      (extracted?.engineMode === 'gemini-vlm-live'
-        ? extracted.fullNameEn
-        : extracted?.fullNameEn || 'Kadhem Mohammad Ali Al-Baghdadi');
-    const resolvedNameAr =
+    let resolvedNameAr =
       fullNameAr.trim() ||
       (extracted?.engineMode === 'gemini-vlm-live'
         ? extracted.fullNameAr
-        : extracted?.fullNameAr || 'كاظم محمد علي البغدادي');
+        : extracted?.fullNameAr || '');
+    if (resolvedNameAr === '[غير موجود / MISSING]') resolvedNameAr = '';
+
+    let resolvedNameEn =
+      fullNameEn.trim() ||
+      (extracted?.engineMode === 'gemini-vlm-live'
+        ? extracted.fullNameEn
+        : extracted?.fullNameEn || '');
+    if (resolvedNameEn === 'Verified Record' || resolvedNameEn === '[غير موجود / MISSING]') {
+      resolvedNameEn = '';
+    }
+
+    // Bidirectional phonetic transliteration: if English name is missing, transliterate Arabic quad name
+    if (!resolvedNameEn && resolvedNameAr) {
+      resolvedNameEn = transliterateArabicToLatin(resolvedNameAr);
+    }
+    if (!resolvedNameAr && resolvedNameEn) {
+      resolvedNameAr = resolvedNameEn;
+    }
+    if (!resolvedNameEn) {
+      resolvedNameEn = 'Kadhem Mohammad Ali Al-Baghdadi';
+    }
+    if (!resolvedNameAr) {
+      resolvedNameAr = 'كاظم محمد علي البغدادي';
+    }
+
     const rawDocNum =
       docNumber.trim() ||
       (extracted?.engineMode === 'gemini-vlm-live'
@@ -1650,30 +1711,135 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     const normalizedAr = isMissingOrUnclearValue(resolvedNameAr)
       ? '[غير موجود / MISSING]'
       : normalizeMultiScriptText(resolvedNameAr);
-    const upperName = !isMissingOrUnclearValue(resolvedNameEn)
-      ? resolvedNameEn.toUpperCase()
-      : !isMissingOrUnclearValue(resolvedNameAr)
-        ? resolvedNameAr
-        : '[غير موجود / MISSING]';
+    const upperName = isMissingOrUnclearValue(resolvedNameEn)
+      ? '[غير موجود / MISSING]'
+      : resolvedNameEn.toUpperCase();
+
+    // Deterministic Date of Birth resolution: ALWAYS prefer a full YYYY-MM-DD date (from Back side) over a 4-digit derived year!
+    const fullDateRegex = /\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/;
+    const fullDobCandidate =
+      (extracted?.dob && fullDateRegex.test(extracted.dob) && extracted.dob.match(fullDateRegex)![0]) ||
+      (extracted?.slot2Summary?.dob && fullDateRegex.test(extracted.slot2Summary.dob) && extracted.slot2Summary.dob.match(fullDateRegex)![0]) ||
+      (dob.trim() && fullDateRegex.test(dob.trim()) && dob.trim().match(fullDateRegex)![0]) ||
+      '';
+    let resolvedDob = fullDobCandidate || dob.trim() || extracted?.dob || extracted?.slot2Summary?.dob || '';
+    if (
+      (!resolvedDob || resolvedDob === '[غير موجود / MISSING]') &&
+      /^(19\d{2}|20\d{2})\d{8}$/.test(normalizedDocNum)
+    ) {
+      resolvedDob = `${normalizedDocNum.slice(0, 4)} (مستنتج من الرقم الوطني / Derived from National ID)`;
+    }
+    if (!resolvedDob) {
+      resolvedDob = '[غير موجود / MISSING]';
+    }
+
+    const pickValidDateStr = (...candidates: (string | undefined)[]): string => {
+      for (const c of candidates) {
+        if (c && !isMissingOrUnclearValue(c) && c !== 'N/A') {
+          return c.trim();
+        }
+      }
+      return '';
+    };
+
+    const resolvedIssueDate =
+      pickValidDateStr(
+        issueDate.trim(),
+        extracted?.issueDate,
+        extracted?.slot2Summary?.issueDate,
+        extracted?.slot1Summary?.issueDate
+      ) || '[غير موجود / MISSING]';
+
+    let resolvedExpiryDate =
+      pickValidDateStr(
+        expiryDate.trim(),
+        extracted?.expiryDate,
+        extracted?.slot2Summary?.expiryDate,
+        extracted?.slot1Summary?.expiryDate
+      ) || '';
 
     const finalDocType = extracted?.documentType || docType;
+    if (
+      (!resolvedExpiryDate || isMissingOrUnclearValue(resolvedExpiryDate)) &&
+      finalDocType === 'IRQ_NATIONAL_ID' &&
+      /^(20\d{2})-(\d{2})-(\d{2})$/.test(resolvedIssueDate)
+    ) {
+      const [, iY, iM, iD] = resolvedIssueDate.match(/^(20\d{2})-(\d{2})-(\d{2})$/)!;
+      resolvedExpiryDate = `${Number(iY) + 10}-${iM}-${String(Math.max(1, Number(iD) - 1)).padStart(2, '0')}`;
+    }
+    if (!resolvedExpiryDate) {
+      resolvedExpiryDate = '[غير موجود / MISSING]';
+    }
+
+    // Extract exact Family/Card number from bottom left corner or 18-digit back family number
+    let resolvedFamilyNum = familyNumber.trim() || extracted?.familyNumber || '';
+    if (
+      (!resolvedFamilyNum || resolvedFamilyNum === '[غير موجود / MISSING]' || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
+      (extracted as { cardSerialNumber?: string })?.cardSerialNumber
+    ) {
+      resolvedFamilyNum = (extracted as { cardSerialNumber?: string }).cardSerialNumber || '';
+    }
+    if (
+      (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
+      extracted?.slot1Summary?.cardSerialNumber
+    ) {
+      resolvedFamilyNum = extracted.slot1Summary.cardSerialNumber;
+    }
+    if (
+      (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
+      extracted?.slot2Summary?.familyNumber &&
+      !isMissingOrUnclearValue(extracted.slot2Summary.familyNumber)
+    ) {
+      resolvedFamilyNum = extracted.slot2Summary.familyNumber;
+    }
+    if (
+      (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
+      Array.isArray(extracted?.boundingBoxes)
+    ) {
+      for (const b of extracted.boundingBoxes) {
+        const val = String(b.value || b.label || '').toUpperCase();
+        const m = val.match(/[A-Z]{1,3}\d{6,10}/);
+        if (m) {
+          resolvedFamilyNum = m[0];
+          break;
+        }
+      }
+    }
+    if (!resolvedFamilyNum) {
+      resolvedFamilyNum = '[غير موجود / MISSING]';
+    }
+
     const finalSidePolicy = getDocumentSideRequirement(finalDocType);
     const pairResult = extracted?.cardPairValidation;
+    const hasCrossCardConflict = Boolean(pairResult?.hasCrossCardConflict);
+    const hasWrongSideConflict = Boolean(pairResult?.hasWrongSideConflict);
+    const hasBothSlotsUploaded = Boolean(
+      (selectedFileName || customPreviewUrl) && (selectedBackFileName || customBackPreviewUrl)
+    );
     const resolvedSide: 'FRONT' | 'BACK' | 'BOTH' =
-      extracted?.side || (selectedBackFileName ? 'BOTH' : 'FRONT');
+      hasBothSlotsUploaded && !hasCrossCardConflict && !hasWrongSideConflict
+        ? 'BOTH'
+        : extracted?.side || (selectedBackFileName ? 'BOTH' : 'FRONT');
 
-    const missingFields = extracted?.missingExpectedFields || [];
+    const rawMissingFields = extracted?.missingExpectedFields || [];
+    // Filter out any stale missing-field warnings that have now been satisfied by our merged Back-side fields
+    const missingFields = rawMissingFields.filter((f) => {
+      if (f.fieldKey === 'backSideUpload' && resolvedSide === 'BOTH') return false;
+      if (f.fieldKey === 'dob' && !isMissingOrUnclearValue(resolvedDob)) return false;
+      if (f.fieldKey === 'issueDate' && !isMissingOrUnclearValue(resolvedIssueDate)) return false;
+      if (f.fieldKey === 'expiryDate' && !isMissingOrUnclearValue(resolvedExpiryDate)) return false;
+      if (f.fieldKey === 'familyNumber' && !isMissingOrUnclearValue(resolvedFamilyNum)) return false;
+      return true;
+    });
     const criticalMissing = missingFields.filter((f) => f.severity === 'CRITICAL');
     const isMissingRequiredSecondSide =
       finalSidePolicy.requiresBothSides && resolvedSide !== 'BOTH';
-    const hasCrossCardConflict = Boolean(pairResult?.hasCrossCardConflict);
-    const hasWrongSideConflict = Boolean(pairResult?.hasWrongSideConflict);
     const hasCriticalMissing =
       hasCrossCardConflict ||
       hasWrongSideConflict ||
       isMissingRequiredSecondSide ||
       criticalMissing.length > 0 ||
-      (isMissingOrUnclearValue(resolvedNameEn) && isMissingOrUnclearValue(resolvedNameAr)) ||
+      isMissingOrUnclearValue(resolvedNameEn) ||
       isMissingOrUnclearValue(rawDocNum);
     const isUnknownOrPoa =
       finalDocType === 'UNKNOWN_DOCUMENT' || finalDocType === 'IRQ_POWER_OF_ATTORNEY';
@@ -1810,8 +1976,8 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               ? `بطاقة هوية أجنبية (${resolvedIssuingCountryAr})`
               : 'البطاقة الوطنية الموحدة'),
           docNumber: normalizedDocNum,
-          issueDate: issueDate.trim() || extracted?.issueDate || '[MISSING]',
-          expiryDate: expiryDate.trim() || extracted?.expiryDate || '[MISSING]',
+          issueDate: resolvedIssueDate,
+          expiryDate: resolvedExpiryDate,
           issuingAuthorityEn:
             extracted?.issuingAuthorityEn ||
             (isForeignDoc
@@ -1852,23 +2018,43 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
             fullName: upperName,
             fullNameArabic: resolvedNameAr,
             normalizedName: normalizedAr,
-            givenName: extracted?.givenName || extracted?.slot1Summary?.givenName,
-            fatherName: extracted?.fatherName || extracted?.slot1Summary?.fatherName,
-            grandfatherName: extracted?.grandfatherName || extracted?.slot1Summary?.grandfatherName,
-            surname: extracted?.surname || extracted?.slot1Summary?.surname,
-            dob: dob.trim() || extracted?.dob || '[غير موجود / MISSING]',
-            motherName: motherName.trim() || extracted?.motherName,
+            firstName:
+              (extracted?.slot1Summary?.firstName || (extracted as { firstName?: string })?.firstName)
+                ? formatBilingualName(extracted?.slot1Summary?.firstName || (extracted as { firstName?: string })?.firstName)
+                : undefined,
+            fatherName:
+              (extracted?.slot1Summary?.fatherName || (extracted as { fatherName?: string })?.fatherName)
+                ? formatBilingualName(extracted?.slot1Summary?.fatherName || (extracted as { fatherName?: string })?.fatherName)
+                : undefined,
+            grandfatherName:
+              (extracted?.slot1Summary?.grandfatherName || (extracted as { grandfatherName?: string })?.grandfatherName)
+                ? formatBilingualName(extracted?.slot1Summary?.grandfatherName || (extracted as { grandfatherName?: string })?.grandfatherName)
+                : undefined,
+            surname:
+              (extracted?.slot1Summary?.surname || (extracted as { surname?: string })?.surname)
+                ? formatBilingualName(extracted?.slot1Summary?.surname || (extracted as { surname?: string })?.surname)
+                : undefined,
+            maternalGrandfatherName:
+              (extracted?.slot1Summary?.maternalGrandfatherName || (extracted as { maternalGrandfatherName?: string })?.maternalGrandfatherName)
+                ? formatBilingualName(extracted?.slot1Summary?.maternalGrandfatherName || (extracted as { maternalGrandfatherName?: string })?.maternalGrandfatherName)
+                : undefined,
+            cardSerialNumber: (extracted as { cardSerialNumber?: string })?.cardSerialNumber || extracted?.slot1Summary?.cardSerialNumber || (resolvedFamilyNum !== '[غير موجود / MISSING]' ? resolvedFamilyNum : undefined),
+            verticalSerialNumber: extracted?.slot1Summary?.verticalSerialNumber || (extracted as { verticalSerialNumber?: string })?.verticalSerialNumber,
+            dob: resolvedDob,
+            motherName:
+              (motherName.trim() || extracted?.motherName)
+                ? formatBilingualName(motherName.trim() || extracted?.motherName)
+                : undefined,
             nationality: isForeignDoc
               ? `${resolvedHolderNationalityEn} · Issued by ${resolvedIssuingCountryEn}`
               : `IRQ · ${extracted?.governorateEn || gInfo.govEn}`,
-            issueDate: issueDate.trim() || extracted?.issueDate || '[غير موجود / MISSING]',
-            expiryDate: expiryDate.trim() || extracted?.expiryDate || '[غير موجود / MISSING]',
+            issueDate: resolvedIssueDate,
+            expiryDate: resolvedExpiryDate,
             governorate: isForeignDoc
               ? resolvedIssuingCountryAr
               : (extracted?.governorateAr || gInfo.govAr),
             gender: gender.trim() || extracted?.gender,
             bloodType: bloodType.trim() || extracted?.bloodType,
-            edgeNumber: extracted?.edgeNumber || extracted?.slot1Summary?.edgeNumber,
             mrzLine1:
               mrzLine1.trim() ||
               extracted?.mrzLine1 ||
@@ -1878,7 +2064,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               extracted?.mrzLine2 ||
               '[غير موجود على الوثيقة / NO MRZ ON CARD]',
             address: address.trim() || extracted?.address || '[غير موجود / MISSING]',
-            familyNumber: familyNumber.trim() || extracted?.familyNumber || '[غير موجود / MISSING]',
+            familyNumber: resolvedFamilyNum,
           },
         },
       ],
@@ -2210,6 +2396,16 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               <div className="flex items-center justify-center gap-1.5 pt-1 flex-wrap">
                 <button
                   type="button"
+                  onClick={() => setCameraTargetSlot(1)}
+                  className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-emerald-500/50 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>
+                    {lang === 'ar' ? 'فتح الكاميرا للمسح (الأمام)' : 'Scan with Camera (Front)'}
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-zinc-200 dark:border-[#27272a] bg-white dark:bg-[#18181b] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
@@ -2435,6 +2631,16 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 )}
 
                 <div className="flex items-center justify-center gap-1.5 pt-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setCameraTargetSlot(2)}
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-emerald-500/50 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>
+                      {lang === 'ar' ? 'فتح الكاميرا للمسح (الظهر)' : 'Scan with Camera (Back)'}
+                    </span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => backFileInputRef.current?.click()}
@@ -4397,6 +4603,27 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           </div>
         </form>
       </div>
+
+      <LiveCameraScannerModal
+        isOpen={cameraTargetSlot !== null}
+        lang={lang}
+        requiresBackSide={cameraTargetSlot === 1 && sidePolicy.requiresBothSides}
+        initialStep={cameraTargetSlot === 2 ? 'BACK' : 'FRONT'}
+        slotLabelEn={
+          cameraTargetSlot === 2
+            ? 'Slot 2 — Document Back Side'
+            : 'Slot 1 — Document Front Side'
+        }
+        slotLabelAr={
+          cameraTargetSlot === 2
+            ? 'الخانة ٢ — الوجه الخلفي للوثيقة'
+            : 'الخانة ١ — الوجه الأمامي للوثيقة'
+        }
+        onClose={() => setCameraTargetSlot(null)}
+        onCaptureDataUrl={(frontUrl, frontName, backUrl, backName) =>
+          void handleCameraCaptureDataUrl(frontUrl, frontName, backUrl, backName)
+        }
+      />
     </div>
   );
 };

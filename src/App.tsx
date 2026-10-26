@@ -37,15 +37,19 @@ import {
   ChevronsUpDown,
   Filter,
   TrendingUp,
+  Camera,
+  Smartphone,
 } from 'lucide-react';
 import {
   computeKpiMetrics,
   evaluateApplicantWithRules,
   filterAndSortApplicants,
   runAutomatedBatchWorkflow,
+  type AntiSpoofSimulationPreset,
   type AutomationConfig,
   type DocumentType,
   type KYCApplicant,
+  type KYCDocument,
   type Language,
   type RiskTier,
   type VerificationStatus,
@@ -70,6 +74,7 @@ import { AutomationRulesPanel } from './components/AutomationRulesPanel';
 import { DocumentSpecimenViewer } from './components/DocumentSpecimenViewer';
 import { ZainCashEdgeForensicsLab } from './components/ZainCashEdgeForensicsLab';
 import { CompetitionShowcaseTab } from './components/CompetitionShowcaseTab';
+import { PartnerAppSdkSimulator } from './components/PartnerAppSdkSimulator';
 
 type ActiveSection =
   | 'dashboard'
@@ -105,6 +110,7 @@ export default function App() {
   // Modals & Drawers
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [isPartnerSdkOpen, setIsPartnerSdkOpen] = useState<boolean>(false);
 
   // Batch Execution Notification Banner
   const [batchBannerMessage, setBatchBannerMessage] = useState<string | null>(null);
@@ -426,6 +432,211 @@ export default function App() {
       })
     );
     setBatchBannerMessage(t(lang, 'candidateRegisteredMsg'));
+  };
+
+  const handleAttachOrUpdatePacketResidenceCard = (
+    applicantId: string,
+    mode: 'SELF' | 'FATHER' | 'MISMATCH' | 'CUSTOM',
+    customDoc?: KYCDocument
+  ) => {
+    setApplicants((prev) =>
+      prev.map((app) => {
+        if (app.id !== applicantId) return app;
+        const natDoc =
+          app.documents.find(
+            (d) => d.type === 'IRQ_NATIONAL_ID' || d.type === 'IRQ_CIVIL_STATUS_ID'
+          ) || app.documents[0];
+
+        const enParts = (app.fullNameEn || 'Abdullah Tariq Kareem Al-Dulaimi')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        const arParts = (app.fullNameAr || 'عبدالله طارق كريم الدليمي')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+
+        const aFatherEn =
+          natDoc?.extractedFields.fatherName || enParts[1] || 'Tariq';
+        const aGrandEn =
+          natDoc?.extractedFields.grandfatherName ||
+          (enParts.length >= 4 ? enParts[2] : 'Kareem');
+        const aSurnameEn =
+          natDoc?.extractedFields.surname ||
+          enParts[enParts.length - 1] ||
+          'Al-Dulaimi';
+
+        const aFatherAr =
+          natDoc?.slot1Summary?.fatherName || arParts[1] || 'طارق';
+        const aGrandAr =
+          natDoc?.slot1Summary?.grandfatherName ||
+          (arParts.length >= 4 ? arParts[2] : 'كريم');
+        const aSurnameAr =
+          natDoc?.slot1Summary?.surname ||
+          arParts[arParts.length - 1] ||
+          'الدليمي';
+
+        let nextResidenceDoc: KYCDocument;
+        if (mode === 'CUSTOM' && customDoc) {
+          nextResidenceDoc = customDoc;
+        } else if (mode === 'FATHER') {
+          const fatherFullEn = `${aFatherEn} ${aGrandEn} Qasim ${aSurnameEn}`.toUpperCase();
+          const fatherFullAr = `${aFatherAr} ${aGrandAr} قاسم ${aSurnameAr}`;
+          nextResidenceDoc = {
+            id: `doc-res-father-${app.id}`,
+            type: 'IRQ_RESIDENCE_CARD',
+            categoryCode: 'B_RESIDENCE_ADDRESS',
+            supportStatus: 'TESTED',
+            side: 'BOTH',
+            detectedLanguages: ['ar'],
+            titleEn: "Iraqi Residence Card (Father's Household · رب الأسرة الأب)",
+            titleAr: 'بطاقة السكن العراقية (باسم الأب رب الأسرة)',
+            docNumber: 'RES-BGD-771042',
+            issueDate: '2022-11-14',
+            expiryDate: 'N/A',
+            issuingAuthorityEn: 'Al-Mansour Information Office — Baghdad',
+            issuingAuthorityAr: 'مكتب معلومات المنصور — بغداد',
+            issuingCountryEn: 'Republic of Iraq',
+            issuingCountryAr: 'جمهورية العراق',
+            ocrConfidence: 97,
+            fileSizeKb: 940,
+            sha256Hash: '8a11c3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f99',
+            status: 'approved',
+            extractedFields: {
+              fullName: fatherFullEn,
+              fullNameArabic: fatherFullAr,
+              normalizedName: fatherFullAr,
+              firstName: aFatherAr,
+              fatherName: aGrandAr,
+              grandfatherName: 'قاسم',
+              surname: aSurnameAr,
+              dob: '1961-04-12',
+              nationality: 'IRQ · Baghdad',
+              governorate: app.governorateAr || 'بغداد',
+              address: 'Mahalla 609, Zukak 14, Dar 22, Al-Mansour, Baghdad',
+            },
+          };
+        } else if (mode === 'MISMATCH') {
+          nextResidenceDoc = {
+            id: `doc-res-mismatch-${app.id}`,
+            type: 'IRQ_RESIDENCE_CARD',
+            categoryCode: 'B_RESIDENCE_ADDRESS',
+            supportStatus: 'TESTED',
+            side: 'BOTH',
+            detectedLanguages: ['ar'],
+            titleEn: 'Iraqi Residence Card (Unlinked Household Mismatch)',
+            titleAr: 'بطاقة السكن العراقية (تضارب نسب رب الأسرة)',
+            docNumber: 'RES-BSR-00918',
+            issueDate: '2021-03-19',
+            expiryDate: 'N/A',
+            issuingAuthorityEn: 'Al-Ashar Information Office — Basra',
+            issuingAuthorityAr: 'مكتب معلومات العشار — البصرة',
+            issuingCountryEn: 'Republic of Iraq',
+            issuingCountryAr: 'جمهورية العراق',
+            ocrConfidence: 95,
+            fileSizeKb: 910,
+            sha256Hash: '1c99a081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00e11',
+            status: 'rejected',
+            extractedFields: {
+              fullName: 'MUSTAFA HASSAN JABBAR AL-MALIKI',
+              fullNameArabic: 'مصطفى حسن جبار المالكي',
+              normalizedName: 'مصطفى حسن جبار المالكي',
+              firstName: 'مصطفى',
+              fatherName: 'حسن',
+              grandfatherName: 'جبار',
+              surname: 'المالكي',
+              dob: '1979-08-01',
+              nationality: 'IRQ · Basra',
+              governorate: 'البصرة',
+              address: 'Mahalla 102, Zukak 5, Dar 8, Basra',
+            },
+          };
+        } else {
+          // SELF
+          nextResidenceDoc = {
+            id: `doc-res-self-${app.id}`,
+            type: 'IRQ_RESIDENCE_CARD',
+            categoryCode: 'B_RESIDENCE_ADDRESS',
+            supportStatus: 'TESTED',
+            side: 'BOTH',
+            detectedLanguages: ['ar'],
+            titleEn: 'Iraqi Residence Information Card',
+            titleAr: 'بطاقة السكن العراقية',
+            docNumber: 'RES-BGD-992018',
+            issueDate: '2023-01-10',
+            expiryDate: 'N/A',
+            issuingAuthorityEn: 'Al-Mansour Information Office — Baghdad',
+            issuingAuthorityAr: 'مكتب معلومات المنصور — بغداد',
+            issuingCountryEn: 'Republic of Iraq',
+            issuingCountryAr: 'جمهورية العراق',
+            ocrConfidence: 96,
+            fileSizeKb: 980,
+            sha256Hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+            status: 'approved',
+            extractedFields: {
+              fullName: app.fullNameEn.toUpperCase(),
+              fullNameArabic: app.fullNameAr,
+              normalizedName: app.normalizedEntityName,
+              dob: natDoc?.extractedFields.dob || '1987-09-18',
+              nationality: 'IRQ · Baghdad',
+              governorate: app.governorateAr || 'بغداد',
+              address: 'Mahalla 609, Zukak 14, Dar 22, Al-Mansour, Baghdad',
+            },
+          };
+        }
+
+        const otherDocs = app.documents.filter((d) => d.type !== 'IRQ_RESIDENCE_CARD');
+        const nextDocs = [...otherDocs, nextResidenceDoc];
+        const candidateApp: KYCApplicant = {
+          ...app,
+          documents: nextDocs,
+          nineSignals: {
+            ...app.nineSignals,
+            cross_document_consistency: mode === 'MISMATCH' ? 0.14 : 0.98,
+          },
+        };
+        const evalRes = evaluateApplicantWithRules(candidateApp, automationConfig);
+        return {
+          ...candidateApp,
+          status: evalRes.nextStatus,
+          stage9Outcome: evalRes.stage9Outcome,
+          riskScore: mode === 'MISMATCH' ? 88 : Math.min(app.riskScore, 14),
+          riskTier: mode === 'MISMATCH' ? 'high' : 'low',
+        };
+      })
+    );
+  };
+
+  const handleApplyAntiSpoofPreset = (
+    applicantId: string,
+    docId: string,
+    preset: AntiSpoofSimulationPreset
+  ) => {
+    setApplicants((prev) =>
+      prev.map((app) => {
+        if (app.id !== applicantId) return app;
+        const isSpoof = preset !== 'AUTHENTIC_PHYSICAL' && preset !== 'LIVE_AUTO';
+        const updatedDocs = app.documents.map((d) =>
+          d.id === docId ? { ...d, antiSpoofPreset: preset } : d
+        );
+        const candidateApp: KYCApplicant = {
+          ...app,
+          documents: updatedDocs,
+          nineSignals: {
+            ...app.nineSignals,
+            authenticity_risk_indicators: isSpoof ? 0.18 : 0.98,
+          },
+        };
+        const evalRes = evaluateApplicantWithRules(candidateApp, automationConfig);
+        return {
+          ...candidateApp,
+          status: evalRes.nextStatus,
+          stage9Outcome: evalRes.stage9Outcome,
+          riskScore: isSpoof ? 92 : 12,
+          riskTier: isSpoof ? 'high' : 'low',
+        };
+      })
+    );
   };
 
   const handleIngestApplicant = (newApplicant: KYCApplicant) => {
@@ -1444,7 +1655,20 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsPartnerSdkOpen(true)}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>
+                      {isAr
+                        ? 'تجربة الكاميرا داخل تطبيقات الهواتف (SDK)'
+                        : 'Try In-App Camera SDK (Laptop Webcam)'}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleExportCsv}
@@ -2271,6 +2495,8 @@ export default function App() {
         onUpdateStatus={handleUpdateApplicantStatus}
         onRunSingleAutoEval={handleRunSingleAutoEval}
         onRegisterCandidateDoc={handleRegisterCandidateDoc}
+        onAttachOrUpdatePacketResidenceCard={handleAttachOrUpdatePacketResidenceCard}
+        onApplyAntiSpoofPreset={handleApplyAntiSpoofPreset}
         onNavigateApplicant={handleNavigateApplicant}
         currentIndex={selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0}
         totalQueueCount={filteredApplicants.length}
@@ -2283,6 +2509,43 @@ export default function App() {
         onClose={() => setIsUploadModalOpen(false)}
         onIngestApplicant={handleIngestApplicant}
       />
+
+      {/* Partner App Headless Camera SDK Simulator Modal */}
+      {isPartnerSdkOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            isAr
+              ? 'محاكي دمج الكاميرا الخفي داخل تطبيقات الهواتف'
+              : 'Partner App Headless Camera SDK Simulator'
+          }
+        >
+          <div className="w-full max-w-6xl rounded-2xl bg-[#f8f8f9] dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
+            <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-[#0d0d10]">
+              <div className="flex items-center gap-2.5">
+                <Smartphone className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                  {isAr
+                    ? 'دمج نظام Rostro الخفي داخل كاميرا تطبيقات الهواتف (ZainCash / SuperQi / Baly)'
+                    : 'Headless In-App Camera Integration (ZainCash / SuperQi / Baly Native UI)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPartnerSdkOpen(false)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors cursor-pointer"
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              <PartnerAppSdkSimulator lang={lang} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

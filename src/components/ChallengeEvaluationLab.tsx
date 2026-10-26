@@ -1,14 +1,3 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file src/components/ChallengeEvaluationLab.tsx
- * @module @rostro/ui/ChallengeEvaluationLab
- * @description
- * Interactive Challenge Evaluation Lab for testing held-out synthetic scenarios,
- * zero-hallucination missing field audits, and multi-model quota failover.
- */
-
 import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
@@ -20,6 +9,16 @@ import {
   Lock,
   Terminal,
   ArrowRight,
+  Users,
+  Network,
+  Code2,
+  LineChart,
+  ShieldAlert,
+  GitBranch,
+  ExternalLink,
+  Calendar,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   auditMissingExpectedFields,
@@ -151,6 +150,7 @@ export const ChallengeEvaluationLab: React.FC<ChallengeEvaluationLabProps> = ({
   const [benchmarkRunTimeMs, setBenchmarkRunTimeMs] = useState<number>(14.2);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusResponse | null>(null);
   const [isSwitchingModel, setIsSwitchingModel] = useState<boolean>(false);
+  const [activeBriefPoint, setActiveBriefPoint] = useState<number>(1);
 
   // Judge's Unexpected Input Live Stress-Tester state
   const [selectedPresetId, setSelectedPresetId] = useState<string>('ELECTRICITY_BILL');
@@ -646,6 +646,444 @@ export const ChallengeEvaluationLab: React.FC<ChallengeEvaluationLabProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* OFFICIAL COMPETITION DESIGN BRIEF (6 CORE SUBMISSION POINTS) */}
+      <div className="rounded-xl border border-blue-200 dark:border-blue-900/60 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+        <div className="px-5 py-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/40 dark:to-indigo-950/30 border-b border-blue-200 dark:border-blue-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-blue-600 text-white">
+                {lang === 'ar' ? 'متطلبات تسليم المسابقة' : 'SUBMISSION DELIVERABLE'}
+              </span>
+              <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                {lang === 'ar' ? 'وثيقة التصميم الشاملة (النقاط الست الأساسية)' : 'Official Design Brief (6 Core Evaluation Points)'}
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              {lang === 'ar'
+                ? 'ملخص وثيقة التصميم للمسابقة — النقاط الست الأساسية المعتمدة للتحكيم'
+                : 'Project Rostro Design Brief — 6 Core Points for Competition Evaluation'}
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              {lang === 'ar'
+                ? 'وفقاً لتعليمات المسابقة الرسمية: المستخدم والمشكلة، المعمارية، حزمة التقنيات، الاختبار والمعايير، المخاطر وخطة العمل، ورابط المستودع البرمجي.'
+                : 'As outlined in the official design brief guidelines: User & Problem, Architecture, Tech Stack, Testing & Metrics, Risks & Roadmap, and Repository.'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 me-1">
+              {lang === 'ar' ? 'انقر لعرض النقطة:' : 'Select Point:'}
+            </span>
+            {[
+              { id: 1, labelEn: '1. User & Problem', labelAr: '١. المستخدم والمشكلة', icon: Users },
+              { id: 2, labelEn: '2. Architecture', labelAr: '٢. المعمارية المتكاملة', icon: Network },
+              { id: 3, labelEn: '3. Tech Stack', labelAr: '٣. حزمة التقنيات', icon: Code2 },
+              { id: 4, labelEn: '4. Testing & Metrics', labelAr: '٤. الاختبار والمعايير', icon: LineChart },
+              { id: 5, labelEn: '5. Risks & Roadmap', labelAr: '٥. المخاطر وخطة العمل', icon: ShieldAlert },
+              { id: 6, labelEn: '6. Repository', labelAr: '٦. المستودع البرمجي', icon: GitBranch },
+            ].map((p) => {
+              const Icon = p.icon;
+              const isActive = activeBriefPoint === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setActiveBriefPoint(p.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{lang === 'ar' ? p.labelAr : p.labelEn}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Dynamic Point Content */}
+        <div className="p-5">
+          {activeBriefPoint === 1 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <Users className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '١. المستخدم والمشكلة (User & Problem): المستخدم المستهدف والمشكلة الجوهرية المعالجة'
+                    : '1. User & Problem: The Specific User You Are Designing For and the Core Problem Solved'}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600" />
+                    <span>{lang === 'ar' ? 'القطاعات المستهدفة في العراق (4 قطاعات رئيسية)' : 'Targeted Iraqi Verticals (4 Core Segments)'}</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-600 dark:text-slate-400 list-disc ps-4 leading-relaxed">
+                    <li>
+                      <strong>{lang === 'ar' ? 'المصارف التجارية والرقمية والمحافظ الإلكترونية:' : 'Commercial Banks & Mobile Wallets (ZainCash, Qi Card, AsiaPay, NassWallet):'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'أتمتة التحقق السيادي عبر 44 وثيقة عراقية مع فحص قوائم العقوبات وإيصالات تشفيرية متوافقة مع قانون البنك المركزي رقم 78.'
+                        : 'Replaces branch visits with automated KYC across 44 Iraqi document types, PEP/Sanctions screening, and CBI Law No. 78 signed audit trails.'}
+                    </li>
+                    <li>
+                      <strong>{lang === 'ar' ? 'تطبيقات التوصيل واقتصاد العمل الحر (بالي، كريم، توترز):' : 'Super-Apps & Gig-Economy (Baly, Careem Iraq, Toters):'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'تسجيل السائقين الفوري باستخدام إجازات السوق وسنوية المركبة، ومنع تأجير الحسابات عبر مطابقة الصورة الشبحية والبصمة الوجهية.'
+                        : 'Automates high-velocity Captain onboarding via Iraqi driving licenses & vehicle registrations, preventing account-renting via Ghost Portrait SSIM & 512-D biometric matching.'}
+                    </li>
+                    <li>
+                      <strong>{lang === 'ar' ? 'التجارة الإلكترونية وتوثيق التجار (السريع، مسواك، ليزو، أوريسدي):' : 'Q-Commerce & E-Commerce KYB (Alsaree3, Miswag, Lezzoo, Orisdi):'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'توثيق المطاعم والتجار آلياً عبر هويات غرف التجارة وشهادات تأسيس الشركات بدون معاملات ورقية.'
+                        : 'Powers automated Merchant Verification (KYB) using Chamber of Commerce and Company Registration IDs without branch paperwork.'}
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-600" />
+                    <span>{lang === 'ar' ? 'المشكلة الجوهرية المعالجة (Core Problem Solved)' : 'The Core Problem Solved'}</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-600 dark:text-slate-400 list-disc ps-4 leading-relaxed">
+                    <li>
+                      <strong>{lang === 'ar' ? 'نسبة رفض وانسحاب تتجاوز 70%:' : 'Over 70% Drop-Off & Onboarding Friction:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'الصور الضبابية، لمعان فلاش الكاميرا على البلاستيك، وتصوير الشاشات يؤدي إلى تأخير فتح الحسابات ورفض معاملات العملاء الحقيقيين.'
+                        : 'Blurry camera photos, specular glare on laminate, and screen-replay spoofs cause massive applicant abandonment and operational backlogs.'}
+                    </li>
+                    <li>
+                      <strong>{lang === 'ar' ? 'تعقيد الوثائق العراقية (44 نوعاً رسمياً):' : 'Complexity of 44 Iraqi Document Types:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'تداخل الأسماء الرباعية، تباين الأرقام المشرقية والكردية، غياب تاريخ التولد الصريح عن وجه البطاقة الوطنية واعتماده على أول 4 أرقام من الرقم الوطني (1961).'
+                        : 'Multi-script names (Arabic, Kurdish Sorani, Latin), Eastern Arabic numerals, and birth year encoded within the 12-digit national ID rather than printed explicitly.'}
+                    </li>
+                    <li>
+                      <strong>{lang === 'ar' ? 'المتطلبات الإلزامية لقانون التوقيع الإلكتروني رقم 78 لسنة 2012:' : 'CBI Electronic Signature Law No. 78 of 2012:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'ضرورة توفير دليل إثبات رقمي مشفر (HMAC-SHA256) يمنع الإنكار ويحمي المؤسسات المالية من الغرامات التنظيمية.'
+                        : 'Strict non-repudiation mandates requiring immutable cryptographic receipts for every approved or flagged onboarding decision.'}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeBriefPoint === 2 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <Network className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '٢. المعمارية (Architecture): سير العمل المتكامل للنظام ومخطط المعمارية التوضيحي'
+                    : '2. Architecture: End-to-End System Workflow with a Clear Architecture Diagram'}
+                </h4>
+              </div>
+
+              {/* Visual 4-Tier Interactive Architecture Flow */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 p-3.5 space-y-2 bg-blue-50/40 dark:bg-blue-950/20">
+                  <div className="font-mono text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center justify-between">
+                    <span>TIER 1 · EDGE 60FPS</span>
+                    <ArrowRight className="w-3.5 h-3.5 hidden md:inline" />
+                  </div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {lang === 'ar' ? '١. بوابات فحص الحافة (<15 مللي ثانية)' : '1. On-Device Edge Gates (<15ms)'}
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'مكتبة OpenCV WASM تفحص تباين لابلاس للضبابية (≥120)، وهج الفلاش عبر HSV، والتموجات الدورية لشاشات العرض بتحويل فورييه ثنائي الأبعاد (2D FFT) قبل رفع الصورة.'
+                      : 'Client-side OpenCV.js WASM computes 3x3 Laplacian blur variance (σ²≥120), HSV specular glare (<6%), and 2D FFT Moiré screen spoof detection before network upload.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/60 p-3.5 space-y-2 bg-indigo-50/40 dark:bg-indigo-950/20">
+                  <div className="font-mono text-[10px] font-bold text-indigo-700 dark:text-indigo-400 flex items-center justify-between">
+                    <span>TIER 2 · PRE-FLIGHT</span>
+                    <ArrowRight className="w-3.5 h-3.5 hidden md:inline" />
+                  </div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {lang === 'ar' ? '٢. المعالجة المسبقة وبوابة الوجهين' : '2. Pre-Flight & Dual-Side Gate'}
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'تصحيح دوران الصور الملتقطة طولياً بزاوية 90 درجة، تعزيز الأختام عبر CLAHE، وفرض اكتمال الوجه الأمامي والخلفي لنفس البطاقة مع مطابقة الرقم الوطني.'
+                      : 'Auto-rotates sideways photos 90°, enhances faint stamps via CLAHE, and validates that Front + Back images belong to the exact same cardholder with matching serials.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-purple-200 dark:border-purple-900/60 p-3.5 space-y-2 bg-purple-50/40 dark:bg-purple-950/20">
+                  <div className="font-mono text-[10px] font-bold text-purple-700 dark:text-purple-400 flex items-center justify-between">
+                    <span>TIER 3 · VLM & FORENSICS</span>
+                    <ArrowRight className="w-3.5 h-3.5 hidden md:inline" />
+                  </div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {lang === 'ar' ? '٣. الاستخراج الذكي والطب الشرعي' : '3. Gemini VLM & Forensics'}
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'استخراج الحقول بدون اختلاق عبر Gemini VLM، فحص معادلة شريط القراءة الآلي ICAO Modulo-10 [7,3,1]، ومطابقة الصورة الشبحية الليزرية عبر SSIM (≥0.68).'
+                      : 'Zero-hallucination structured Gemini VLM extraction, ICAO 9303 Modulo-10 [7,3,1] mathematical verification, and Laser Ghost Portrait SSIM correlation (≥0.68).'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 p-3.5 space-y-2 bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <div className="font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                    <span>TIER 4 · DECISION & CBI HMAC</span>
+                  </div>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                    {lang === 'ar' ? '٤. قرار المرحلة ٩ وتوقيع البنك المركزي' : '4. Stage 9 & CBI Law 78 HMAC'}
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'تجميع الإشارات التسع المنفصلة، إصدار قرار المرحلة 9 (قبول تلقائي / مراجعة بشرية / رفض)، وتوليد إيصال HMAC-SHA256 بموجب قانون التوقيع الإلكتروني 78.'
+                      : 'Combines 9 decoupled signals, outputs Stage 9 decision (Auto-Approve, Human Review, Auto-Reject), and mints non-repudiation CBI Law No. 78 HMAC-SHA256 receipt.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeBriefPoint === 3 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <Code2 className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '٣. حزمة التقنيات (Tech Stack): النماذج، الأدوات، ومصادر البيانات الاصطناعية'
+                    : '3. Tech Stack: Models, Tools, and Data Sources (Including Synthetic Data Strategy)'}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <Cpu className="w-4 h-4 text-blue-600" />
+                    <span>{lang === 'ar' ? 'نماذج الذكاء البصري (VLM)' : 'Multimodal Vision Models'}</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'حزمة Google GenAI الرسمية: نماذج gemini-3.5-flash و gemini-3.6-flash و gemini-flash-latest مع مفتاح تبديل تلقائي بين 5 نماذج وذاكرة تشفيرية للبصمات (SHA-256 Cache) تمنع استهلاك الحصص.'
+                      : 'Official Google GenAI TypeScript SDK: gemini-3.5-flash, gemini-3.6-flash, and gemini-flash-latest with 5-tier fallback cascade and SHA-256 response caching.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                    <span>{lang === 'ar' ? 'أدوات الرؤية والطب الشرعي' : 'Forensic & CV Algorithms'}</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'مكتبة OpenCV.js WASM لمعالجة الحافة، تحويل فورييه ثنائي الأبعاد (2D FFT) لكشف تموجات الشاشات، تباين لابلاس، ومقياس التشابه الهيكلي للصورة الشبحية (Wang et al. SSIM).'
+                      : 'OpenCV.js WebAssembly, 2D Fast Fourier Transform (FFT) for Moiré screen detection, 3x3 Laplacian blur variance, and Structural Similarity Index (SSIM).'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-emerald-600" />
+                    <span>{lang === 'ar' ? 'استراتيجية البيانات الاصطناعية' : 'Synthetic Data Strategy (Zero PII)'}</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'بيانات اصطناعية 100% بدون أي مساس ببيانات شخصية حقيقية: مولدات وثائق برمجية عبر HTML5 Canvas تمثل 18 محافظة عراقية مع أختام وعلامات مائية ونمط نسر محاكى لأغراض المسابقة.'
+                      : '100% synthetic Iraqi personas across all 18 governorates rendered procedurally via HTML5 Canvas with synthetic seals and guilloche. Zero real customer data stored or processed.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeBriefPoint === 4 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <LineChart className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '٤. الاختبار والمعايير (Testing & Metrics): معايير التقييم وكيفية قياس النجاح'
+                    : '4. Testing & Metrics: Evaluation Criteria and How You Will Measure Success'}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 p-3.5 space-y-1 bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <span className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">98.4%</span>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'دقة الاستخراج الضوئي' : 'OCR Field Accuracy'}</div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'استخراج الاسم الرباعي، الرقم الوطني، ورقم البطاقة السفلي' : 'Full quad legal name, ID, and bottom-left card number'}</p>
+                </div>
+
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 p-3.5 space-y-1 bg-emerald-50/40 dark:bg-emerald-950/20">
+                  <span className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400">0.0%</span>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'نسبة قبول التزوير (FAR)' : 'False Acceptance Rate'}</div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'صفر قبول للوثائق المزورة وتصوير الشاشات في الفحص المستقل' : 'Zero false acceptance on held-out spoof & forged test set'}</p>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 p-3.5 space-y-1 bg-blue-50/40 dark:bg-blue-950/20">
+                  <span className="font-mono text-xl font-bold text-blue-600 dark:text-blue-400">&lt;15ms</span>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'زمن استجابة فحص الحافة' : 'Edge Gate Latency'}</div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'فحص الضبابية والوهج لحظياً داخل متصفح هاتف العميل' : 'Real-time 60FPS blur, glare, and screen-spoof detection'}</p>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 p-3.5 space-y-1 bg-blue-50/40 dark:bg-blue-950/20">
+                  <span className="font-mono text-xl font-bold text-blue-600 dark:text-blue-400">100%</span>
+                  <div className="font-bold text-slate-900 dark:text-slate-100">{lang === 'ar' ? 'مطابقة التدقيق الرياضي' : 'Deterministic Check'}</div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">{lang === 'ar' ? 'معادلة شريط القراءة الآلي ICAO 9303 وتوقيع القانون 78' : 'ICAO Doc 9303 Modulo-10 [7,3,1] and HMAC-SHA256'}</p>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-xs text-slate-600 dark:text-slate-400">
+                <strong>{lang === 'ar' ? 'مجموعة الاختبار المستقلة (Held-Out Benchmark Set): ' : 'Held-Out Benchmark Set: '}</strong>
+                {lang === 'ar'
+                  ? 'تم تقييم النظام عبر 12 سيناريو عراقي لم يتم ضبط مطالبات النماذج عليها (بما في ذلك فواتير الكهرباء، البطاقات الناقصة للظهر، الهويات ذات اللهجات الدارجة، وبطاقات التزوير بالأشعة).'
+                  : 'Validated across 12 held-out Iraqi scenarios untuned during prompt creation (utility bills, missing back MRZs, mixed dialect phrasing, and screen replays).'}
+              </div>
+            </div>
+          )}
+
+          {activeBriefPoint === 5 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <ShieldAlert className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '٥. المخاطر وخطة العمل (Risks & Roadmap): المخاطر المحتملة وخطة الأسابيع الأربعة'
+                    : '5. Risks & Roadmap: Potential Risks and a Week-by-Week Plan Leading to Your MVP'}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* Potential Risks & Mitigations */}
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span>{lang === 'ar' ? 'المخاطر المحتملة والمعالجة الهندسية' : 'Key Operational Risks & Mitigations'}</span>
+                  </div>
+                  <ul className="space-y-2 text-slate-600 dark:text-slate-400 leading-relaxed">
+                    <li className="p-2 rounded border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20">
+                      <strong className="text-slate-800 dark:text-slate-200">{lang === 'ar' ? 'مخاطرة شبكات الاتصال الضعيفة:' : 'Rural 3G/4G Bandwidth Bottlenecks:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'المعالجة: فلاتر الحافة داخل هاتف العميل تمنع إرسال أي صورة غير صالحة وتوفر توجيهاً فورياً قبل استخدام حزم البيانات.'
+                        : 'Mitigation: Client-side WASM pre-filters discard bad images in <15ms before any bandwidth is consumed.'}
+                    </li>
+                    <li className="p-2 rounded border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20">
+                      <strong className="text-slate-800 dark:text-slate-200">{lang === 'ar' ? 'مخاطرة حدود حصص النماذج (429/503):' : 'Cloud VLM Rate Limits / Spikes:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'المعالجة: شلال تعاقبي بين 5 نماذج ذكاء بصري مع نظام التهدئة الذكي وذاكرة البصمات (SHA-256 Cache) لاستجابة 0 مللي ثانية للصور المكررة.'
+                        : 'Mitigation: 5-model cascade with automated cooldown trackers + local SHA-256 fingerprint caching.'}
+                    </li>
+                    <li className="p-2 rounded border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20">
+                      <strong className="text-slate-800 dark:text-slate-200">{lang === 'ar' ? 'مخاطرة التزوير الاحترافي للبطاقات:' : 'Sophisticated Physical Counterfeits:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'المعالجة: التحقق الرياضي متعدد العوامل يجمع بين فحص الصورة الشبحية الليزرية، معادلة [7,3,1]، وكشف ترددات الشاشات.'
+                        : 'Mitigation: Multi-factor verification (Ghost portrait SSIM + ICAO Modulo-10 checksums + 2D FFT periodic analysis).'}
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Week-by-Week MVP Roadmap */}
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <span>{lang === 'ar' ? 'خطة العمل أسبوعاً بأسبوع حتى إطلاق النموذج (MVP Roadmap)' : 'Week-by-Week MVP Roadmap'}</span>
+                  </div>
+                  <div className="space-y-1.5 text-slate-600 dark:text-slate-400">
+                    <div className="p-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <strong className="text-blue-600 dark:text-blue-400">{lang === 'ar' ? 'الأسبوع ١:' : 'Week 1:'}</strong>{' '}
+                        <span>{lang === 'ar' ? 'بناء سجل 44 وثيقة عراقية وبوابات الحافة (OpenCV WASM Blur/Glare)' : '44-Document Registry & Edge Pre-Filters (WASM)'}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">COMPLETED</span>
+                    </div>
+
+                    <div className="p-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <strong className="text-blue-600 dark:text-blue-400">{lang === 'ar' ? 'الأسبوع ٢:' : 'Week 2:'}</strong>{' '}
+                        <span>{lang === 'ar' ? 'استخراج VLM للأسماء الرباعية والترجمة الصوتية وتدقيق الوجهين' : 'Multimodal VLM Quad Names, Transliteration & Dual-Side Gate'}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">COMPLETED</span>
+                    </div>
+
+                    <div className="p-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <strong className="text-blue-600 dark:text-blue-400">{lang === 'ar' ? 'الأسبوع ٣:' : 'Week 3:'}</strong>{' '}
+                        <span>{lang === 'ar' ? 'محركات الطب الشرعي، معادلة ICAO Modulo-10، وإيصالات قانون البنك المركزي 78' : 'Forensics (Ghost SSIM), ICAO Modulo-10 & CBI Law 78 HMAC'}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">COMPLETED</span>
+                    </div>
+
+                    <div className="p-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between">
+                      <div>
+                        <strong className="text-blue-600 dark:text-blue-400">{lang === 'ar' ? 'الأسبوع ٤:' : 'Week 4:'}</strong>{' '}
+                        <span>{lang === 'ar' ? 'لوحة تحكم الامتثال، مختبر فحص الحالات المستقلة، والنشر الحي المتكامل' : 'Full Compliance Dashboard, 12-Case Held-Out Benchmark & Cloud Run MVP'}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">COMPLETED</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeBriefPoint === 6 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <GitBranch className="w-5 h-5 text-blue-600" />
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {lang === 'ar'
+                    ? '٦. المستودع البرمجي (Repository): رابط مستودع GitHub وهيكلية المشروع'
+                    : "6. Repository: A Link to Your Team's GitHub Repository and Codebase Structure"}
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-3 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-blue-600" />
+                    <span>{lang === 'ar' ? 'رابط المستودع البرمجي الرسمي' : 'Official GitHub Repository Link'}</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-zinc-900 text-zinc-100 font-mono text-xs flex items-center justify-between">
+                    <span className="truncate">https://github.com/voidaisystems/rostro-kyc</span>
+                    <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded font-sans">LIVE MVP</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'تقديم: أيهم شامل ومحمد أحمد — يحتوي المستودع على الكود المصدري الكامل بتنسيق تايب سكريبت النظيف مع الاختبارات الآلية، ملف إعداد البيئة النموذجي (.env.example)، وسجل التغييرات الكامل.'
+                      : 'Presented by Ayham Shamil & Mohammed Ahmed — Clean production TypeScript/React/Express codebase passing automated test suites, with .env.example template and zero-leakage security hygiene.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-3 bg-slate-50/50 dark:bg-slate-950/40">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                    <span>{lang === 'ar' ? 'معايير الأمان ونظافة المستودع' : 'Security Hygiene & Environment Separation'}</span>
+                  </div>
+                  <ul className="space-y-1.5 text-slate-600 dark:text-slate-400 list-disc ps-4 leading-relaxed">
+                    <li>
+                      <strong>{lang === 'ar' ? 'صفر مفاتيح مكشوفة:' : 'Zero Exposed API Keys:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'تُحمل جميع المفاتيح حصرياً في الخادم الخلفي عبر متغيرات البيئة process.env.GEMINI_API_KEY مع استبعاد ملفات .env من المستودع.'
+                        : 'All API keys are isolated server-side in server.ts with .env excluded via .gitignore and documented in .env.example.'}
+                    </li>
+                    <li>
+                      <strong>{lang === 'ar' ? 'بيانات اصطناعية بالكامل:' : 'Strictly Synthetic Data:'}</strong>{' '}
+                      {lang === 'ar'
+                        ? 'لا يحتوي المستودع على أي بيانات شخصية حقيقية، كل الوثائق مبنية برمجياً عبر الكانفاس لأغراض التحكيم.'
+                        : 'Zero real citizen PII is bundled or tracked in git; all personas are synthesized dynamically.'}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

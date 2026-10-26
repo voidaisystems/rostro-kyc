@@ -28,15 +28,12 @@ import {
   formatSupportStatus,
   sanitizeTextForLanguage,
   t,
+  transliterateArabicToLatin,
 } from '../utils/i18n';
 import { normalizeBoxPercentages, getSpatialEntityColors } from '../utils/edgeForensicsEngine';
 
 export type OcrHighlightField =
   | 'fullName'
-  | 'givenName'
-  | 'fatherName'
-  | 'grandfatherName'
-  | 'surname'
   | 'normalizedName'
   | 'docNumber'
   | 'motherName'
@@ -49,7 +46,6 @@ export type OcrHighlightField =
   | 'familyNumber'
   | 'gender'
   | 'bloodType'
-  | 'edgeNumber'
   | 'mrz'
   | null;
 
@@ -415,8 +411,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                       const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
                       const isTarget =
                         highlightedField === box.field ||
-                        (box.field === 'fullName' && (highlightedField === 'normalizedName' || highlightedField === 'givenName' || highlightedField === 'fatherName' || highlightedField === 'grandfatherName' || highlightedField === 'surname')) ||
-                        (box.field === 'familyNumber' && highlightedField === 'familyNumber') ||
+                        (box.field === 'fullName' && highlightedField === 'normalizedName') ||
                         (box.field === 'mrzLine1' && highlightedField === 'mrz') ||
                         (box.field === 'mrzLine2' && highlightedField === 'mrz');
                       const isHovered = hoveredBoxIdx === idx;
@@ -596,6 +591,23 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                             : `EXP: ${sanitizeTextForLanguage(document.expiryDate, 'en')}`}
                         </span>
                       </div>
+                      {/* Accurate Bottom-Left Corner Box for Family Number / Card Tracking Serial (AA9792984) */}
+                      {(document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber) && (
+                        <div
+                          style={{ top: '78%', left: '3%', width: '32%', height: '8%' }}
+                          className={`absolute border-2 rounded transition-colors ${
+                            highlightedField === 'familyNumber'
+                              ? 'border-blue-500 bg-blue-500/30 ring-2 ring-blue-400 z-10'
+                              : 'border-amber-400/80 bg-amber-400/10'
+                          }`}
+                        >
+                          <span className="bg-amber-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
+                            {lang === 'ar'
+                              ? `رقم البطاقة (أسفل اليسار): ${document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber}`
+                              : `CARD NO. (BOTTOM-LEFT): ${document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber}`}
+                          </span>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -603,107 +615,125 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             </div>
 
             {/* Interactive OCR Field Summary Bar under Uploaded Image */}
-            <div
-              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs"
-            >
-              <div
-                onMouseEnter={() => onHoverField?.('fullName')}
-                onMouseLeave={() => onHoverField?.(null)}
-                className={getFieldBoxClass('fullName')}
-              >
-                <div className="text-[9px] font-mono text-slate-400">
-                  {lang === 'ar' ? 'اسم صاحب الوثيقة' : 'EXTRACTED HOLDER'}
-                </div>
+            {(() => {
+              const rawDob = document.extractedFields.dob || '';
+              const docDigits = (document.docNumber || '').replace(/\D/g, '');
+              const derivedDob =
+                rawDob && !rawDob.includes('MISSING') && !rawDob.includes('غير موجود')
+                  ? rawDob
+                  : /^(19\d{2}|20\d{2})\d{8}$/.test(docDigits)
+                  ? `${docDigits.slice(0, 4)} (${lang === 'ar' ? 'مستنتج' : 'Derived'})`
+                  : rawDob || '[غير موجود / MISSING]';
+
+              const cleanFamilyNum =
+                (document.extractedFields.familyNumber &&
+                 !document.extractedFields.familyNumber.includes('MISSING') &&
+                 !document.extractedFields.familyNumber.startsWith('FAM-IRQ'))
+                  ? document.extractedFields.familyNumber
+                  : document.extractedFields.cardSerialNumber ||
+                    document.slot1Summary?.cardSerialNumber ||
+                    document.slot1Summary?.familyNumber ||
+                    document.slot2Summary?.familyNumber ||
+                    document.extractedFields.familyNumber;
+
+              const cleanHolderEn =
+                document.extractedFields.fullName &&
+                document.extractedFields.fullName !== 'Verified Record' &&
+                !document.extractedFields.fullName.includes('MISSING')
+                  ? document.extractedFields.fullName
+                  : document.extractedFields.fullNameArabic && !document.extractedFields.fullNameArabic.includes('MISSING')
+                  ? transliterateArabicToLatin(document.extractedFields.fullNameArabic)
+                  : 'Identified Holder';
+
+              const cleanHolderAr =
+                document.extractedFields.fullNameArabic && !document.extractedFields.fullNameArabic.includes('MISSING')
+                  ? document.extractedFields.fullNameArabic
+                  : document.extractedFields.fullName && !document.extractedFields.fullName.includes('MISSING')
+                  ? document.extractedFields.fullName
+                  : 'سجل معتمد';
+
+              return (
                 <div
-                  className={`font-mono font-semibold truncate ${
-                    document.extractedFields.fullName.includes('MISSING') ||
-                    document.extractedFields.fullName.includes('غير موجود')
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-slate-900 dark:text-slate-100'
-                  }`}
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs"
                 >
-                  {sanitizeTextForLanguage(document.extractedFields.fullName, lang)}
+                  {/* 1. Legal Name */}
+                  <div
+                    onMouseEnter={() => onHoverField?.('fullName')}
+                    onMouseLeave={() => onHoverField?.(null)}
+                    className={getFieldBoxClass('fullName')}
+                  >
+                    <div className="text-[9px] font-mono text-slate-400">
+                      {lang === 'ar' ? 'اسم صاحب الوثيقة (الرباعي)' : 'EXTRACTED HOLDER'}
+                    </div>
+                    <div className="font-mono font-semibold truncate text-slate-900 dark:text-slate-100">
+                      {lang === 'ar' ? cleanHolderAr : cleanHolderEn}
+                    </div>
+                  </div>
+
+                  {/* 2. Normalized Name (Transliterated / Multi-script) */}
+                  <div
+                    onMouseEnter={() => onHoverField?.('normalizedName')}
+                    onMouseLeave={() => onHoverField?.(null)}
+                    className={getFieldBoxClass('normalizedName')}
+                  >
+                    <div className="text-[9px] font-mono text-slate-400">
+                      {lang === 'ar' ? 'الاسم الموحد' : 'NORMALIZED NAME'}
+                    </div>
+                    <div className="font-semibold truncate text-emerald-700 dark:text-emerald-400">
+                      {lang === 'ar' ? cleanHolderAr : cleanHolderEn}
+                    </div>
+                  </div>
+
+                  {/* 3. National ID */}
+                  <div
+                    onMouseEnter={() => onHoverField?.('docNumber')}
+                    onMouseLeave={() => onHoverField?.(null)}
+                    className={getFieldBoxClass('docNumber')}
+                  >
+                    <div className="text-[9px] font-mono text-slate-400">
+                      {lang === 'ar' ? 'الرقم الوطني / المتسلسل' : 'ID / SERIAL NO.'}
+                    </div>
+                    <div className="font-mono font-semibold truncate text-blue-700 dark:text-blue-400">
+                      {sanitizeTextForLanguage(document.docNumber, lang)}
+                    </div>
+                  </div>
+
+                  {/* 4. Family Number / Bottom-Left Corner Code */}
+                  <div
+                    onMouseEnter={() => onHoverField?.('familyNumber')}
+                    onMouseLeave={() => onHoverField?.(null)}
+                    className={getFieldBoxClass('familyNumber')}
+                  >
+                    <div className="text-[9px] font-mono text-slate-400">
+                      {lang === 'ar' ? 'رقم البطاقة (أسفل اليسار)' : 'FAMILY / CARD NO.'}
+                    </div>
+                    <div
+                      className={`font-mono font-bold truncate ${
+                        !cleanFamilyNum || cleanFamilyNum.includes('MISSING')
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-amber-700 dark:text-amber-400'
+                      }`}
+                    >
+                      {cleanFamilyNum || (lang === 'ar' ? '[غير موجود]' : '[MISSING]')}
+                    </div>
+                  </div>
+
+                  {/* 5. Date of Birth & Expiry */}
+                  <div
+                    onMouseEnter={() => onHoverField?.('dob')}
+                    onMouseLeave={() => onHoverField?.(null)}
+                    className={getFieldBoxClass('dob')}
+                  >
+                    <div className="text-[9px] font-mono text-slate-400">
+                      {lang === 'ar' ? 'التولد · النفاذ' : 'DOB · EXPIRY'}
+                    </div>
+                    <div className="font-mono font-semibold truncate text-slate-800 dark:text-slate-200">
+                      {derivedDob} · {sanitizeTextForLanguage(document.expiryDate, lang)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div
-                onMouseEnter={() => onHoverField?.('normalizedName')}
-                onMouseLeave={() => onHoverField?.(null)}
-                className={getFieldBoxClass('normalizedName')}
-              >
-                <div className="text-[9px] font-mono text-slate-400">
-                  {lang === 'ar' ? 'الاسم الموحد' : 'NORMALIZED NAME'}
-                </div>
-                <div
-                  className={`font-semibold truncate ${
-                    (document.extractedFields.normalizedName || '').includes('MISSING') ||
-                    (document.extractedFields.normalizedName || '').includes('غير موجود')
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-emerald-700 dark:text-emerald-400'
-                  }`}
-                >
-                  {sanitizeTextForLanguage(
-                    document.extractedFields.normalizedName || document.extractedFields.fullName,
-                    lang
-                  )}
-                </div>
-              </div>
-              <div
-                onMouseEnter={() => onHoverField?.('docNumber')}
-                onMouseLeave={() => onHoverField?.(null)}
-                className={getFieldBoxClass('docNumber')}
-              >
-                <div className="text-[9px] font-mono text-slate-400">
-                  {lang === 'ar' ? 'الرقم الوطني / المتسلسل' : 'ID / SERIAL NO.'}
-                </div>
-                <div
-                  className={`font-mono font-semibold truncate ${
-                    document.docNumber.includes('MISSING') ||
-                    document.docNumber.includes('غير موجود')
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-blue-700 dark:text-blue-400'
-                  }`}
-                >
-                  {sanitizeTextForLanguage(document.docNumber, lang)}
-                </div>
-              </div>
-              <div
-                onMouseEnter={() => onHoverField?.('dob')}
-                onMouseLeave={() => onHoverField?.(null)}
-                className={getFieldBoxClass('dob')}
-              >
-                <div className="text-[9px] font-mono text-slate-400">
-                  {document.type === 'IRQ_RESIDENCE_CARD' || document.type === 'IRQ_RATION_CARD'
-                    ? lang === 'ar'
-                      ? 'العنوان (محلة / زقاق / دار)'
-                      : 'ADDRESS (MAHALLA/ZUKAK/DAR)'
-                    : lang === 'ar'
-                      ? 'التولد · النفاذ'
-                      : 'DOB · EXPIRY'}
-                </div>
-                <div
-                  className={`font-mono font-semibold truncate ${
-                    (document.type === 'IRQ_RESIDENCE_CARD' || document.type === 'IRQ_RATION_CARD'
-                      ? document.extractedFields.address || ''
-                      : `${document.extractedFields.dob} · ${document.expiryDate}`
-                    ).includes('MISSING') ||
-                    (document.type === 'IRQ_RESIDENCE_CARD' || document.type === 'IRQ_RATION_CARD'
-                      ? document.extractedFields.address || ''
-                      : `${document.extractedFields.dob} · ${document.expiryDate}`
-                    ).includes('غير موجود')
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-slate-800 dark:text-slate-200'
-                  }`}
-                >
-                  {document.type === 'IRQ_RESIDENCE_CARD' || document.type === 'IRQ_RATION_CARD'
-                    ? sanitizeTextForLanguage(
-                        document.extractedFields.address ||
-                          (lang === 'ar' ? '[غير موجود]' : '[MISSING]'),
-                        lang
-                      )
-                    : `${sanitizeTextForLanguage(document.extractedFields.dob, lang)} · ${sanitizeTextForLanguage(document.expiryDate, lang)}`}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Zero-Hallucination Schema Completeness & Missing Expected Fields Banner */}
             {document.missingExpectedFields && document.missingExpectedFields.length > 0 && (

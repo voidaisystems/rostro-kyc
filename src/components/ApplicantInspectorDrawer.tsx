@@ -14,14 +14,23 @@ import {
   Lock,
   Globe,
   Building2,
+   Upload,
+  ScanLine,
+  Users,
+  Fingerprint,
 } from 'lucide-react';
 import {
+  analyzeDocumentAntiSpoofing,
   evaluateForeignIdComplianceProtocol,
+  verifyIraqiAccountPacket,
+  type AntiSpoofSimulationPreset,
   type KYCApplicant,
+  type KYCDocument,
   type Language,
   type VerificationStatus,
 } from '../utils/kycEngine';
 import {
+  formatBilingualName,
   formatCryptoDigest,
   formatMrzForDisplay,
   formatReferenceCode,
@@ -30,6 +39,7 @@ import {
   formatTimestamp,
   sanitizeTextForLanguage,
   t,
+  transliterateArabicToLatin,
 } from '../utils/i18n';
 import {
   DocumentSpecimenViewer,
@@ -43,6 +53,16 @@ interface ApplicantInspectorDrawerProps {
   onUpdateStatus: (applicantId: string, status: VerificationStatus, officerNote: string) => void;
   onRunSingleAutoEval: (applicantId: string) => void;
   onRegisterCandidateDoc?: (applicantId: string, docId: string) => void;
+  onAttachOrUpdatePacketResidenceCard?: (
+    applicantId: string,
+    mode: 'SELF' | 'FATHER' | 'MISMATCH' | 'CUSTOM',
+    customDoc?: KYCDocument
+  ) => void;
+  onApplyAntiSpoofPreset?: (
+    applicantId: string,
+    docId: string,
+    preset: AntiSpoofSimulationPreset
+  ) => void;
   onNavigateApplicant?: (direction: 'prev' | 'next') => void;
   currentIndex?: number;
   totalQueueCount?: number;
@@ -55,6 +75,8 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   onUpdateStatus,
   onRunSingleAutoEval,
   onRegisterCandidateDoc,
+  onAttachOrUpdatePacketResidenceCard,
+  onApplyAntiSpoofPreset,
   onNavigateApplicant,
   currentIndex = 0,
   totalQueueCount = 1,
@@ -65,6 +87,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   const [zoomed, setZoomed] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [highlightedField, setHighlightedField] = useState<OcrHighlightField>(null);
+  const [isUploadingResidence, setIsUploadingResidence] = useState(false);
 
   // Keyboard shortcuts for rapid officer adjudication
   useEffect(() => {
@@ -226,12 +249,33 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                 </span>
               )}
             </div>
-            <h2
-              id="inspector-drawer-title"
-              className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-1"
-            >
-              {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
-            </h2>
+            {(() => {
+              const safeNameEn =
+                applicant.fullNameEn &&
+                applicant.fullNameEn !== 'Verified Record' &&
+                !applicant.fullNameEn.includes('MISSING') &&
+                !applicant.fullNameEn.includes('غير موجود')
+                  ? applicant.fullNameEn
+                  : applicant.fullNameAr && !applicant.fullNameAr.includes('MISSING')
+                  ? transliterateArabicToLatin(applicant.fullNameAr)
+                  : 'Identified Applicant';
+
+              const safeNameAr =
+                applicant.fullNameAr && !applicant.fullNameAr.includes('MISSING') && !applicant.fullNameAr.includes('غير موجود')
+                  ? applicant.fullNameAr
+                  : applicant.fullNameEn && !applicant.fullNameEn.includes('MISSING')
+                  ? applicant.fullNameEn
+                  : 'سجل معتمد';
+
+              return (
+                <h2
+                  id="inspector-drawer-title"
+                  className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-1"
+                >
+                  {lang === 'ar' ? safeNameAr : safeNameEn}
+                </h2>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -547,296 +591,795 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                   </span>
                 </div>
 
-                <div className="divide-y divide-zinc-200 dark:divide-[#1f1f23] text-xs">
-                  <div
-                    onMouseEnter={() => setHighlightedField('fullName')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('fullName')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {t(lang, 'fieldFullName')}
-                    </span>
-                    <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
-                      {lang === 'ar'
-                        ? applicant.fullNameAr || sanitizeTextForLanguage(activeDoc.extractedFields.fullNameArabic || activeDoc.extractedFields.fullName, 'ar')
-                        : applicant.fullNameEn || sanitizeTextForLanguage(activeDoc.extractedFields.fullName, 'en')}
-                    </span>
-                  </div>
+                {(() => {
+                  const safeNameEn =
+                    applicant.fullNameEn &&
+                    applicant.fullNameEn !== 'Verified Record' &&
+                    !applicant.fullNameEn.includes('MISSING') &&
+                    !applicant.fullNameEn.includes('غير موجود')
+                      ? applicant.fullNameEn
+                      : applicant.fullNameAr && !applicant.fullNameAr.includes('MISSING')
+                      ? transliterateArabicToLatin(applicant.fullNameAr)
+                      : 'Identified Applicant';
 
-                  {(activeDoc.extractedFields.givenName || activeDoc.slot1Summary?.givenName) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('givenName')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('givenName')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldGivenName')}
-                      </span>
-                      <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
-                        {sanitizeTextForLanguage(
-                          activeDoc.extractedFields.givenName || activeDoc.slot1Summary?.givenName || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
+                  const safeNameAr =
+                    applicant.fullNameAr && !applicant.fullNameAr.includes('MISSING') && !applicant.fullNameAr.includes('غير موجود')
+                      ? applicant.fullNameAr
+                      : applicant.fullNameEn && !applicant.fullNameEn.includes('MISSING')
+                      ? applicant.fullNameEn
+                      : 'سجل معتمد';
 
-                  {(activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('fatherName')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('fatherName')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldFatherName')}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(
-                          activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
+                  // Deterministic Year/DOB derivation — always prefer full YYYY-MM-DD DOB from Back Side (slot2Summary) over 4-digit derived year!
+                  const slot2Dob = activeDoc.slot2Summary?.dob || '';
+                  const slot1Dob = activeDoc.slot1Summary?.dob || '';
+                  const rawDob = activeDoc.extractedFields.dob || '';
+                  const fullDateRegex = /\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/;
+                  const bestFullDob =
+                    (fullDateRegex.test(rawDob) && rawDob.match(fullDateRegex)![0]) ||
+                    (fullDateRegex.test(slot2Dob) && slot2Dob.match(fullDateRegex)![0]) ||
+                    (fullDateRegex.test(slot1Dob) && slot1Dob.match(fullDateRegex)![0]) ||
+                    '';
+                  const rawDocNum = (activeDoc.docNumber || '').replace(/\D/g, '');
+                  const displayDob = bestFullDob
+                    ? bestFullDob
+                    : rawDob && !rawDob.includes('MISSING') && !rawDob.includes('غير موجود')
+                      ? rawDob
+                      : /^(19\d{2}|20\d{2})\d{8}$/.test(rawDocNum)
+                        ? `${rawDocNum.slice(0, 4)} (${lang === 'ar' ? 'مستنتج من الرقم الوطني' : 'Derived from National ID'})`
+                        : rawDob || '[غير موجود / MISSING]';
 
-                  {(activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('grandfatherName')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('grandfatherName')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldGrandfatherName')}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(
-                          activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
+                  const pickValidDate = (...candidates: (string | undefined)[]): string => {
+                    for (const c of candidates) {
+                      if (c && !c.includes('MISSING') && !c.includes('غير موجود') && c !== 'N/A') {
+                        return c;
+                      }
+                    }
+                    return '[MISSING]';
+                  };
 
-                  {(activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('surname')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('surname')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldSurname')}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(
-                          activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
+                  const displayIssueDate = pickValidDate(
+                    activeDoc.issueDate,
+                    activeDoc.extractedFields.issueDate,
+                    activeDoc.slot2Summary?.issueDate,
+                    activeDoc.slot1Summary?.issueDate
+                  );
+                  let displayExpiryDate = pickValidDate(
+                    activeDoc.expiryDate,
+                    activeDoc.extractedFields.expiryDate,
+                    activeDoc.slot2Summary?.expiryDate,
+                    activeDoc.slot1Summary?.expiryDate
+                  );
+                  if (
+                    displayExpiryDate === '[MISSING]' &&
+                    activeDoc.type === 'IRQ_NATIONAL_ID' &&
+                    /^(20\d{2})-(\d{2})-(\d{2})$/.test(displayIssueDate)
+                  ) {
+                    const [, iY, iM, iD] = displayIssueDate.match(/^(20\d{2})-(\d{2})-(\d{2})$/)!;
+                    displayExpiryDate = `${Number(iY) + 10}-${iM}-${String(Math.max(1, Number(iD) - 1)).padStart(2, '0')}`;
+                  }
 
-                  <div
-                    onMouseEnter={() => setHighlightedField('normalizedName')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('normalizedName')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {t(lang, 'fieldNormalizedName')}
-                    </span>
-                    <span className="col-span-2 font-semibold text-emerald-700 dark:text-[#10b981]">
-                      {lang === 'ar'
-                        ? applicant.fullNameAr
-                        : sanitizeTextForLanguage(
-                            activeDoc.extractedFields.normalizedName || applicant.normalizedEntityName,
-                            'en'
-                          )}
-                    </span>
-                  </div>
+                  // Bottom left corner code / Family number
+                  const trackingFamilyCode =
+                    (activeDoc.extractedFields.familyNumber &&
+                     !activeDoc.extractedFields.familyNumber.includes('MISSING') &&
+                     !activeDoc.extractedFields.familyNumber.startsWith('FAM-IRQ'))
+                      ? activeDoc.extractedFields.familyNumber
+                      : activeDoc.extractedFields.cardSerialNumber ||
+                        activeDoc.slot1Summary?.cardSerialNumber ||
+                        activeDoc.slot1Summary?.familyNumber ||
+                        activeDoc.slot2Summary?.familyNumber ||
+                        activeDoc.extractedFields.familyNumber;
 
-                  <div
-                    onMouseEnter={() => setHighlightedField('docNumber')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('docNumber')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {t(lang, 'fieldDocNumber')}
-                    </span>
-                    <span className="col-span-2 font-mono text-emerald-700 dark:text-[#10b981] font-semibold">
-                      {formatReferenceCode(activeDoc.docNumber, lang)}
-                    </span>
-                  </div>
+                  return (
+                    <div className="divide-y divide-zinc-200 dark:divide-[#1f1f23] text-xs">
+                      {/* Full Legal Combined Name (Bilingual English + Arabic) */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('fullName')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('fullName')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {t(lang, 'fieldFullName')}
+                        </span>
+                        <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                          {formatBilingualName(undefined, safeNameAr, safeNameEn)}
+                        </span>
+                      </div>
 
-                  {(activeDoc.extractedFields.motherName || activeDoc.slot1Summary?.motherName) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('motherName')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('motherName')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {lang === 'ar' ? 'اسم الأم' : "Mother's Name"}
-                      </span>
-                      <span className="col-span-2 font-semibold text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(
-                          activeDoc.extractedFields.motherName || activeDoc.slot1Summary?.motherName || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    onMouseEnter={() => setHighlightedField('dob')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('dob')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {t(lang, 'fieldDob')}
-                    </span>
-                    <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                      {activeDoc.extractedFields.dob}
-                    </span>
-                  </div>
-
-                  {(activeDoc.extractedFields.gender || activeDoc.extractedFields.bloodType) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('gender')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('gender')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {lang === 'ar' ? 'الجنس وفصيلة الدم' : 'Sex & Blood Type'}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(activeDoc.extractedFields.gender || '—', lang)} ·{' '}
-                        {sanitizeTextForLanguage(activeDoc.extractedFields.bloodType || '—', lang)}
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    onMouseEnter={() => setHighlightedField('nationality')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('nationality')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {activeDoc.isForeignDocument
-                        ? lang === 'ar'
-                          ? 'دولة الإصدار والجنسية'
-                          : 'Issuing Country & Nationality'
-                        : t(lang, 'fieldNationality')}
-                    </span>
-                    <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                      {activeDoc.isForeignDocument
-                        ? lang === 'ar'
-                          ? `${activeDoc.issuingCountryAr} (${activeDoc.issuingCountryCode || 'ARE'}) · الجنسية: ${activeDoc.holderNationalityAr || activeDoc.holderNationalityEn || 'أجنبية'} · ${activeDoc.issuingAuthorityAr}`
-                          : `${activeDoc.issuingCountryEn} (${activeDoc.issuingCountryCode || 'ARE'}) · Nationality: ${activeDoc.holderNationalityEn || 'Foreign National'} · ${activeDoc.issuingAuthorityEn}`
-                        : lang === 'ar'
-                          ? activeDoc.issuingAuthorityAr
-                          : `${sanitizeTextForLanguage(activeDoc.extractedFields.nationality, 'en')} · ${activeDoc.issuingAuthorityEn}`}
-                    </span>
-                  </div>
-
-                  <div
-                    onMouseEnter={() => setHighlightedField('expiryDate')}
-                    onMouseLeave={() => setHighlightedField(null)}
-                    className={getRowHighlightClass('expiryDate')}
-                  >
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {lang === 'ar' ? 'تاريخ الإصدار والنفاذ' : 'Issue & Expiry Date'}
-                    </span>
-                    <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                      {activeDoc.issueDate} → {activeDoc.expiryDate}
-                    </span>
-                  </div>
-
-                  {(activeDoc.extractedFields.familyNumber || activeDoc.slot1Summary?.familyNumber || activeDoc.slot2Summary?.familyNumber) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('familyNumber')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('familyNumber')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldCardSerialBottomLeft')}
-                      </span>
-                      <span className="col-span-2 font-mono font-bold text-emerald-700 dark:text-[#10b981]">
-                        {formatReferenceCode(
-                          activeDoc.extractedFields.familyNumber || activeDoc.slot1Summary?.familyNumber || activeDoc.slot2Summary?.familyNumber || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {(activeDoc.extractedFields.edgeNumber || activeDoc.slot1Summary?.edgeNumber) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('edgeNumber')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('edgeNumber')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldEdgeNumber')}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {formatReferenceCode(
-                          activeDoc.extractedFields.edgeNumber || activeDoc.slot1Summary?.edgeNumber || '',
-                          lang
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {activeDoc.extractedFields.address && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('address')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('address')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {t(lang, 'fieldAddress')}
-                      </span>
-                      <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                        {sanitizeTextForLanguage(activeDoc.extractedFields.address, lang)}
-                      </span>
-                    </div>
-                  )}
-
-                  {(activeDoc.extractedFields.mrzLine1 || activeDoc.slot2Summary?.mrzLine1) && (
-                    <div
-                      onMouseEnter={() => setHighlightedField('mrz')}
-                      onMouseLeave={() => setHighlightedField(null)}
-                      className={getRowHighlightClass('mrz')}
-                    >
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {lang === 'ar' ? 'شريط القراءة الآلي' : 'Machine Readable Zone'}
-                      </span>
-                      <div className="col-span-2 font-mono text-[10px] space-y-0.5 text-emerald-700 dark:text-emerald-300 bg-zinc-100 dark:bg-[#111113] p-1.5 rounded border border-zinc-200 dark:border-[#222225]">
-                        <div>
-                          {formatMrzForDisplay(
-                            activeDoc.extractedFields.mrzLine1 || activeDoc.slot2Summary?.mrzLine1 || '',
-                            lang
-                          )}
+                      {/* Component Quad Names (First, Father, Grandfather, Surname — Always Bilingual Arabic + English) */}
+                      {(activeDoc.extractedFields.firstName || activeDoc.slot1Summary?.firstName) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('fullName')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('fullName')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'الاسم (الاسم / ناو)' : 'Given / First Name (الاسم)'}
+                          </span>
+                          <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            {formatBilingualName(
+                              activeDoc.extractedFields.firstName || activeDoc.slot1Summary?.firstName
+                            )}
+                          </span>
                         </div>
-                        {(activeDoc.extractedFields.mrzLine2 || activeDoc.slot2Summary?.mrzLine2) && (
-                          <div>
-                            {formatMrzForDisplay(
-                              activeDoc.extractedFields.mrzLine2 || activeDoc.slot2Summary?.mrzLine2 || '',
-                              lang
+                      )}
+
+                      {(activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('fullName')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('fullName')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'اسم الأب (الأب / باوك)' : "Father's Name (اسم الأب)"}
+                          </span>
+                          <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            {formatBilingualName(
+                              activeDoc.extractedFields.fatherName || activeDoc.slot1Summary?.fatherName
                             )}
-                          </div>
-                        )}
-                        {(activeDoc.extractedFields.mrzLine3 || activeDoc.slot2Summary?.mrzLine3) && (
-                          <div>
-                            {formatMrzForDisplay(
-                              activeDoc.extractedFields.mrzLine3 || activeDoc.slot2Summary?.mrzLine3 || '',
-                              lang
+                          </span>
+                        </div>
+                      )}
+
+                      {(activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('fullName')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('fullName')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'اسم الجد (الجد / باپير)' : "Grandfather's Name (اسم الجد)"}
+                          </span>
+                          <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            {formatBilingualName(
+                              activeDoc.extractedFields.grandfatherName || activeDoc.slot1Summary?.grandfatherName
                             )}
+                          </span>
+                        </div>
+                      )}
+
+                      {(activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('fullName')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('fullName')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'اللقب (اللقب / نازناو)' : 'Surname / Tribe (اللقب)'}
+                          </span>
+                          <span className="col-span-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            {formatBilingualName(
+                              activeDoc.extractedFields.surname || activeDoc.slot1Summary?.surname
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Normalized Name */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('normalizedName')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('normalizedName')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {t(lang, 'fieldNormalizedName')}
+                        </span>
+                        <span className="col-span-2 font-semibold text-emerald-700 dark:text-[#10b981]">
+                          {formatBilingualName(undefined, safeNameAr, safeNameEn)}
+                        </span>
+                      </div>
+
+                      {/* Document ID */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('docNumber')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('docNumber')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {t(lang, 'fieldDocNumber')}
+                        </span>
+                        <span className="col-span-2 font-mono text-emerald-700 dark:text-[#10b981] font-semibold">
+                          {formatReferenceCode(activeDoc.docNumber, lang)}
+                        </span>
+                      </div>
+
+                      {/* Mother & Maternal Grandfather (Always Bilingual English + Arabic) */}
+                      {(activeDoc.extractedFields.motherName || activeDoc.slot1Summary?.motherName) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('motherName')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('motherName')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'اسم الأم والجد (الأم / دايك)' : 'Mother & Grandfather (اسم الأم والجد)'}
+                          </span>
+                          <span className="col-span-2 font-semibold text-zinc-800 dark:text-zinc-200">
+                            {formatBilingualName(
+                              activeDoc.extractedFields.motherName || activeDoc.slot1Summary?.motherName || ''
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Date of Birth */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('dob')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('dob')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {t(lang, 'fieldDob')}
+                        </span>
+                        <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                          {displayDob}
+                        </span>
+                      </div>
+
+                      {/* Sex & Blood Type */}
+                      {(activeDoc.extractedFields.gender || activeDoc.extractedFields.bloodType) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('gender')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('gender')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'الجنس وفصيلة الدم' : 'Sex & Blood Type'}
+                          </span>
+                          <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                            {sanitizeTextForLanguage(activeDoc.extractedFields.gender || '—', lang)} ·{' '}
+                            {sanitizeTextForLanguage(activeDoc.extractedFields.bloodType || '—', lang)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Nationality / Issuing Authority */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('nationality')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('nationality')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {activeDoc.isForeignDocument
+                            ? lang === 'ar'
+                              ? 'دولة الإصدار والجنسية'
+                              : 'Issuing Country & Nationality'
+                            : t(lang, 'fieldNationality')}
+                        </span>
+                        <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                          {activeDoc.isForeignDocument
+                            ? lang === 'ar'
+                              ? `${activeDoc.issuingCountryAr} (${activeDoc.issuingCountryCode || 'ARE'}) · الجنسية: ${activeDoc.holderNationalityAr || activeDoc.holderNationalityEn || 'أجنبية'} · ${activeDoc.issuingAuthorityAr}`
+                              : `${activeDoc.issuingCountryEn} (${activeDoc.issuingCountryCode || 'ARE'}) · Nationality: ${activeDoc.holderNationalityEn || 'Foreign National'} · ${activeDoc.issuingAuthorityEn}`
+                            : lang === 'ar'
+                              ? activeDoc.issuingAuthorityAr
+                              : `${sanitizeTextForLanguage(activeDoc.extractedFields.nationality, 'en')} · ${activeDoc.issuingAuthorityEn}`}
+                        </span>
+                      </div>
+
+                      {/* Issue & Expiry Date */}
+                      <div
+                        onMouseEnter={() => setHighlightedField('expiryDate')}
+                        onMouseLeave={() => setHighlightedField(null)}
+                        className={getRowHighlightClass('expiryDate')}
+                      >
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          {lang === 'ar' ? 'تاريخ الإصدار والنفاذ' : 'Issue & Expiry Date'}
+                        </span>
+                        <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                          {displayIssueDate} → {displayExpiryDate}
+                        </span>
+                      </div>
+
+                      {/* Family Number / Bottom-Left Card Tracking Code */}
+                      {trackingFamilyCode && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('familyNumber')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('familyNumber')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'رقم البطاقة / الرقم العائلي (أسفل اليسار)' : 'Family / Card No. (Bottom-Left)'}
+                          </span>
+                          <span className="col-span-2 font-mono font-bold text-amber-700 dark:text-amber-400">
+                            {formatReferenceCode(trackingFamilyCode, lang)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Address */}
+                      {activeDoc.extractedFields.address && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('address')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('address')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {t(lang, 'fieldAddress')}
+                          </span>
+                          <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
+                            {sanitizeTextForLanguage(activeDoc.extractedFields.address, lang)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Machine Readable Zone */}
+                      {(activeDoc.extractedFields.mrzLine1 || activeDoc.slot2Summary?.mrzLine1) && (
+                        <div
+                          onMouseEnter={() => setHighlightedField('mrz')}
+                          onMouseLeave={() => setHighlightedField(null)}
+                          className={getRowHighlightClass('mrz')}
+                        >
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? 'شريط القراءة الآلي' : 'Machine Readable Zone'}
+                          </span>
+                          <span className="col-span-2 font-mono text-[11px] text-zinc-800 dark:text-zinc-200 space-y-0.5">
+                            <span className="block tracking-wider">
+                              {formatMrzForDisplay(
+                                activeDoc.extractedFields.mrzLine1 || activeDoc.slot2Summary?.mrzLine1 || '',
+                                lang
+                              )}
+                            </span>
+                            {activeDoc.extractedFields.mrzLine2 && (
+                              <span className="block tracking-wider">
+                                {formatMrzForDisplay(activeDoc.extractedFields.mrzLine2, lang)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* FEATURE 2: Multi-Document Full Iraqi Account Packet (National ID + Residence Card بطاقة السكن) */}
+              {(() => {
+                const natIdDoc =
+                  applicant.documents.find(
+                    (d) => d.type === 'IRQ_NATIONAL_ID' || d.type === 'IRQ_CIVIL_STATUS_ID'
+                  ) || applicant.documents[0];
+                const resCardDoc = applicant.documents.find(
+                  (d) => d.type === 'IRQ_RESIDENCE_CARD'
+                );
+                const packet = verifyIraqiAccountPacket(natIdDoc, resCardDoc);
+
+                const handleResidenceFileChange = async (
+                  e: React.ChangeEvent<HTMLInputElement>
+                ) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !onAttachOrUpdatePacketResidenceCard) return;
+                  setIsUploadingResidence(true);
+                  try {
+                    const reader = new FileReader();
+                    const dataUrl = await new Promise<string>((resolve, reject) => {
+                      reader.onload = () =>
+                        typeof reader.result === 'string'
+                          ? resolve(reader.result)
+                          : reject(new Error('Failed'));
+                      reader.onerror = () => reject(new Error('Failed'));
+                      reader.readAsDataURL(file);
+                    });
+                    const resp = await fetch('/api/kyc/extract', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        imageBase64: dataUrl,
+                        uploadedSideHint: 'BOTH',
+                        fileName: file.name,
+                        overrides: { documentType: 'IRQ_RESIDENCE_CARD' },
+                      }),
+                    });
+                    if (resp.ok) {
+                      const ext = await resp.json();
+                      const customResidenceDoc: KYCDocument = {
+                        id: `doc-res-${Date.now()}`,
+                        type: 'IRQ_RESIDENCE_CARD',
+                        categoryCode: 'B_RESIDENCE_ADDRESS',
+                        supportStatus: 'TESTED',
+                        side: 'BOTH',
+                        detectedLanguages: ['ar', 'en'],
+                        titleEn: 'Iraqi Residence Information Card',
+                        titleAr: 'بطاقة السكن العراقية',
+                        docNumber: ext.docNumber || `RES-IRQ-${Date.now().toString().slice(-5)}`,
+                        issueDate: ext.issueDate || '2023-05-10',
+                        expiryDate: 'N/A',
+                        issuingAuthorityEn:
+                          ext.issuingAuthorityEn || 'Directorate of Residence Affairs — MOI',
+                        issuingAuthorityAr:
+                          ext.issuingAuthorityAr || 'مديرية شؤون السكن — وزارة الداخلية',
+                        issuingCountryEn: 'Republic of Iraq',
+                        issuingCountryAr: 'جمهورية العراق',
+                        ocrConfidence: ext.ocrConfidence || 96,
+                        fileSizeKb: Math.max(120, Math.round(file.size / 1024)),
+                        sha256Hash: ext.sha256Hash || 'res-sha256',
+                        status: applicant.status,
+                        customPreviewUrl: dataUrl,
+                        extractedFields: {
+                          fullName: ext.fullNameEn || ext.fullNameAr || applicant.fullNameEn,
+                          fullNameArabic: ext.fullNameAr || applicant.fullNameAr,
+                          normalizedName: ext.normalizedName || ext.fullNameAr,
+                          firstName: ext.slot1Summary?.firstName,
+                          fatherName: ext.slot1Summary?.fatherName,
+                          grandfatherName: ext.slot1Summary?.grandfatherName,
+                          surname: ext.slot1Summary?.surname,
+                          dob: ext.dob || 'N/A',
+                          nationality: 'IRQ · Iraq',
+                          governorate: ext.governorateAr || ext.governorateEn || applicant.governorateAr,
+                          address:
+                            ext.address && !ext.address.includes('MISSING')
+                              ? ext.address
+                              : 'Mahalla 609, Zukak 14, Dar 22, Baghdad',
+                        },
+                      };
+                      onAttachOrUpdatePacketResidenceCard(
+                        applicant.id,
+                        'CUSTOM',
+                        customResidenceDoc
+                      );
+                    }
+                  } catch {
+                    // Fallback handled gracefully
+                  } finally {
+                    setIsUploadingResidence(false);
+                  }
+                };
+
+                const statusBorder =
+                  packet.packetStatus === 'REJECTED_HOUSEHOLD_MISMATCH'
+                    ? 'border-red-500/40 bg-red-500/5 dark:bg-red-950/20'
+                    : packet.isLineageVerified
+                      ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15'
+                      : 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/15';
+
+                return (
+                  <div
+                    className={`rounded-xl border p-4 space-y-3.5 text-start ${statusBorder}`}
+                    data-testid="iraqi-account-packet-panel"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {lang === 'ar'
+                              ? 'حقيبة الحساب العراقي الكامل (البطاقة الوطنية + بطاقة السكن ومطابقة النسب)'
+                              : 'Full Iraqi Account Packet (National ID + Residence Card Lineage Linker)'}
                           </div>
-                        )}
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar'
+                              ? packet.relationshipLabelAr
+                              : packet.relationshipLabelEn}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="font-mono text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                        {lang === 'ar'
+                          ? `ثقة مطابقة النسب: ${packet.lineageConfidence}%`
+                          : `Lineage Match: ${packet.lineageConfidence}%`}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {lang === 'ar' ? packet.summaryAr : packet.summaryEn}
+                    </p>
+
+                    {/* Interactive Iraqi Lineage Scenarios & Live Residence Card Upload */}
+                    {onAttachOrUpdatePacketResidenceCard && (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                          {lang === 'ar'
+                            ? 'اختبر حالات بطاقة السكن العراقية (أو ارفع صورة بطاقة سكن حقيقية):'
+                            : 'Test Iraqi Residence Card Household Scenarios (or Upload Residence Card):'}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'FATHER')
+                            }
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                              packet.relationshipType === 'FATHER'
+                                ? 'bg-emerald-600 text-white border-emerald-500'
+                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            }`}
+                          >
+                            {lang === 'ar'
+                              ? 'بطاقة سكن باسم الأب (رب الأسرة هو الأب)'
+                              : "Father's Residence Card (Paternal Lineage)"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'SELF')
+                            }
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                              packet.relationshipType === 'SELF'
+                                ? 'bg-emerald-600 text-white border-emerald-500'
+                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            }`}
+                          >
+                            {lang === 'ar'
+                              ? 'بطاقة سكن باسم صاحب الطلب نفسه'
+                              : "Applicant's Own Residence Card"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'MISMATCH')
+                            }
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                              packet.relationshipType === 'UNLINKED_MISMATCH'
+                                ? 'bg-red-600 text-white border-red-500'
+                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            }`}
+                          >
+                            {lang === 'ar'
+                              ? 'بطاقة سكن لشخص غريب (كشف التضارب)'
+                              : 'Unrelated Person Residence Card (Fraud)'}
+                          </button>
+
+                          <label className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                            <Upload className="w-3 h-3" />
+                            <span>
+                              {isUploadingResidence
+                                ? lang === 'ar'
+                                  ? 'جاري قراءة بطاقة السكن...'
+                                  : 'Extracting Residence Card...'
+                                : lang === 'ar'
+                                  ? 'رفع صورة بطاقة سكن'
+                                  : 'Upload Residence Card'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => void handleResidenceFileChange(e)}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lineage Comparison Chain */}
+                    {packet.matchedLineageChain.length > 0 && (
+                      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113] divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
+                        <div className="grid grid-cols-3 px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 font-semibold text-[11px] text-zinc-500">
+                          <span>
+                            {lang === 'ar' ? 'حلقة النسب العائلي' : 'Lineage Segment'}
+                          </span>
+                          <span>
+                            {lang === 'ar'
+                              ? 'البطاقة الوطنية الموحدة'
+                              : 'National ID Segment'}
+                          </span>
+                          <span>
+                            {lang === 'ar'
+                              ? 'بطاقة السكن (رب الأسرة)'
+                              : 'Residence Card (Head)'}
+                          </span>
+                        </div>
+                        {packet.matchedLineageChain.map((link, idx) => (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-3 px-3 py-2 items-center text-[11px]"
+                          >
+                            <span className="text-zinc-600 dark:text-zinc-400 font-medium">
+                              {lang === 'ar' ? link.roleAr : link.roleEn}
+                            </span>
+                            <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                              {formatBilingualName(link.nationalIdSegment)}
+                            </span>
+                            <span
+                              className={`font-mono font-semibold flex items-center justify-between gap-1 ${
+                                link.matched
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-red-600 dark:text-red-400'
+                              }`}
+                            >
+                              <span>{formatBilingualName(link.residenceCardSegment)}</span>
+                              <span>{link.matched ? '✓' : '✗'}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Structured Iraqi Address Breakdown (Mahalla / Zukak / Dar / Info Office) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
+                        <div className="text-[10px] text-zinc-500">
+                          {lang === 'ar' ? 'مكتب المعلومات' : 'Information Office'}
+                        </div>
+                        <div className="font-semibold text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
+                          {packet.structuredAddress.infoOffice}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
+                        <div className="text-[10px] text-zinc-500">
+                          {lang === 'ar' ? 'المحلة (Sector)' : 'Mahalla (Sector)'}
+                        </div>
+                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {packet.structuredAddress.mahalla}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
+                        <div className="text-[10px] text-zinc-500">
+                          {lang === 'ar' ? 'الزقاق (Alley)' : 'Zukak (Alley)'}
+                        </div>
+                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {packet.structuredAddress.zukak}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
+                        <div className="text-[10px] text-zinc-500">
+                          {lang === 'ar' ? 'الدار (House)' : 'Dar (House No.)'}
+                        </div>
+                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {packet.structuredAddress.dar}
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
+                        <div className="text-[10px] text-zinc-500">
+                          {lang === 'ar' ? 'رقم بطاقة السكن' : 'Residence Form No.'}
+                        </div>
+                        <div className="font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
+                          {packet.structuredAddress.formNumber}
+                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
+
+              {/* FEATURE 3: Deep Anti-Spoofing & Forgery Forensics Panel */}
+              {(() => {
+                const spoofReport = analyzeDocumentAntiSpoofing(activeDoc);
+                const isRejected =
+                  spoofReport.overallVerdict === 'SPOOF_OR_FORGERY_REJECTED';
+                const currentPreset = activeDoc.antiSpoofPreset || 'AUTHENTIC_PHYSICAL';
+
+                return (
+                  <div
+                    className={`rounded-xl border p-4 space-y-3.5 text-start ${
+                      isRejected
+                        ? 'border-red-500/40 bg-red-500/5 dark:bg-red-950/20'
+                        : 'border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113]'
+                    }`}
+                    data-testid="deep-antispoofing-panel"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200 dark:border-[#222225] pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            isRejected
+                              ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                              : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          <Fingerprint className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {lang === 'ar'
+                              ? 'الفحص الجنائي المعمق وكشف التزوير وتصوير الشاشات (Deep Anti-Spoofing)'
+                              : 'Deep Anti-Spoofing & Forgery Forensics (5-Vector PAD Gate)'}
+                          </div>
+                          <div className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                            {spoofReport.padStandard}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-end">
+                        <span
+                          className={`font-mono text-xs font-bold tabular-nums ${
+                            isRejected
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {lang === 'ar'
+                            ? `درجة الأصالة الفيزيائية: ${spoofReport.authenticityScore}/100`
+                            : `Physical Authenticity: ${spoofReport.authenticityScore}/100`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {lang === 'ar' ? spoofReport.summaryAr : spoofReport.summaryEn}
+                    </p>
+
+                    {/* Interactive Anti-Spoofing Attack Simulator Controls */}
+                    {onApplyAntiSpoofPreset && (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                          {lang === 'ar'
+                            ? 'محاكاة هجمات التزوير والتصوير من الشاشات على هذه الوثيقة:'
+                            : 'Simulate Spoof & Forgery Attacks on This Document:'}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(
+                            [
+                              {
+                                id: 'AUTHENTIC_PHYSICAL',
+                                labelEn: 'Authentic Physical Card',
+                                labelAr: 'بطاقة فيزيائية أصلية',
+                              },
+                              {
+                                id: 'SCREEN_REPLAY_MOIRE',
+                                labelEn: 'Screen-Replay (Moiré)',
+                                labelAr: 'هجوم تصوير شاشة (Moiré)',
+                              },
+                              {
+                                id: 'PAPER_PHOTOCOPY',
+                                labelEn: 'Paper Photocopy',
+                                labelAr: 'نسخة ورقية مستنسخة',
+                              },
+                              {
+                                id: 'DIGITAL_FONT_AND_PHOTO_TAMPER',
+                                labelEn: 'Digital Font & Photo Splice',
+                                labelAr: 'تزوير رقمي للخط والصورة',
+                              },
+                            ] as const
+                          ).map((btn) => (
+                            <button
+                              key={btn.id}
+                              type="button"
+                              onClick={() =>
+                                onApplyAntiSpoofPreset(applicant.id, activeDoc.id, btn.id)
+                              }
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                                currentPreset === btn.id
+                                  ? btn.id === 'AUTHENTIC_PHYSICAL'
+                                    ? 'bg-emerald-600 text-white border-emerald-500'
+                                    : 'bg-red-600 text-white border-red-500'
+                                  : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                              }`}
+                            >
+                              {lang === 'ar' ? btn.labelAr : btn.labelEn}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 5 Forensic Vectors Breakdown */}
+                    <div className="space-y-2 pt-1">
+                      {spoofReport.vectors.map((vec) => (
+                        <div
+                          key={vec.id}
+                          className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-[#0c0c0e] space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                              {lang === 'ar' ? vec.titleAr : vec.titleEn}
+                            </span>
+                            <span
+                              className={`font-mono text-[11px] font-bold tabular-nums ${
+                                vec.status === 'PASS'
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : vec.status === 'WARN'
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-red-600 dark:text-red-400'
+                              }`}
+                            >
+                              {vec.metricLabel} · {vec.status}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                            {lang === 'ar' ? vec.detailAr : vec.detailEn}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 

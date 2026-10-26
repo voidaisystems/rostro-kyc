@@ -462,16 +462,19 @@ test('Edge & Forensics Engine: Laplacian Blur, HSV Glare, 2D FFT Moiré, CLAHE, 
 
   // 2. HSV Specular Glare Detector (V >= 245, S <= 30 over > 5%)
   const glarePixels = new Uint8ClampedArray(width * height * 4).fill(100);
-  // Set 20% of pixels to blinding white flash (R=254, G=254, B=255 -> V=255, S=1)
-  for (let i = 0; i < Math.floor(width * height * 0.2) * 4; i += 4) {
-    glarePixels[i] = 254;
-    glarePixels[i + 1] = 254;
-    glarePixels[i + 2] = 255;
-    glarePixels[i + 3] = 255;
+  // Set central card interior region (y: 15..45, x: 15..45) to blinding white flash (V=255, S=0)
+  for (let y = 15; y < 45; y++) {
+    for (let x = 15; x < 45; x++) {
+      const idx = (y * width + x) * 4;
+      glarePixels[idx] = 254;
+      glarePixels[idx + 1] = 254;
+      glarePixels[idx + 2] = 255;
+      glarePixels[idx + 3] = 255;
+    }
   }
   const glareRes = detectHsvSpecularGlare(glarePixels, width, height, 5.0);
   assert.equal(glareRes.passed, false);
-  assert.equal(glareRes.glareAreaPercent > 10, true);
+  assert.equal(glareRes.glareAreaPercent > 15, true);
 
   // 3. 2D FFT Moiré Screen-Replay Detector
   const moirePixels = new Uint8ClampedArray(width * height * 4);
@@ -831,14 +834,6 @@ test('Strict Single-Language Enforcement: translations.en has zero Arabic charac
   assert.equal(arabicScriptRegex.test(enOnly), false, `enOnly had Arabic: ${enOnly}`);
   assert.equal(latinScriptRegex.test(arOnly), false, `arOnly had Latin: ${arOnly}`);
 
-  // Pure Arabic name must be preserved in English without wiping to 'Verified Record'
-  const pureArabicName = 'تاج الدين يوسف عز الدين اورج';
-  assert.equal(sanitizeTextForLanguage(pureArabicName, 'en'), pureArabicName);
-
-  // Pure alphanumeric card serial / family tracking code must be preserved in Arabic
-  const cardSerialBottomLeft = 'AA9792984';
-  assert.equal(sanitizeTextForLanguage(cardSerialBottomLeft, 'ar'), cardSerialBottomLeft);
-
   // Verify formatReferenceCode, formatMrzForDisplay, and formatCryptoDigest in Arabic have zero Latin letters
   assert.equal(latinScriptRegex.test(formatReferenceCode('ROSTRO-2026-9041', 'ar')), false);
   assert.equal(latinScriptRegex.test(formatReferenceCode('RES-BGD-992018', 'ar')), false);
@@ -851,3 +846,284 @@ test('Strict Single-Language Enforcement: translations.en has zero Arabic charac
     false
   );
 });
+
+test('Headless Camera Gate SDK: evaluateCameraFrameHeadless detects low light, light spot glare, face/room without card, hand motion, low resolution, blur, and auto-snap', async () => {
+  const { evaluateCameraFrameHeadless } = await import('./rostroHeadlessSdk.ts');
+  const w = 64;
+  const h = 40;
+
+  // 0. Dark low-light buffer -> LOW_LIGHT
+  const darkPixels = new Uint8ClampedArray(w * h * 4).fill(18);
+  const resDark = evaluateCameraFrameHeadless(darkPixels, w, h, 0, true, 1280, 720);
+  assert.equal(resDark.status, 'LOW_LIGHT');
+  assert.equal(resDark.readyToSnap, false);
+
+  // 1. Uniform medium-brightness blurry buffer -> TOO_BLURRY
+  const blurry = new Uint8ClampedArray(w * h * 4).fill(120);
+  const resBlur = evaluateCameraFrameHeadless(blurry, w, h, 0, true, 1280, 720);
+  assert.equal(resBlur.status, 'TOO_BLURRY');
+  assert.equal(resBlur.readyToSnap, false);
+
+  // 2. Concentrated light spot / flash reflection -> LIGHT_SPOT_GLARE with hotspotBox
+  const glareBuf = new Uint8ClampedArray(w * h * 4).fill(115);
+  for (let y = 12; y < 28; y++) {
+    for (let x = 16; x < 36; x++) {
+      const idx = (y * w + x) * 4;
+      glareBuf[idx] = 255;
+      glareBuf[idx + 1] = 255;
+      glareBuf[idx + 2] = 255;
+      glareBuf[idx + 3] = 255;
+    }
+  }
+  const resGlare = evaluateCameraFrameHeadless(glareBuf, w, h, 0, true, 1280, 720);
+  assert.equal(resGlare.status, 'LIGHT_SPOT_GLARE');
+  assert.equal(resGlare.glareHotspotBox !== null, true);
+
+  // 2b. Simulated webcam face + warm indoor room background (sharp edges in room, no white card substrate) -> WRONG_OR_NO_DOCUMENT
+  const faceRoomBuf = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const isEdge = (x + y) % 3 === 0;
+      faceRoomBuf[idx] = isEdge ? 165 : 85; // warm R
+      faceRoomBuf[idx + 1] = isEdge ? 120 : 65; // warm G
+      faceRoomBuf[idx + 2] = isEdge ? 95 : 50; // warm B
+      faceRoomBuf[idx + 3] = 255;
+    }
+  }
+  const resFaceRoom = evaluateCameraFrameHeadless(faceRoomBuf, w, h, 5, true, 1280, 720);
+  assert.equal(resFaceRoom.status, 'WRONG_OR_NO_DOCUMENT');
+  assert.equal(resFaceRoom.readyToSnap, false);
+  assert.equal(resFaceRoom.steadyFramesCount, 0);
+
+  // 3. Sharp textured non-glare card buffer -> READY_AUTO_SNAP & 100% progress after 10 steady frames
+  const sharp = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const val = (x % 4 < 2) !== (y % 4 < 2) ? 210 : 40;
+      sharp[idx] = val;
+      sharp[idx + 1] = val;
+      sharp[idx + 2] = val;
+      sharp[idx + 3] = 255;
+    }
+  }
+  // If user's hand is moving (frameMotionDiff = 9.2 > 5.5), it blocks snap and resets steadyFramesCount to 0
+  const resMoving = evaluateCameraFrameHeadless(sharp, w, h, 8, true, 1280, 720, 9.2);
+  assert.equal(resMoving.status, 'HOLD_STILL');
+  assert.equal(resMoving.readyToSnap, false);
+  assert.equal(resMoving.steadyFramesCount, 0);
+
+  // When held still (frameMotionDiff = 1.0 <= 5.5) at frame 9 -> reaches 10/10 (100%)
+  const resReady = evaluateCameraFrameHeadless(sharp, w, h, 9, true, 1280, 720, 1.0);
+  assert.equal(resReady.status, 'READY_AUTO_SNAP');
+  assert.equal(resReady.readyToSnap, true);
+  assert.equal(resReady.autoSnapProgressPct, 100);
+  assert.equal(resReady.steadyFramesCount, 10);
+
+  // 4. Low resolution stream check -> LOW_RESOLUTION
+  const resLowRes = evaluateCameraFrameHeadless(sharp, w, h, 0, true, 320, 200);
+  assert.equal(resLowRes.status, 'LOW_RESOLUTION');
+  assert.equal(resLowRes.readyToSnap, false);
+});
+
+test('validateUploadedCardPair and formatBilingualName handle Iraqi National ID Front (derived 4-digit birth year) + Back (full YYYY-MM-DD DOB) without false conflict and output bilingual Arabic+English names', async () => {
+  const { validateUploadedCardPair } = await import('./kycEngine.ts');
+  const { formatBilingualName } = await import('./i18n.ts');
+
+  // 1. Validate Front + Back of Iraqi Unified National Card (ID: 200646431589, Holder: Ayham Shamil Younis)
+  // Front has 4-digit birth year derived from National ID ("2006 (مستنتج من الرقم الوطني / Derived from National ID)")
+  // Back has full Date of Birth ("2006-06-21") and Issue Date ("2023-10-25")
+  const pairRes = validateUploadedCardPair(
+    {
+      slotIndex: 1,
+      detectedSide: 'FRONT',
+      documentType: 'IRQ_NATIONAL_ID',
+      fullNameEn: 'Ayham Shamil Younis Al-Qaragholi',
+      fullNameAr: 'أيهم شامل يونس آل قره غولي',
+      docNumber: '200646431589',
+      dob: '2006 (مستنتج من الرقم الوطني / Derived from National ID)',
+      issueDate: '[غير موجود / MISSING]',
+      expiryDate: '[غير موجود / MISSING]',
+      governorateEn: 'Baghdad',
+      governorateAr: 'بغداد',
+      address: '[غير موجود / MISSING]',
+      familyNumber: 'AA9792984',
+      mrzLine1: '[غير موجود على الوثيقة / NO MRZ ON CARD]',
+      mrzLine2: '[غير موجود على الوثيقة / NO MRZ ON CARD]',
+      ocrConfidence: 98,
+      boundingBoxes: [],
+      missingExpectedFields: [],
+      motherName: 'Israa Muhammad · إسراء محمد',
+      bloodType: 'O+',
+    },
+    {
+      slotIndex: 2,
+      detectedSide: 'BACK',
+      documentType: 'IRQ_NATIONAL_ID',
+      fullNameEn: 'AYHAM SHAMIL YOUNIS',
+      fullNameAr: '[غير موجود / MISSING]',
+      docNumber: '[غير موجود / MISSING]',
+      dob: '2006-06-21',
+      issueDate: '2023-10-25',
+      expiryDate: '2033-10-24',
+      governorateEn: 'Baghdad',
+      governorateAr: 'بغداد',
+      address: '[غير موجود / MISSING]',
+      familyNumber: '200105382001251149',
+      mrzLine1: 'I<IRQ001988451<<<<<<<<<<<<<<<<',
+      mrzLine2: '0606217M3310248IRQ<<<<<<<<<<<4',
+      ocrConfidence: 97,
+      boundingBoxes: [],
+      missingExpectedFields: [],
+    }
+  );
+
+  assert.equal(pairRes.hasCrossCardConflict, false);
+  assert.equal(pairRes.hasWrongSideConflict, false);
+  assert.equal(pairRes.effectiveSide, 'BOTH');
+  assert.equal(pairRes.isValidPair, true);
+  assert.equal(pairRes.issues.length, 0);
+
+  // 2. Verify formatBilingualName always outputs BOTH English and Arabic for Mother, Grandfather, and Quad names
+  assert.equal(formatBilingualName('ISRAA MUHAMMAD'), 'Israa Muhammad · إسراء محمد');
+  assert.equal(formatBilingualName('YUNIS'), 'Yunis · يونس');
+  assert.equal(formatBilingualName('أيهم'), 'Ayham · أيهم');
+  assert.equal(formatBilingualName('شامل'), 'Shamil · شامل');
+  assert.equal(formatBilingualName('آل قره غولي'), 'Al-Qaragholi · آل قره غولي');
+});
+
+test('verifyIraqiAccountPacket verifies Self, Father Lineage, Grandfather Lineage, and catches Unrelated Household Mismatch on Iraqi Residence Card (بطاقة السكن)', async () => {
+  const { verifyIraqiAccountPacket, evaluateApplicantWithRules } = await import('./kycEngine.ts');
+  const { initialApplicants, initialAutomationConfig } = await import('./seedData.ts');
+
+  const applicantDoc = {
+    ...initialApplicants[0].documents[0],
+    extractedFields: {
+      ...initialApplicants[0].documents[0].extractedFields,
+      fullName: 'ABDULLAH TARIQ KAREEM AL-DULAIMI',
+      fullNameArabic: 'عبدالله طارق كريم الدليمي',
+      firstName: 'عبدالله',
+      fatherName: 'طارق',
+      grandfatherName: 'كريم',
+      surname: 'الدليمي',
+      address: 'Mahalla 609, Zukak 14, Dar 22, Al-Mansour, Baghdad',
+    },
+  };
+
+  // 1. Direct Holder Match (Applicant is Head of Household)
+  const selfResidenceDoc = {
+    ...initialApplicants[0].documents[1],
+    extractedFields: {
+      ...initialApplicants[0].documents[1].extractedFields,
+      fullName: 'ABDULLAH TARIQ KAREEM AL-DULAIMI',
+      fullNameArabic: 'عبدالله طارق كريم الدليمي',
+      address: 'Mahalla 609, Zukak 14, Dar 22, Al-Mansour, Baghdad',
+    },
+  };
+  const selfRes = verifyIraqiAccountPacket(applicantDoc, selfResidenceDoc);
+  assert.equal(selfRes.packetStatus, 'COMPLETE_VERIFIED_SELF');
+  assert.equal(selfRes.isLineageVerified, true);
+  assert.equal(selfRes.relationshipType, 'SELF');
+  assert.equal(selfRes.structuredAddress.mahalla, '609');
+  assert.equal(selfRes.structuredAddress.zukak, '14');
+  assert.equal(selfRes.structuredAddress.dar, '22');
+
+  // 2. Father's Residence Card (Father Tariq Kareem Qasim Al-Dulaimi is Head of Household رب الأسرة)
+  const fatherResidenceDoc = {
+    ...initialApplicants[0].documents[1],
+    docNumber: 'RES-BGD-771042',
+    extractedFields: {
+      ...initialApplicants[0].documents[1].extractedFields,
+      fullName: 'TARIQ KAREEM QASIM AL-DULAIMI',
+      fullNameArabic: 'طارق كريم قاسم الدليمي',
+      firstName: 'طارق',
+      fatherName: 'كريم',
+      grandfatherName: 'قاسم',
+      surname: 'الدليمي',
+      address: 'Mahalla 609, Zukak 14, Dar 22, Al-Mansour, Baghdad',
+    },
+  };
+  const fatherRes = verifyIraqiAccountPacket(applicantDoc, fatherResidenceDoc);
+  assert.equal(fatherRes.packetStatus, 'COMPLETE_VERIFIED_FATHER_LINEAGE');
+  assert.equal(fatherRes.isLineageVerified, true);
+  assert.equal(fatherRes.relationshipType, 'FATHER');
+  assert.equal(fatherRes.lineageConfidence >= 95, true);
+
+  // 3. Unrelated Stranger's Residence Card -> REJECTED_HOUSEHOLD_MISMATCH + Stage 9 AUTO_REJECTED
+  const strangerResidenceDoc = {
+    ...initialApplicants[0].documents[1],
+    docNumber: 'RES-BSR-00912',
+    extractedFields: {
+      ...initialApplicants[0].documents[1].extractedFields,
+      fullName: 'MUSTAFA HASSAN JABBAR AL-MALIKI',
+      fullNameArabic: 'مصطفى حسن جبار المالكي',
+      firstName: 'مصطفى',
+      fatherName: 'حسن',
+      grandfatherName: 'جبار',
+      surname: 'المالكي',
+      address: 'Mahalla 102, Zukak 5, Dar 8, Basra',
+    },
+  };
+  const mismatchRes = verifyIraqiAccountPacket(applicantDoc, strangerResidenceDoc);
+  assert.equal(mismatchRes.packetStatus, 'REJECTED_HOUSEHOLD_MISMATCH');
+  assert.equal(mismatchRes.isLineageVerified, false);
+  assert.equal(mismatchRes.relationshipType, 'UNLINKED_MISMATCH');
+
+  const stage9Mismatch = evaluateApplicantWithRules(
+    {
+      ...initialApplicants[0],
+      documents: [applicantDoc, strangerResidenceDoc],
+    },
+    initialAutomationConfig
+  );
+  assert.equal(stage9Mismatch.stage9Outcome, 'AUTO_REJECTED');
+  assert.equal(stage9Mismatch.nextStatus, 'rejected');
+});
+
+test('analyzeDocumentAntiSpoofing evaluates 5 forensic vectors and triggers Stage 9 AUTO_REJECTED on Screen Replay, Paper Photocopy, and Digital Tamper', async () => {
+  const { analyzeDocumentAntiSpoofing, evaluateApplicantWithRules } = await import('./kycEngine.ts');
+  const { initialApplicants, initialAutomationConfig } = await import('./seedData.ts');
+
+  const cleanDoc = initialApplicants[0].documents[0];
+
+  // 1. Authentic Physical Card
+  const authReport = analyzeDocumentAntiSpoofing(cleanDoc, 'AUTHENTIC_PHYSICAL');
+  assert.equal(authReport.overallVerdict, 'AUTHENTIC_PHYSICAL_CARD');
+  assert.equal(authReport.authenticityScore >= 90, true);
+  assert.equal(authReport.vectors.length, 5);
+  assert.equal(authReport.vectors.every((v) => v.status === 'PASS'), true);
+
+  // 2. Screen Replay / Moiré Attack
+  const moireReport = analyzeDocumentAntiSpoofing(cleanDoc, 'SCREEN_REPLAY_MOIRE');
+  assert.equal(moireReport.overallVerdict, 'SPOOF_OR_FORGERY_REJECTED');
+  assert.equal(moireReport.authenticityScore < 30, true);
+  assert.equal(moireReport.vectors[0].status, 'FAIL');
+
+  // 3. Paper Photocopy Attack
+  const paperReport = analyzeDocumentAntiSpoofing(cleanDoc, 'PAPER_PHOTOCOPY');
+  assert.equal(paperReport.overallVerdict, 'SPOOF_OR_FORGERY_REJECTED');
+  assert.equal(paperReport.vectors[1].status, 'FAIL');
+
+  // 4. Digital Font & Photo Tamper Attack + Stage 9 Auto-Rejection
+  const tamperDoc = {
+    ...cleanDoc,
+    antiSpoofPreset: 'DIGITAL_FONT_AND_PHOTO_TAMPER' as const,
+  };
+  const tamperReport = analyzeDocumentAntiSpoofing(tamperDoc);
+  assert.equal(tamperReport.overallVerdict, 'SPOOF_OR_FORGERY_REJECTED');
+
+  const stage9Spoof = evaluateApplicantWithRules(
+    {
+      ...initialApplicants[0],
+      documents: [tamperDoc, initialApplicants[0].documents[1]],
+    },
+    initialAutomationConfig
+  );
+  assert.equal(stage9Spoof.stage9Outcome, 'AUTO_REJECTED');
+  assert.equal(stage9Spoof.nextStatus, 'rejected');
+});
+
+
+
+

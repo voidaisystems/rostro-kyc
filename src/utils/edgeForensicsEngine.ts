@@ -1,16 +1,3 @@
-/**
- * Copyright (c) 2026 Rostro Compliance Systems (مشروع روسترو للامتثال).
- * Licensed under the MIT License. See LICENSE in the project root for license information.
- *
- * @file src/utils/edgeForensicsEngine.ts
- * @module @rostro/core/edgeForensicsEngine
- * @description
- * On-Device Mobile Edge Forensics & Pre-Capture Quality Engine for Project Rostro.
- * Evaluates Laplacian Blur (sigma^2 >= 120), HSV Specular Glare Masking,
- * 2D FFT Moiré Screen-Replay Anti-Spoofing, 4-Corner Homography Perspective Rectification,
- * CLAHE Contrast Enhancement, and 512-D ArcFace Biometric Embeddings.
- */
-
 import {
   computeIcaoCheckDigit,
   getDocumentSideRequirement,

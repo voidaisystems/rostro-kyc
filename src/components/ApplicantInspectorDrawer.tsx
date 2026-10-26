@@ -14,16 +14,23 @@ import {
   Lock,
   Globe,
   Building2,
-   Upload,
+  Upload,
   ScanLine,
   Users,
   Fingerprint,
+  Sparkles,
+  FileCheck2,
+  Printer,
+  Languages,
 } from 'lucide-react';
 import {
   analyzeDocumentAntiSpoofing,
   evaluateForeignIdComplianceProtocol,
+  generateDeterministicCaseExplanation,
+  verifyArabicLatinPhoneticCrossCheck,
   verifyIraqiAccountPacket,
   type AntiSpoofSimulationPreset,
+  type BilingualCaseExplanation,
   type KYCApplicant,
   type KYCDocument,
   type Language,
@@ -45,6 +52,7 @@ import {
   DocumentSpecimenViewer,
   type OcrHighlightField,
 } from './DocumentSpecimenViewer';
+import { OfficialCbiCertificateModal } from './OfficialCbiCertificateModal';
 
 interface ApplicantInspectorDrawerProps {
   applicant: KYCApplicant | null;
@@ -88,6 +96,37 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   const [rotation, setRotation] = useState(0);
   const [highlightedField, setHighlightedField] = useState<OcrHighlightField>(null);
   const [isUploadingResidence, setIsUploadingResidence] = useState(false);
+  const [externalLoupeEnabled, setExternalLoupeEnabled] = useState(false);
+  const [isCertificateModalOpen, setIsCertificateModalOpen] = useState(false);
+  const [aiCaseBrief, setAiCaseBrief] = useState<BilingualCaseExplanation | null>(null);
+  const [isGeneratingAiBrief, setIsGeneratingAiBrief] = useState(false);
+
+  // Reset AI case brief when switching applicant
+  useEffect(() => {
+    setAiCaseBrief(null);
+  }, [applicant?.id]);
+
+  const handleGenerateVividAiBrief = async () => {
+    if (!applicant) return;
+    setIsGeneratingAiBrief(true);
+    try {
+      const resp = await fetch('/api/kyc/explain-case', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicant }),
+      });
+      if (resp.ok) {
+        const data = (await resp.json()) as BilingualCaseExplanation;
+        setAiCaseBrief(data);
+      } else {
+        setAiCaseBrief(generateDeterministicCaseExplanation(applicant));
+      }
+    } catch {
+      setAiCaseBrief(generateDeterministicCaseExplanation(applicant));
+    } finally {
+      setIsGeneratingAiBrief(false);
+    }
+  };
 
   // Keyboard shortcuts for rapid officer adjudication
   useEffect(() => {
@@ -108,11 +147,15 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
-      } else if (e.key === 'ArrowDown' || e.key === 'j') {
+        if (isCertificateModalOpen) {
+          setIsCertificateModalOpen(false);
+        } else {
+          onClose();
+        }
+      } else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
         e.preventDefault();
         onNavigateApplicant?.('next');
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'k') {
         e.preventDefault();
         onNavigateApplicant?.('prev');
       } else if (e.key.toLowerCase() === 'a') {
@@ -124,12 +167,21 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
       } else if (e.key.toLowerCase() === 'r') {
         e.preventDefault();
         handleDecision('rejected');
+      } else if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setExternalLoupeEnabled((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        setIsCertificateModalOpen((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        void handleGenerateVividAiBrief();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [applicant, decisionNote, lang]);
+  }, [applicant, decisionNote, lang, isCertificateModalOpen]);
 
   if (!applicant) return null;
 
@@ -360,14 +412,33 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => onRunSingleAutoEval(applicant.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-md transition-colors whitespace-nowrap shrink-0"
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            <span>{t(lang, 'evalSingleRuleBtn')}</span>
-          </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsCertificateModalOpen(true)}
+              title={
+                lang === 'ar'
+                  ? 'إصدار شهادة الامتثال الرسمية للبنك المركزي العراقي للطباعة أو التنزيل (مفتاح C)'
+                  : 'Generate Official Printable / Downloadable CBI KYC Certificate (Shortcut: C)'
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>
+                {lang === 'ar'
+                  ? 'شهادة البنك المركزي (PDF / طباعة)'
+                  : 'Official CBI Certificate (Print/PDF)'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onRunSingleAutoEval(applicant.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span>{t(lang, 'evalSingleRuleBtn')}</span>
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Content Body */}
@@ -480,6 +551,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                 onResetRotation={() => setRotation(0)}
                 highlightedField={highlightedField}
                 onHoverField={setHighlightedField}
+                externalLoupeEnabled={externalLoupeEnabled}
               />
 
               {/* CBI Foreign Document & Compliance Officer Protocol Panel */}
@@ -931,6 +1003,221 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                   );
                 })()}
               </div>
+
+              {/* UPGRADE 1.3: SMART ARABIC TRANSLITERATION & PHONETIC CROSS-CHECK ENGINE */}
+              {(() => {
+                const phonetic = verifyArabicLatinPhoneticCrossCheck(
+                  activeDoc.extractedFields.fullNameArabic || applicant.fullNameAr,
+                  activeDoc.extractedFields.fullName || applicant.fullNameEn,
+                  activeDoc.extractedFields.mrzLine3 || activeDoc.extractedFields.mrzLine2
+                );
+
+                return (
+                  <div
+                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-950/15 p-4 space-y-3 text-start"
+                    data-testid="phonetic-crosscheck-panel"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+                          <Languages className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {lang === 'ar'
+                              ? 'محرك المطابقة الصوتية الذكية (العربية ↔ الشريط اللاتيني MRZ)'
+                              : 'Smart Arabic Transliteration & Phonetic Cross-Check Engine'}
+                          </div>
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? phonetic.summaryAr : phonetic.summaryEn}
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold border ${
+                          phonetic.verdict === 'VERIFIED'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                            : phonetic.verdict === 'VARIANT_ACCEPTED'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                        }`}
+                      >
+                        {phonetic.overallSimilarityPct}% · {phonetic.verdict}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {phonetic.tokenMatches.map((tm) => (
+                        <div
+                          key={tm.index}
+                          className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-2.5 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+                              {lang === 'ar' ? tm.roleLabelAr : tm.roleLabelEn}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                                tm.status === 'MATCH'
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : tm.status === 'PHONETIC_VARIANT'
+                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                              }`}
+                            >
+                              {tm.similarityPct}% {tm.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            <span dir="rtl">{tm.arabicToken}</span>
+                            <span className="text-zinc-400">↔</span>
+                            <span className="text-cyan-700 dark:text-cyan-300">{tm.latinToken}</span>
+                          </div>
+                          <div className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? tm.noteAr : tm.noteEn}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* UPGRADE 1.2: AI FORENSIC EXPLAINABILITY & BILINGUAL CASE SUMMARY */}
+              {(() => {
+                const brief = aiCaseBrief || generateDeterministicCaseExplanation(applicant);
+                return (
+                  <div
+                    className="rounded-xl border border-purple-500/35 bg-purple-500/5 dark:bg-purple-950/15 p-4 space-y-3.5 text-start"
+                    data-testid="ai-forensic-explainability-panel"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                            {lang === 'ar'
+                              ? 'التفسير الجنائي الذكي وملخص القضية ثنائي اللغة (AI Forensic Case Brief)'
+                              : 'AI Forensic Explainability & Vivid Bilingual Case Summary'}
+                          </div>
+                          <div className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
+                            {brief.engineBadge}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateVividAiBrief()}
+                        disabled={isGeneratingAiBrief}
+                        title={
+                          lang === 'ar'
+                            ? 'توليد شرح جنائي ورقابي مفصل باللغتين العربية والإنجليزية (مفتاح E)'
+                            : 'Generate Vivid Bilingual AI Forensic Case Brief (Shortcut: E)'
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-60 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>
+                          {isGeneratingAiBrief
+                            ? lang === 'ar'
+                              ? 'جاري التحليل الجنائي بالذكاء الاصطناعي...'
+                              : 'Synthesizing Bilingual Brief...'
+                            : lang === 'ar'
+                              ? 'تحديث الملخص الجنائي الذكي (AI)'
+                              : 'Synthesize Vivid AI Brief (E)'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Bilingual Executive Narrative (English + Arabic side-by-side) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-3 space-y-1.5">
+                        <div className="text-[10px] font-mono font-bold uppercase text-purple-600 dark:text-purple-400">
+                          ENGLISH FORENSIC & REGULATORY BRIEF
+                        </div>
+                        <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                          {brief.headlineEn}
+                        </div>
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                          {brief.executiveSummaryEn}
+                        </p>
+                      </div>
+
+                      <div
+                        className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-3 space-y-1.5"
+                        dir="rtl"
+                      >
+                        <div className="text-[10px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400">
+                          الملخص الجنائي والرقابي باللغة العربية
+                        </div>
+                        <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                          {brief.headlineAr}
+                        </div>
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                          {brief.executiveSummaryAr}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 4-Pillar Forensic Evidence Breakdown */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {brief.keyFindings.map((kf, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0c0c0e] p-2.5 text-[11px] space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                              {lang === 'ar' ? kf.categoryAr : kf.categoryEn}
+                            </span>
+                            <span
+                              className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                                kf.status === 'PASS'
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : kf.status === 'WARN'
+                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                              }`}
+                            >
+                              {kf.status}
+                            </span>
+                          </div>
+                          <p className="text-zinc-600 dark:text-zinc-400 leading-snug">
+                            {lang === 'ar' ? kf.explanationAr : kf.explanationEn}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Ready-to-File Officer Disposition Memo & CBI Law Citations */}
+                    <div className="rounded-lg border border-purple-500/30 bg-purple-950/20 p-3 space-y-1.5 text-[11px]">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300">
+                          {lang === 'ar'
+                            ? 'مذكرة قرار الامتثال الجاهزة للأرشفة (CBI Law 39/2015 & Law 78/2012)'
+                            : 'READY-TO-FILE OFFICER DISPOSITION MEMO (CBI Law 39/2015 & Law 78/2012)'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDecisionNote(lang === 'ar' ? brief.officerMemoAr : brief.officerMemoEn)
+                          }
+                          className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-[10px] font-mono font-semibold text-purple-700 dark:text-purple-200 border border-purple-500/30 cursor-pointer"
+                        >
+                          {lang === 'ar' ? 'إدراج في حقل القرار ↓' : 'Insert into Decision Note ↓'}
+                        </button>
+                      </div>
+                      <p className="text-zinc-700 dark:text-zinc-300">{brief.officerMemoEn}</p>
+                      <p className="text-zinc-700 dark:text-zinc-300" dir="rtl">
+                        {brief.officerMemoAr}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* FEATURE 2: Multi-Document Full Iraqi Account Packet (National ID + Residence Card بطاقة السكن) */}
               {(() => {
@@ -1613,10 +1900,21 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
           </div>
 
           <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 text-center pt-0.5">
-            {t(lang, 'keyboardHintsLabel')}
+            {lang === 'ar'
+              ? 'اختصارات لوحة المفاتيح: [J/K] التنقل · [A] موافقة · [F] مراجعة · [R] رفض · [M] عدسة 4x · [C] شهادة البنك المركزي · [E] شرح الذكاء الاصطناعي'
+              : 'Shortcuts: [J/K] Next/Prev · [A] Approve · [F] Flag · [R] Reject · [M] 4x Loupe · [C] CBI Certificate · [E] AI Case Brief'}
           </div>
         </div>
       </div>
+
+      {isCertificateModalOpen && (
+        <OfficialCbiCertificateModal
+          applicant={applicant}
+          lang={lang}
+          customExplanation={aiCaseBrief}
+          onClose={() => setIsCertificateModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

@@ -1124,6 +1124,57 @@ test('analyzeDocumentAntiSpoofing evaluates 5 forensic vectors and triggers Stag
   assert.equal(stage9Spoof.nextStatus, 'rejected');
 });
 
+test('verifyArabicLatinPhoneticCrossCheck maps Arabic lineage tokens to Latin/MRZ tokens and catches identity substitutions', async () => {
+  const { verifyArabicLatinPhoneticCrossCheck } = await import('./kycEngine.ts');
 
+  const validMatch = verifyArabicLatinPhoneticCrossCheck(
+    'عبد الله طارق الدليمي',
+    'Abdullah Tariq Al-Dulaimi'
+  );
+  assert.equal(validMatch.verdict, 'VERIFIED');
+  assert.equal(validMatch.overallSimilarityPct >= 90, true);
+  assert.equal(validMatch.tokenMatches.length, 3);
 
+  const substitutionFraud = verifyArabicLatinPhoneticCrossCheck(
+    'أحمد محمد علي الربيعي',
+    'Viktor Kovalenko'
+  );
+  assert.equal(substitutionFraud.verdict, 'SUBSTITUTION_ALERT');
+  assert.equal(substitutionFraud.overallSimilarityPct < 60, true);
+});
 
+test('generateDeterministicCaseExplanation and verifyCryptographicAuditChain produce bilingual regulatory case briefs and valid SHA-256 block proofs', async () => {
+  const {
+    generateDeterministicCaseExplanation,
+    verifyCryptographicAuditChain,
+  } = await import('./kycEngine.ts');
+  const { initialApplicants } = await import('./seedData.ts');
+
+  const explanation = generateDeterministicCaseExplanation(initialApplicants[0]);
+  assert.equal(explanation.verdictLevel, 'APPROVED_READY');
+  assert.equal(explanation.keyFindings.length, 4);
+  assert.equal(explanation.cbiArticlesCited.length, 2);
+  assert.equal(explanation.executiveSummaryAr.includes('الجنائي'), true);
+
+  const chainReport = verifyCryptographicAuditChain([
+    {
+      id: 'ev-2',
+      timestamp: '2026-10-17 09:00 UTC',
+      actorEn: 'Zainab Al-Rubaye',
+      actionEn: 'Approved Applicant Packet',
+      applicantRef: 'ROSTRO-2026-9041',
+    },
+    {
+      id: 'ev-1',
+      timestamp: '2026-10-17 08:12 UTC',
+      actorEn: 'System OCR',
+      actionEn: 'Ingested Iraqi National ID',
+      applicantRef: 'ROSTRO-2026-9041',
+    },
+  ]);
+  assert.equal(chainReport.totalBlocks, 2);
+  assert.equal(chainReport.allBlocksValid, true);
+  assert.equal(chainReport.blocks.length, 2);
+  // Newest block (#2) links to previous block (#1) hash
+  assert.equal(chainReport.blocks[0].prevBlockHash, chainReport.blocks[1].computedBlockHash);
+});

@@ -50,6 +50,7 @@ import {
 } from '../utils/kycEngine';
 import {
   autoNormalizeImageDataUrl,
+  autoCropDeskewAndEnhanceCardDataUrl,
   checkAndNormalizeOrientation,
   computeLaplacianBlurVariance,
   detectFftMoireScreenSpoof,
@@ -1433,6 +1434,38 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     setValidationError('');
   };
 
+  const handleAutoCropEnhanceSlot = async (slot: 1 | 2) => {
+    const sourceUrl = slot === 1 ? frontPreviewRef.current : backPreviewRef.current;
+    if (!sourceUrl) return;
+    const enhanced = await autoCropDeskewAndEnhanceCardDataUrl(sourceUrl);
+    if (slot === 1) {
+      frontPreviewRef.current = enhanced.enhancedDataUrl;
+      setCustomPreviewUrl(enhanced.enhancedDataUrl);
+      computeImageEdgeTelemetry(enhanced.enhancedDataUrl, origFrontDimsRef.current);
+      void runServerGeminiExtraction(
+        enhanced.enhancedDataUrl,
+        frontMimeRef.current,
+        frontNameRef.current || selectedFileName,
+        true,
+        backPreviewRef.current,
+        backMimeRef.current,
+        backPreviewRef.current ? 'BOTH' : 'FRONT'
+      );
+    } else {
+      backPreviewRef.current = enhanced.enhancedDataUrl;
+      setCustomBackPreviewUrl(enhanced.enhancedDataUrl);
+      void runServerGeminiExtraction(
+        frontPreviewRef.current,
+        frontMimeRef.current,
+        frontNameRef.current || selectedFileName,
+        true,
+        enhanced.enhancedDataUrl,
+        backMimeRef.current,
+        'BOTH'
+      );
+    }
+  };
+
   const handleSimulateQualityGateTest = async (mode: QualityTestMode) => {
     const testCard = renderQualityGateTestCardDataUrl(mode, lang);
     rawFrontUrlRef.current = testCard.dataUrl;
@@ -2359,6 +2392,19 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                     >
                       {lang === 'ar' ? 'إعادة 0°' : 'Reset 0°'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleAutoCropEnhanceSlot(1)}
+                      title={
+                        lang === 'ar'
+                          ? 'القص التلقائي وتعديل الميل وتحسين التباين والأختام (CLAHE)'
+                          : 'Auto-Crop, Deskew & CLAHE Contrast Pre-Processor'
+                      }
+                      className="px-1.5 py-0.5 text-[9px] font-mono rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 font-semibold"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>{lang === 'ar' ? 'قص وتحسين CLAHE' : 'Auto-Crop & CLAHE'}</span>
+                    </button>
                   </div>
 
                   <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-mono text-emerald-700 dark:text-emerald-400 max-w-full truncate">
@@ -2578,6 +2624,19 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                         className="px-1.5 py-0.5 text-[9px] font-mono rounded border border-zinc-200 dark:border-[#27272a] hover:bg-zinc-100 dark:hover:bg-[#18181b] text-zinc-600 dark:text-zinc-400"
                       >
                         {lang === 'ar' ? 'إعادة 0°' : 'Reset 0°'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleAutoCropEnhanceSlot(2)}
+                        title={
+                          lang === 'ar'
+                            ? 'القص التلقائي وتعديل الميل وتحسين التباين والأختام (CLAHE)'
+                            : 'Auto-Crop, Deskew & CLAHE Contrast Pre-Processor'
+                        }
+                        className="px-1.5 py-0.5 text-[9px] font-mono rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 font-semibold"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>{lang === 'ar' ? 'قص وتحسين CLAHE' : 'Auto-Crop & CLAHE'}</span>
                       </button>
                     </div>
 

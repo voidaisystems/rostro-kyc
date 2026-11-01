@@ -39,8 +39,15 @@ import {
   TrendingUp,
   Camera,
   Smartphone,
+  Settings,
+  LogOut,
+  Mail,
+  Sparkles,
+  Activity,
+  UserCheck,
 } from 'lucide-react';
 import {
+  buildKurdishDialectSimulationFields,
   computeKpiMetrics,
   evaluateApplicantWithRules,
   filterAndSortApplicants,
@@ -50,6 +57,7 @@ import {
   type AuditChainVerificationReport,
   type AutomationConfig,
   type DocumentType,
+  type KurdishRegionalSimulationPreset,
   type KYCApplicant,
   type KYCDocument,
   type Language,
@@ -76,7 +84,6 @@ import { AutomationRulesPanel } from './components/AutomationRulesPanel';
 import { DocumentSpecimenViewer } from './components/DocumentSpecimenViewer';
 import { ZainCashEdgeForensicsLab } from './components/ZainCashEdgeForensicsLab';
 import { CompetitionShowcaseTab } from './components/CompetitionShowcaseTab';
-import { PartnerAppSdkSimulator } from './components/PartnerAppSdkSimulator';
 
 type ActiveSection =
   | 'dashboard'
@@ -112,7 +119,6 @@ export default function App() {
   // Modals & Drawers
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
-  const [isPartnerSdkOpen, setIsPartnerSdkOpen] = useState<boolean>(false);
   const [focusedQueueIndex, setFocusedQueueIndex] = useState<number>(0);
 
   // Cryptographic Audit Chain Verification state (Upgrade 3.2)
@@ -278,7 +284,7 @@ export default function App() {
 
   // Upgrade 2.4: Global Rapid Compliance Officer Keyboard Shortcuts (when Drawer & Modals are closed)
   useEffect(() => {
-    if (selectedApplicantId || isUploadModalOpen || isPartnerSdkOpen) return;
+    if (selectedApplicantId || isUploadModalOpen) return;
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (
@@ -316,16 +322,12 @@ export default function App() {
             ? 'مصادقة سريعة عبر اختصار لوحة المفاتيح [A] — مستوفٍ لضوابط البنك المركزي العراقي'
             : 'Rapid Keyboard Triage [A]: Approved under CBI Law No. 39 of 2015'
         );
-      } else if (e.key.toLowerCase() === 'f' && focusedApp) {
-        e.preventDefault();
-        handleUpdateApplicantStatus(
-          focusedApp.id,
-          'flagged',
-          lang === 'ar'
-            ? 'إحالة للمراجعة عبر اختصار لوحة المفاتيح [F]'
-            : 'Rapid Keyboard Triage [F]: Escalated for Secondary Officer Review'
-        );
-      } else if (e.key.toLowerCase() === 'r' && focusedApp) {
+      } else if (
+        e.key.toLowerCase() === 'r' &&
+        focusedApp &&
+        focusedApp.status !== 'approved' &&
+        focusedApp.stage9Outcome !== 'AUTO_APPROVED'
+      ) {
         e.preventDefault();
         handleUpdateApplicantStatus(
           focusedApp.id,
@@ -345,7 +347,6 @@ export default function App() {
   }, [
     selectedApplicantId,
     isUploadModalOpen,
-    isPartnerSdkOpen,
     filteredApplicants,
     focusedQueueIndex,
     lang,
@@ -754,6 +755,67 @@ export default function App() {
     );
   };
 
+  const handleApplyKurdishDialectTranslation = (
+    applicantId: string,
+    docId: string,
+    preset: KurdishRegionalSimulationPreset
+  ) => {
+    const sim = buildKurdishDialectSimulationFields(preset);
+    setApplicants((prev) =>
+      prev.map((app) => {
+        if (app.id !== applicantId) return app;
+        const updatedDocs = app.documents.map((d) =>
+          d.id === docId
+            ? {
+                ...d,
+                detectedLanguages: ['ku', 'ar', 'en'] as ('ar' | 'en' | 'ku')[],
+                titleEn: sim.titleEn,
+                titleAr: sim.titleAr,
+                issuingAuthorityEn: sim.issuingAuthorityEn,
+                issuingAuthorityAr: sim.issuingAuthorityAr,
+                kurdishDialectPreset: preset,
+                extractedFields: {
+                  ...d.extractedFields,
+                  fullName: sim.fullNameEn.toUpperCase(),
+                  fullNameArabic: sim.fullNameAr,
+                  normalizedName: sim.fullNameAr,
+                  fullNameKurdish: sim.fullNameKurdish,
+                  motherName: sim.motherNameKurdish,
+                  motherNameKurdish: sim.motherNameKurdish,
+                  governorate: sim.governorateAr,
+                  governorateKurdish: sim.governorateKurdish,
+                  address: sim.translatedAddressAr,
+                  addressKurdish: sim.addressKurdish,
+                  issuingAuthorityKurdish: sim.issuingAuthorityKurdish,
+                },
+              }
+            : d
+        );
+
+        const newAudit = {
+          id: `aud-ku-${Date.now()}`,
+          timestamp: '2026-10-17 09:15 UTC',
+          actorEn: 'Kurdish Multi-Dialect Translation Engine v2.0',
+          actorAr: 'محرك ترجمة اللهجات الكردية المعتمد',
+          actionEn: `Translated Kurdish (${preset}) fields to Official CBI Arabic: ${sim.fullNameAr} (${sim.governorateEn})`,
+          actionAr: `تمت ترجمة الحقول الكردية (${preset}) إلى العربية الرسمية المعتمدة: ${sim.fullNameAr} (${sim.governorateAr})`,
+          cbiLaw78HmacReceipt: `HMAC-SHA256-CBI78-${Date.now().toString(16).slice(0, 16)}`,
+        };
+
+        return {
+          ...app,
+          fullNameEn: sim.fullNameEn,
+          fullNameAr: sim.fullNameAr,
+          normalizedEntityName: sim.fullNameAr,
+          governorateEn: sim.governorateEn,
+          governorateAr: sim.governorateAr,
+          documents: updatedDocs,
+          auditTrail: [newAudit, ...app.auditTrail],
+        };
+      })
+    );
+  };
+
   const handleIngestApplicant = (newApplicant: KYCApplicant) => {
     setApplicants((prev) => [newApplicant, ...prev]);
     setSelectedApplicantId(newApplicant.id);
@@ -779,24 +841,40 @@ export default function App() {
   const isAr = lang === 'ar';
   const ChevronIcon = isAr ? ChevronLeft : ChevronRight;
 
-  // Percentages for the Order/Verification Status horizontal bar (Image 1 top-right card)
+  // Percentages for the Order/Verification Status & Donut charts
   const totalCount = Math.max(1, kpi.total);
   const approvedPct = ((kpi.approved / totalCount) * 100).toFixed(1);
   const reviewPct = ((kpi.actionRequired / totalCount) * 100).toFixed(1);
   const rejectedPct = ((kpi.rejected / totalCount) * 100).toFixed(1);
 
-  // Primary CTA button styling
+  // Interactive day selection for the Figma Spline Throughput Chart ("Monday, 28 December..." style card)
+  const [activeSplineDayIdx, setActiveSplineDayIdx] = useState<number>(4); // Default 'Fri' (matches Figma callout position)
+  const splineWeekData = useMemo(
+    () => [
+      { dayEn: 'Mon', dayAr: 'الإثنين', x: 52, y: 175, value: `${kpi.total * 340}`, subEn: 'Baghdad Intake', subAr: 'دفعة بغداد' },
+      { dayEn: 'Tue', dayAr: 'الثلاثاء', x: 112, y: 118, value: `${kpi.total * 410}`, subEn: 'Basra & Najaf', subAr: 'البصرة والنجف' },
+      { dayEn: 'Wed', dayAr: 'الأربعاء', x: 172, y: 96, value: `${kpi.total * 465}`, subEn: 'Erbil Sorani OCR', subAr: 'أربيل - السورانية' },
+      { dayEn: 'Thu', dayAr: 'الخميس', x: 232, y: 115, value: `${kpi.total * 430}`, subEn: 'Sulaymaniyah KYC', subAr: 'السليمانية' },
+      { dayEn: 'Fri', dayAr: 'الجمعة', x: 292, y: 132, value: `$${(kpi.approved * 492 + 497).toLocaleString()}`, subEn: 'Duhok Badini → AR', subAr: 'دهوك - البادينية' },
+      { dayEn: 'Sat', dayAr: 'السبت', x: 352, y: 112, value: `${kpi.total * 490}`, subEn: 'Nineveh & Kirkuk', subAr: 'نينوى وكركوك' },
+      { dayEn: 'Sun', dayAr: 'الأحد', x: 412, y: 54, value: `${kpi.total * 560}`, subEn: 'CBI Law 78 Batch', subAr: 'توقيع البنك المركزي' },
+    ],
+    [kpi.total, kpi.approved]
+  );
+  const activeSplinePoint = splineWeekData[activeSplineDayIdx] || splineWeekData[4];
+
+  // Primary CTA button styling (Vivid emerald green accent)
   const primaryBtnClass =
-    'bg-[#059669] hover:bg-[#10b981] text-white border border-emerald-500/30 shadow-xs';
+    'bg-[#10b981] hover:bg-[#059669] text-white border border-[#34d399]/40 shadow-md shadow-[#10b981]/20';
 
   const sectionTitleMap: Record<ActiveSection, { en: string; ar: string }> = {
-    dashboard: { en: 'Overview Dashboard', ar: 'لوحة التحكم الرئيسية' },
-    queue: { en: 'Applicant Dossiers', ar: 'سجل ملفات المتقدمين' },
-    forensics: { en: 'Anti-Forgery & Edge Lab', ar: 'مختبر كشف التزوير والجودة' },
-    challenge: { en: 'How the System Works', ar: 'كيف يعمل النظام · المسابقة' },
-    vault: { en: 'Document Vault (44 Types)', ar: 'خزنة الوثائق العراقية' },
-    automation: { en: 'Automation Rules', ar: 'قواعد الأتمتة والمخاطر' },
-    audit: { en: 'Cryptographic Audit', ar: 'سجل التدقيق التشفيري' },
+    dashboard: { en: 'Dashboard', ar: 'لوحة التحكم' },
+    queue: { en: 'Dossiers Queue', ar: 'ملفات المتقدمين' },
+    forensics: { en: 'Documents & Forensics', ar: 'مختبر الوثائق والتزوير' },
+    challenge: { en: 'System Architecture', ar: 'هيكلة النظام والمسابقة' },
+    vault: { en: 'Document Vault (44)', ar: 'خزنة الوثائق العراقية' },
+    automation: { en: 'Automation & Rules', ar: 'قواعد الأتمتة والمخاطر' },
+    audit: { en: 'CBI Law 78 Ledger', ar: 'سجل التدقيق التشفيري' },
   };
 
   const getDocCategoryBadge = (docType?: DocumentType) => {
@@ -823,29 +901,34 @@ export default function App() {
     }
   };
 
-  // Shared High-Density Dossier Table (Matches Image 2's Products Table with thumbnails, SKU codes, category pills & green/red progress bars)
-  const renderDossiersCatalogTable = (compactLimit?: number) => {
+  // Shared Dossiers Table styled after the Figma "Projects Finance" table (Name, Progress, Achieved, Status with colored dot, View all / •••)
+  const renderDossiersCatalogTable = (compactLimit?: number, fillFlexHeight = false) => {
     const rowsToRender = compactLimit
       ? filteredApplicants.slice(0, compactLimit)
       : filteredApplicants;
 
     return (
-      <div className="space-y-4">
-        {/* Underline Tabs + Filter Bar (Matches Image 2) */}
-        <div className="space-y-3">
-          {/* Underline Status Tabs */}
+      <div
+        className={
+          fillFlexHeight
+            ? 'flex-1 min-h-0 flex flex-col gap-2 overflow-hidden'
+            : 'space-y-3'
+        }
+      >
+        {/* Compact Single-Row Filter Bar so Table Rows Appear Immediately */}
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-1">
           <div
             role="tablist"
             aria-label="Filter by verification status"
-            className="flex items-center gap-6 border-b border-zinc-200 dark:border-[#222225] overflow-x-auto"
+            className="flex items-center gap-1 overflow-x-auto"
           >
             {(
               [
-                { id: 'all', label: isAr ? 'جميع الملفات' : 'All dossiers', count: kpi.total },
-                { id: 'pending', label: isAr ? 'قيد الانتظار' : 'Pending', count: kpi.pending },
-                { id: 'flagged', label: isAr ? 'مراجعة بشرية' : 'Flagged', count: kpi.flagged },
+                { id: 'all', label: isAr ? 'الكل' : 'All', count: kpi.total },
+                { id: 'pending', label: isAr ? 'انتظار' : 'Pending', count: kpi.pending },
+                { id: 'flagged', label: isAr ? 'مراجعة' : 'Flagged', count: kpi.flagged },
                 { id: 'approved', label: isAr ? 'معتمد' : 'Approved', count: kpi.approved },
-                { id: 'rejected', label: isAr ? 'مرفوض / مزور' : 'Rejected', count: kpi.rejected },
+                { id: 'rejected', label: isAr ? 'مرفوض' : 'Rejected', count: kpi.rejected },
               ] as const
             ).map((tab) => {
               const active = statusFilter === tab.id;
@@ -856,95 +939,81 @@ export default function App() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => setStatusFilter(tab.id)}
-                  className={`pb-2.5 text-xs font-medium transition-colors whitespace-nowrap border-b-2 -mb-px flex items-center gap-1.5 ${
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all whitespace-nowrap flex items-center gap-1 cursor-pointer ${
                     active
-                      ? 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100'
-                      : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                      ? 'bg-[#10b981] text-white shadow-xs shadow-[#10b981]/30'
+                      : 'bg-zinc-100 dark:bg-[#14151b] text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                   }`}
                 >
                   <span>{tab.label}</span>
-                  <span className="font-mono text-[11px] text-zinc-400 dark:text-zinc-500 tabular-nums">
-                    ({tab.count})
+                  <span
+                    className={`font-mono text-[9px] tabular-nums px-1 rounded ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : 'bg-zinc-200/70 dark:bg-[#1f2128] text-zinc-500 dark:text-zinc-400'
+                    }`}
+                  >
+                    {tab.count}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Filter Inputs Row (Matches Image 2: Search input + Category/Supplier/Stock dropdowns + Manage Table button) */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
-              <div className="relative w-full sm:w-64">
-                <Search className="w-3.5 h-3.5 text-zinc-400 absolute top-2.5 start-3 pointer-events-none" />
-                <input
-                  type="search"
-                  aria-label={t(lang, 'searchPlaceholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={isAr ? 'ابحث بالاسم أو الرقم المرجعي...' : 'Search dossiers...'}
-                  className="w-full ps-8 pe-3 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#0c0c0e] text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
-                />
-              </div>
+          <div className="flex items-center gap-1">
+            <select
+              aria-label="Filter by Document Type"
+              value={docTypeFilter}
+              onChange={(e) => setDocTypeFilter(e.target.value as DocumentType | 'all')}
+              className="px-1.5 py-0.5 text-[10px] rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#14151b] text-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-[#10b981] max-w-[118px]"
+            >
+              <option value="all">{isAr ? 'الوثيقة: الكل' : 'Doc: All'}</option>
+              <option value="IRQ_NATIONAL_ID">{t(lang, 'docNationalId')}</option>
+              <option value="IRQ_CIVIL_STATUS_ID">{t(lang, 'docCivilId')}</option>
+              <option value="IRQ_RESIDENCE_CARD">{t(lang, 'docResidenceCard')}</option>
+              <option value="IRQ_PASSPORT">{t(lang, 'docPassport')}</option>
+              <option value="IRQ_CHAMBER_OF_COMMERCE">{t(lang, 'docChamberCommerce')}</option>
+              <option value="IRQ_POWER_OF_ATTORNEY">{t(lang, 'docPowerOfAttorney')}</option>
+              <option value="UNKNOWN_DOCUMENT">{t(lang, 'docUnknown')}</option>
+            </select>
 
-              <select
-                aria-label="Filter by Document Type"
-                value={docTypeFilter}
-                onChange={(e) => setDocTypeFilter(e.target.value as DocumentType | 'all')}
-                className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#0c0c0e] text-zinc-700 dark:text-zinc-200"
-              >
-                <option value="all">{isAr ? 'نوع الوثيقة: الكل' : 'Category'}</option>
-                <option value="IRQ_NATIONAL_ID">{t(lang, 'docNationalId')}</option>
-                <option value="IRQ_CIVIL_STATUS_ID">{t(lang, 'docCivilId')}</option>
-                <option value="IRQ_RESIDENCE_CARD">{t(lang, 'docResidenceCard')}</option>
-                <option value="IRQ_PASSPORT">{t(lang, 'docPassport')}</option>
-                <option value="IRQ_CHAMBER_OF_COMMERCE">{t(lang, 'docChamberCommerce')}</option>
-                <option value="IRQ_POWER_OF_ATTORNEY">{t(lang, 'docPowerOfAttorney')}</option>
-                <option value="UNKNOWN_DOCUMENT">{t(lang, 'docUnknown')}</option>
-              </select>
+            <select
+              aria-label="Filter by Risk Tier"
+              value={riskFilter}
+              onChange={(e) => setRiskFilter(e.target.value as RiskTier | 'all')}
+              className="px-1.5 py-0.5 text-[10px] rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#14151b] text-zinc-700 dark:text-zinc-200 focus:outline-none focus:border-[#10b981]"
+            >
+              <option value="all">{isAr ? 'المخاطر: الكل' : 'Risk: All'}</option>
+              <option value="low">{t(lang, 'riskLow')}</option>
+              <option value="medium">{t(lang, 'riskMedium')}</option>
+              <option value="high">{t(lang, 'riskHigh')}</option>
+            </select>
 
-              <select
-                aria-label="Filter by Risk Tier"
-                value={riskFilter}
-                onChange={(e) => setRiskFilter(e.target.value as RiskTier | 'all')}
-                className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#0c0c0e] text-zinc-700 dark:text-zinc-200"
-              >
-                <option value="all">{isAr ? 'مستوى المخاطر: الكل' : 'Risk level'}</option>
-                <option value="low">{t(lang, 'riskLow')}</option>
-                <option value="medium">{t(lang, 'riskMedium')}</option>
-                <option value="high">{t(lang, 'riskHigh')}</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={handleRunAutomatedBatch}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-[#222225] hover:bg-zinc-50 dark:hover:bg-zinc-900 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <Sliders className="w-3.5 h-3.5 text-emerald-500" />
-                <span>{t(lang, 'runBatchBtn')}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetDemo}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>{t(lang, 'resetDemoBtn')}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleRunAutomatedBatch}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-white bg-[#10b981] hover:bg-[#059669] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Sliders className="w-2.5 h-2.5" />
+              <span>{t(lang, 'runBatchBtn')}</span>
+            </button>
           </div>
         </div>
 
-        {/* High-Density Data Table (Matches Image 2) */}
-        <div className="rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] overflow-hidden">
+        {/* Figma "Projects Finance" Styled Table */}
+        <div
+          className={
+            fillFlexHeight
+              ? 'flex-1 min-h-0 overflow-y-auto overflow-x-auto pe-0.5'
+              : 'overflow-x-auto'
+          }
+        >
           {rowsToRender.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <div className="p-6 text-center space-y-2 rounded-2xl bg-zinc-50 dark:bg-[#14151b] border border-zinc-200 dark:border-white/5">
+              <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
                 {t(lang, 'emptyQueueTitle')}
               </div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-md mx-auto">
+              <p className="text-[11px] text-zinc-500 dark:text-[#8a8d98] max-w-md mx-auto">
                 {t(lang, 'emptyQueueSubtitle')}
               </p>
               <button
@@ -955,1843 +1024,1447 @@ export default function App() {
                   setDocTypeFilter('all');
                   setSearchQuery('');
                 }}
-                className={`px-4 py-2 text-xs rounded-lg transition-colors ${primaryBtnClass}`}
+                className={`px-3 py-1.5 text-xs rounded-xl transition-colors ${primaryBtnClass}`}
               >
                 {t(lang, 'clearFiltersBtn')}
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-start border-collapse">
-                <thead>
-                  <tr className="border-b border-zinc-200 dark:border-[#222225] bg-zinc-50/70 dark:bg-[#141417] text-[11px] font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                    <th className="py-3 ps-4 pe-3 text-start">
-                      {isAr ? 'المتقدم والوثيقة' : 'Applicant & Specimen'}
-                    </th>
-                    <th className="py-3 px-3 text-start">
-                      {isAr ? 'الرمز المرجعي' : 'Reference SKU'}
-                    </th>
-                    <th className="py-3 px-3 text-start">
-                      {isAr ? 'الفئة' : 'Category'}
-                    </th>
-                    <th className="py-3 px-3 text-start">
-                      {isAr ? 'المحافظة والمسار' : 'Governorate · Pipeline'}
-                    </th>
-                    <th className="py-3 px-3 text-start">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort('ocrConfidence')}
-                        className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-100"
-                      >
-                        <span>{isAr ? 'دقة القراءة والأصالة' : 'Authenticity & OCR'}</span>
-                        <ArrowUpDown className="w-3 h-3 shrink-0" />
-                      </button>
-                    </th>
-                    <th className="py-3 px-3 text-start">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort('riskScore')}
-                        className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-zinc-100"
-                      >
-                        <span>{isAr ? 'المخاطر والحالة' : 'Risk & Status'}</span>
-                        <ArrowUpDown className="w-3 h-3 shrink-0" />
-                      </button>
-                    </th>
-                    <th className="py-3 ps-3 pe-4 text-end">
-                      {isAr ? 'إجراء' : 'Inspect'}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-200 dark:divide-[#1f1f23] text-xs">
-                  {rowsToRender.map((applicant, rowIdx) => {
-                    const minOcr = Math.min(
-                      ...applicant.documents.map((d) => d.ocrConfidence)
-                    );
-                    const primaryDoc = applicant.documents[0];
-                    const isHighConfidence =
-                      minOcr >= 85 &&
-                      applicant.status !== 'rejected' &&
-                      applicant.riskTier !== 'high';
-                    const isKeyboardFocused =
-                      focusedQueueIndex === rowIdx || selectedApplicantId === applicant.id;
+            <table className="w-full text-start border-collapse">
+              <thead className="sticky top-0 z-10 bg-zinc-100 dark:bg-[#1f2128]">
+                <tr className="text-[11px] font-medium text-zinc-400 dark:text-[#7e8290] border-b border-zinc-200/70 dark:border-white/[0.06] whitespace-nowrap">
+                  <th className="py-1 ps-1 pe-1.5 text-start font-normal">
+                    {isAr ? 'الاسم والوثيقة' : 'Name'}
+                  </th>
+                  <th className="py-1 px-1.5 text-start font-normal">
+                    {isAr ? 'مسار التقدم' : 'Progress'}
+                  </th>
+                  <th className="py-1 px-1.5 text-start font-normal">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('ocrConfidence')}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-white cursor-pointer"
+                    >
+                      <span>{isAr ? 'الأصالة' : 'Achieved'}</span>
+                      <ArrowUpDown className="w-3 h-3 shrink-0" />
+                    </button>
+                  </th>
+                  <th className="py-1 px-1.5 text-start font-normal">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('riskScore')}
+                      className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-white cursor-pointer"
+                    >
+                      <span>{isAr ? 'الحالة' : 'Status'}</span>
+                      <ArrowUpDown className="w-3 h-3 shrink-0" />
+                    </button>
+                  </th>
+                  <th className="py-1 ps-1.5 pe-1 text-end font-normal">
+                    {isAr ? 'عرض' : 'View'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200/50 dark:divide-white/[0.04] text-[11px] xl:text-xs">
+                {rowsToRender.map((applicant, rowIdx) => {
+                  const minOcr = Math.min(
+                    ...applicant.documents.map((d) => d.ocrConfidence)
+                  );
+                  const primaryDoc = applicant.documents[0];
+                  const isKeyboardFocused =
+                    focusedQueueIndex === rowIdx || selectedApplicantId === applicant.id;
+                  const hasKurdishDoc = applicant.documents.some(
+                    (d) =>
+                      Boolean(d.kurdishDialectPreset) ||
+                      Boolean(d.extractedFields.fullNameKurdish) ||
+                      Boolean(d.extractedFields.addressKurdish) ||
+                      Boolean(d.extractedFields.governorateKurdish) ||
+                      Boolean(d.extractedFields.issuingAuthorityKurdish) ||
+                      Boolean(d.extractedFields.motherNameKurdish)
+                  );
+                  const hasForeignDoc = applicant.documents.some(
+                    (d) =>
+                      d.isForeignDocument ||
+                      d.type === 'FOREIGN_NATIONAL_ID' ||
+                      d.type === 'FOREIGN_PASSPORT' ||
+                      (d.issuingCountryCode && d.issuingCountryCode !== 'IRQ')
+                  );
 
-                    return (
-                      <tr
-                        key={applicant.id}
-                        onClick={() => {
-                          setFocusedQueueIndex(rowIdx);
-                          setSelectedApplicantId(applicant.id);
-                        }}
-                        className={`transition-colors cursor-pointer ${
-                          isKeyboardFocused
-                            ? 'bg-emerald-500/8 dark:bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/40'
-                            : 'hover:bg-zinc-50/90 dark:hover:bg-[#18181b]'
-                        }`}
-                      >
-                        {/* 1. Thumbnail + Applicant Name (Matches Image 2 Product Name + square image) */}
-                        <td className="py-3 ps-4 pe-3 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 overflow-hidden shrink-0 flex items-center justify-center">
-                              {primaryDoc?.customImageUrl ? (
-                                <img
-                                  src={primaryDoc.customImageUrl}
-                                  alt={applicant.fullNameEn}
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-emerald-950 via-zinc-900 to-zinc-950 flex flex-col items-center justify-center text-[9px] font-mono text-emerald-400 border border-emerald-900/40">
-                                  <span>{isAr ? 'عراق' : 'IRQ'}</span>
-                                  <span className="text-[7px] text-zinc-400">
-                                    {isAr ? 'هوية' : 'ID'}
-                                  </span>
-                                </div>
+                  // Status dot color matching green/teal/amber/red aesthetic
+                  const statusDotColor =
+                    applicant.status === 'approved'
+                      ? 'bg-[#22c55e] shadow-[0_0_8px_rgba(34,197,94,0.7)]'
+                      : applicant.status === 'pending'
+                        ? 'bg-[#2dd4bf] shadow-[0_0_8px_rgba(45,212,191,0.7)]'
+                        : applicant.status === 'flagged'
+                          ? 'bg-[#f59e0b] shadow-[0_0_8px_rgba(245,158,11,0.7)]'
+                          : 'bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.7)]';
+
+                  return (
+                    <tr
+                      key={applicant.id}
+                      onClick={() => {
+                        setFocusedQueueIndex(rowIdx);
+                        setSelectedApplicantId(applicant.id);
+                      }}
+                      className={`transition-colors cursor-pointer group ${
+                        isKeyboardFocused
+                          ? 'bg-[#10b981]/12 dark:bg-[#10b981]/15 rounded-xl'
+                          : 'hover:bg-zinc-100/70 dark:hover:bg-white/[0.03]'
+                      }`}
+                    >
+                      {/* 1. Circular Avatar + Name + Reference SKU */}
+                      <td className="py-1.5 ps-1 pe-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full border-2 border-[#10b981]/50 bg-zinc-900 overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
+                            {primaryDoc?.customImageUrl ? (
+                              <img
+                                src={primaryDoc.customImageUrl}
+                                alt={applicant.fullNameEn}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-[#10b981] to-[#047857] flex items-center justify-center text-[10px] font-bold text-white">
+                                {(isAr ? applicant.fullNameAr : applicant.fullNameEn)
+                                  .trim()
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-zinc-900 dark:text-white flex items-center gap-1">
+                              <span className="truncate max-w-[125px] xl:max-w-[165px]">
+                                {isAr ? applicant.fullNameAr : applicant.fullNameEn}
+                              </span>
+                              {hasKurdishDoc && (
+                                <span className="px-1 py-0.5 text-[8px] font-mono rounded bg-[#10b981]/20 text-[#059669] dark:text-[#6ee7b7] border border-[#10b981]/40 shrink-0">
+                                  {isAr ? 'كردي←عربي' : 'KU→AR'}
+                                </span>
                               )}
                             </div>
-                            <div>
-                              <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                                {isAr ? applicant.fullNameAr : applicant.fullNameEn}
-                              </div>
-                              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px]">
-                                {primaryDoc
-                                  ? isAr
-                                    ? primaryDoc.titleAr
-                                    : primaryDoc.titleEn
-                                  : isAr
-                                    ? applicant.normalizedEntityName
-                                    : applicant.fullNameEn}
-                              </div>
+                            <div className="text-[9px] xl:text-[10px] text-zinc-500 dark:text-[#8a8d98] font-mono truncate max-w-[145px] xl:max-w-[205px]">
+                              {formatReferenceCode(applicant.referenceCode, lang)} ·{' '}
+                              {getDocCategoryBadge(primaryDoc?.type)}
                             </div>
                           </div>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* 2. Reference SKU (Matches Image 2 SKU-TREAT-6612) */}
-                        <td className="py-3 px-3 whitespace-nowrap font-mono tabular-nums text-zinc-700 dark:text-zinc-300">
-                          <div>{formatReferenceCode(applicant.referenceCode, lang)}</div>
-                          <div className="text-[11px] text-zinc-500">
-                            {primaryDoc ? formatReferenceCode(primaryDoc.docNumber, lang) : '—'}
-                          </div>
-                        </td>
-
-                        {/* 3. Category Badge (Matches Image 2 subtle dark rounded pill) */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-zinc-100 dark:bg-[#1f1f23] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/60">
-                            {getDocCategoryBadge(primaryDoc?.type)}
-                          </span>
-                        </td>
-
-                        {/* 4. Governorate & Stage 9 (Matches Image 2 Supplier column) */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <div className="font-medium text-zinc-800 dark:text-zinc-200">
-                            {isAr ? applicant.governorateAr : applicant.governorateEn}
-                            <span className="text-zinc-500 font-normal">
-                              {' '}
-                              ·{' '}
-                              {applicant.entityType === 'corporate'
-                                ? t(lang, 'entityCorporate')
-                                : t(lang, 'entityIndividual')}
-                            </span>
-                          </div>
-                          <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
-                            {formatStage9Outcome(applicant.stage9Outcome, lang)}
-                          </div>
-                        </td>
-
-                        {/* 5. Authenticity & OCR Progress Bar (Exact match to Image 2's "96 units · High" green/red bar) */}
-                        <td className="py-3 px-3 whitespace-nowrap min-w-[165px]">
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="font-mono tabular-nums font-medium text-zinc-900 dark:text-zinc-100">
-                              {minOcr}% {isAr ? 'دقة القراءة' : 'OCR'}
-                            </span>
-                            <span className="text-zinc-500">·</span>
-                            <span
-                              className={`font-medium ${
-                                isHighConfidence
-                                  ? 'text-emerald-600 dark:text-[#10b981]'
-                                  : 'text-red-600 dark:text-[#ef4444]'
-                              }`}
-                            >
-                              {isHighConfidence
+                      {/* 2. Progress / Stage 9 Outcome ("Meet the target" / "On Going" column in Figma) */}
+                      <td className="py-1.5 px-1.5 whitespace-nowrap">
+                        <div className="font-medium text-zinc-800 dark:text-zinc-200">
+                          {applicant.status === 'approved'
+                            ? isAr
+                              ? 'حقق المستهدف'
+                              : 'Meet the target'
+                            : applicant.status === 'pending'
+                              ? isAr
+                                ? 'جاري الفحص'
+                                : 'On Going'
+                              : applicant.status === 'flagged'
                                 ? isAr
-                                  ? 'أصلي مرتفع'
-                                  : 'High'
+                                  ? 'مراجعة الامتثال'
+                                  : 'Officer Review'
                                 : isAr
-                                  ? 'منخفض / مريب'
-                                  : 'Low'}
-                            </span>
-                          </div>
-                          <div className="mt-1.5 w-32 h-1.5 rounded-full bg-zinc-200 dark:bg-[#222225] overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                isHighConfidence ? 'bg-[#10b981]' : 'bg-[#ef4444]'
-                              }`}
-                              style={{ width: `${Math.max(12, Math.min(100, minOcr))}%` }}
-                            />
-                          </div>
-                        </td>
+                                  ? 'مرفوض · تلاعب'
+                                  : 'Forgery Alert'}
+                        </div>
+                        <div className="text-[9px] xl:text-[10px] font-mono text-zinc-500 dark:text-[#7e8290]">
+                          {formatStage9Outcome(applicant.stage9Outcome, lang)}
+                        </div>
+                      </td>
 
-                        {/* 6. Risk Score & Status Badge (Matches Image 1 & 2) */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-                              {applicant.riskScore}/100
-                            </span>
-                            {applicant.status === 'approved' && (
-                              <span className="px-2 py-0.5 text-[11px] font-medium rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                {t(lang, 'statusApproved')}
-                              </span>
-                            )}
-                            {applicant.status === 'pending' && (
-                              <span className="px-2 py-0.5 text-[11px] font-medium rounded border border-zinc-500/30 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300">
-                                {t(lang, 'statusPendingShort')}
-                              </span>
-                            )}
-                            {applicant.status === 'flagged' && (
-                              <span className="px-2 py-0.5 text-[11px] font-medium rounded border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                                {t(lang, 'statusFlaggedShort')}
-                              </span>
-                            )}
-                            {applicant.status === 'rejected' && (
-                              <span className="px-2 py-0.5 text-[11px] font-medium rounded border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400">
-                                {t(lang, 'statusRejected')}
-                              </span>
-                            )}
-                            {applicant.documents.some(
-                              (d) =>
-                                d.isForeignDocument ||
-                                d.type === 'FOREIGN_NATIONAL_ID' ||
-                                d.type === 'FOREIGN_PASSPORT' ||
-                                (d.issuingCountryCode && d.issuingCountryCode !== 'IRQ')
-                            ) && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                                {isAr ? 'وثيقة أجنبية · محال للبشري' : 'FOREIGN DOC · REVERTED'}
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                      {/* 3. Achieved / OCR & Risk Score */}
+                      <td className="py-1.5 px-1.5 whitespace-nowrap">
+                        <div className="font-semibold font-mono tabular-nums text-zinc-900 dark:text-white">
+                          {minOcr}% {isAr ? 'أصالة' : 'OCR'} ·{' '}
+                          <span className="text-zinc-500 dark:text-[#8a8d98] font-normal">
+                            {isAr ? 'مخاطر' : 'Risk'} {applicant.riskScore}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 w-16 xl:w-20 h-1.5 rounded-full bg-zinc-200 dark:bg-[#14151b] overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              applicant.status === 'rejected'
+                                ? 'bg-[#ef4444]'
+                                : applicant.status === 'flagged'
+                                  ? 'bg-[#f59e0b]'
+                                  : 'bg-gradient-to-r from-[#10b981] to-[#84cc16]'
+                            }`}
+                            style={{ width: `${Math.max(15, Math.min(100, minOcr))}%` }}
+                          />
+                        </div>
+                      </td>
 
-                        {/* 7. Action Button */}
-                        <td
-                          className="py-3 ps-3 pe-4 text-end whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
+                      {/* 4. Status with Colored Dot (Matches Figma "● Financial Officer" / "● Project Manager") */}
+                      <td className="py-1.5 px-1.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor}`} />
+                          <div>
+                            <div className="font-medium text-zinc-800 dark:text-zinc-200">
+                              {applicant.status === 'approved'
+                                ? t(lang, 'statusApproved')
+                                : applicant.status === 'pending'
+                                  ? t(lang, 'statusPendingShort')
+                                  : applicant.status === 'flagged'
+                                    ? t(lang, 'statusFlaggedShort')
+                                    : t(lang, 'statusRejected')}
+                            </div>
+                            <div className="text-[9px] xl:text-[10px] text-zinc-500 dark:text-[#8a8d98] truncate max-w-[95px] xl:max-w-[115px]">
+                              {isAr ? applicant.governorateAr : applicant.governorateEn}
+                            </div>
+                          </div>
+                          {hasForeignDoc && (
+                            <span className="px-1 py-0.5 text-[8px] font-mono font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              {isAr ? 'أجنبية' : 'INTL'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 5. Three-dots / Inspect Action (Matches Figma "•••" column) */}
+                      <td
+                        className="py-1.5 ps-1.5 pe-1 text-end whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedApplicantId(applicant.id)}
+                          aria-label={`${t(lang, 'inspectBtn')} ${applicant.fullNameEn}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:text-white bg-zinc-100 dark:bg-[#14151b] hover:bg-[#10b981] dark:hover:bg-[#10b981] rounded-lg transition-colors cursor-pointer"
                         >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedApplicantId(applicant.id)}
-                            aria-label={`${t(lang, 'inspectBtn')} ${applicant.fullNameEn}`}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-[#18181b] hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-md transition-colors"
-                          >
-                            <span>{t(lang, 'inspectBtn')}</span>
-                            <MoreHorizontal className="w-3.5 h-3.5 text-zinc-400" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
     );
   };
 
+  // Note: `sidebarOpen` is used here as `isSidebarCollapsed` toggle (false = expanded sidebar, true = collapsed compact icon rail)
+  const isSidebarCollapsed = sidebarOpen;
+
   return (
-    <div className="min-h-screen flex bg-[#f8f8f9] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors">
+    <div className="h-screen w-screen overflow-hidden bg-white dark:bg-[#14151b] text-zinc-900 dark:text-white transition-colors flex flex-col p-2.5 sm:p-3.5 select-none">
       {/* =====================================================================
-          LEFT / RIGHT (RTL-AWARE) ADMIN SIDEBAR (EXACT MATCH TO SCREENSHOTS)
+          FULL-VIEWPORT 1-PAGE DASHBOARD LAYOUT (NO OUTER CORNER BASE MARGIN,
+          NO PAGE VERTICAL SCROLLING, PERSISTENT COLLAPSIBLE LEFT SIDEBAR)
           ===================================================================== */}
-      {/* =====================================================================
-          LEFT / RIGHT (RTL-AWARE) ADMIN SIDEBAR
-          Expanded (w-60) or Collapsed Rail (w-16) - Exact match to user screenshot
-          ===================================================================== */}
-      {sidebarOpen ? (
+      <div className="flex-1 min-h-0 flex flex-row gap-3 lg:gap-4 items-stretch overflow-hidden">
+        {/* =================================================================
+            COLUMN 1: PERSISTENT COLLAPSIBLE LEFT NAVIGATION SIDEBAR
+            ================================================================= */}
         <aside
-          aria-label="Primary Sidebar Navigation (Expanded)"
-          className="w-60 shrink-0 border-e border-zinc-200 dark:border-[#1f1f23] bg-white dark:bg-[#0c0c0e] flex flex-col justify-between select-none transition-all duration-200"
+          aria-label="Primary Sidebar Navigation"
+          data-collapsed={isSidebarCollapsed ? 'true' : 'false'}
+          className={`shrink-0 h-full min-h-0 flex flex-col justify-between gap-2.5 transition-all duration-200 ${
+            isSidebarCollapsed ? 'w-[68px]' : 'w-[208px] xl:w-[220px]'
+          }`}
         >
-          {/* Top Brand Header + Sidebar Collapse Icon */}
-          <div>
-            <div className="h-14 px-4 flex items-center justify-between border-b border-zinc-200 dark:border-[#1f1f23]">
-              <button
-                type="button"
-                onClick={() => setActiveSection('dashboard')}
-                className="flex items-center gap-2.5 text-start min-w-0"
+          {/* Top Rounded Navigation Card (#1f2128 in dark mode) */}
+          <div
+            className={`flex-1 min-h-0 rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] py-3.5 ${
+              isSidebarCollapsed ? 'px-2' : 'px-3.5'
+            } flex flex-col justify-between border border-zinc-200/60 dark:border-white/[0.03] overflow-y-auto`}
+          >
+            {/* Top Brand + Collapse/Expand Toggle Button + Primary KYC Tabs */}
+            <div className="space-y-1">
+              <div
+                className={`pb-2.5 mb-1.5 border-b border-zinc-200/70 dark:border-[#2d3039] flex items-center ${
+                  isSidebarCollapsed ? 'flex-col gap-2 justify-center px-0' : 'justify-between px-1.5'
+                }`}
               >
-                <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-mono text-xs font-bold shrink-0">
-                  {isAr ? 'ر' : 'R'}
-                </div>
-                <div className="truncate">
-                  <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 leading-tight truncate">
-                    {isAr ? 'روسترو للامتثال' : 'Rostro Admin'}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#10b981] to-[#047857] text-white flex items-center justify-center font-mono text-xs font-bold shadow-md shadow-[#10b981]/30 shrink-0">
+                    {isAr ? 'ر' : 'VT'}
                   </div>
-                  <div className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight truncate">
-                    {isAr ? 'البنك المركزي العراقي · التحقق' : 'CBI Law 78 + Forensics'}
-                  </div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(false)}
-                aria-label="Collapse Sidebar to Rail"
-                title={isAr ? 'تصغير إلى الشريط المدمج' : 'Collapse to rail'}
-                className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Grouped Navigation Menus */}
-            <div className="p-3 space-y-5 text-xs">
-              {/* Group 1: Verification & Forensics */}
-              <div className="space-y-1">
-                <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
-                  {isAr ? 'التحقق والفحص الجنائي' : 'Verification & Queue'}
+                  {!isSidebarCollapsed && (
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-zinc-900 dark:text-white tracking-tight truncate">
+                        {isAr ? 'فيري ترست' : 'VeriTrust KYC'}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98] truncate">
+                        {isAr ? 'البنك المركزي العراقي' : 'CBI Law 78 Console'}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {(
-                  [
-                    {
-                      id: 'dashboard' as ActiveSection,
-                      icon: LayoutGrid,
-                      labelEn: 'Dashboard',
-                      labelAr: 'لوحة التحكم',
-                    },
-                    {
-                      id: 'queue' as ActiveSection,
-                      icon: Users,
-                      labelEn: 'Applicant Dossiers',
-                      labelAr: 'ملفات المتقدمين',
-                    },
-                    {
-                      id: 'forensics' as ActiveSection,
-                      icon: ShieldCheck,
-                      labelEn: 'Anti-Forgery Lab',
-                      labelAr: 'فاحص كشف التزوير',
-                    },
-                    {
-                      id: 'vault' as ActiveSection,
-                      icon: FolderClosed,
-                      labelEn: 'Document Vault',
-                      labelAr: 'خزنة الوثائق',
-                    },
-                  ] as const
-                ).map((item) => {
-                  const Icon = item.icon;
-                  const active = activeSection === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setActiveSection(item.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors ${
-                        active
-                          ? 'bg-zinc-100 dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 font-medium'
-                          : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#141417] hover:text-zinc-900 dark:hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 truncate">
-                        <Icon className="w-4 h-4 shrink-0 opacity-80" />
-                        <span className="truncate">{isAr ? item.labelAr : item.labelEn}</span>
-                      </span>
-                      <ChevronIcon className="w-3.5 h-3.5 opacity-50 shrink-0" />
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Group 2: Competition & Architecture */}
-              <div className="space-y-1">
-                <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
-                  {isAr ? 'عرض المسابقة والنظام' : 'Competition Showcase'}
-                </div>
-
+                {/* Collapse / Expand Sidebar Toggle Button */}
                 <button
                   type="button"
-                  onClick={() => setActiveSection('challenge')}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors ${
-                    activeSection === 'challenge'
-                      ? 'bg-zinc-100 dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 font-medium'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#141417] hover:text-zinc-900 dark:hover:text-zinc-200'
-                  }`}
+                  onClick={() => setSidebarOpen((prev) => !prev)}
+                  aria-label={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                  title={
+                    isSidebarCollapsed
+                      ? isAr
+                        ? 'توسيع القائمة الجانبية'
+                        : 'Expand Sidebar'
+                      : isAr
+                        ? 'طي القائمة الجانبية'
+                        : 'Collapse Sidebar'
+                  }
+                  className="w-7 h-7 rounded-lg bg-zinc-200/70 dark:bg-white/[0.05] hover:bg-[#10b981] hover:text-white text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                 >
-                  <span className="flex items-center gap-2.5 truncate">
-                    <Layers className="w-4 h-4 shrink-0 text-emerald-500" />
-                    <span className="truncate">{t(lang, 'navChallenge')}</span>
-                  </span>
-                  <ChevronIcon className="w-3.5 h-3.5 opacity-50 shrink-0" />
+                  {isSidebarCollapsed ? (
+                    isAr ? (
+                      <ChevronLeft className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )
+                  ) : isAr ? (
+                    <ChevronRight className="w-4 h-4" />
+                  ) : (
+                    <ChevronLeft className="w-4 h-4" />
+                  )}
                 </button>
               </div>
 
-              {/* Group 3: Compliance & Governance */}
-              <div className="space-y-1">
-                <div className="px-2.5 py-1 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
-                  {isAr ? 'الامتثال والحوكمة' : 'Compliance Processor'}
-                </div>
-
-                {(
-                  [
-                    {
-                      id: 'automation' as ActiveSection,
-                      icon: Sliders,
-                      labelEn: 'Automation Rules',
-                      labelAr: 'قواعد الأتمتة',
-                    },
-                    {
-                      id: 'audit' as ActiveSection,
-                      icon: History,
-                      labelEn: 'Cryptographic Audit',
-                      labelAr: 'سجل التدقيق التشفيري',
-                    },
-                  ] as const
-                ).map((item) => {
-                  const Icon = item.icon;
-                  const active = activeSection === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setActiveSection(item.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors ${
-                        active
-                          ? 'bg-zinc-100 dark:bg-[#1c1c20] text-zinc-900 dark:text-zinc-100 font-medium'
-                          : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#141417] hover:text-zinc-900 dark:hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 truncate">
-                        <Icon className="w-4 h-4 shrink-0 opacity-80" />
-                        <span className="truncate">{isAr ? item.labelAr : item.labelEn}</span>
-                      </span>
-                      <ChevronIcon className="w-3.5 h-3.5 opacity-50 shrink-0" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom User Profile Card in Sidebar (Matches ausrobdev footer in Screenshots) */}
-          <div className="p-3 border-t border-zinc-200 dark:border-[#1f1f23]">
-            <button
-              type="button"
-              onClick={() => setActiveSection('audit')}
-              className="w-full flex items-center justify-between gap-2.5 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#141417] transition-colors text-start"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-mono text-xs font-semibold shrink-0">
-                  {isAr ? 'م.ا' : 'CO'}
-                </div>
-                <div className="truncate">
-                  <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                    {isAr ? 'مسؤول الامتثال' : 'Compliance Officer'}
-                  </div>
-                  <div className="text-[10px] text-zinc-500 truncate">
-                    {isAr ? 'وحدة التدقيق والرقابة المصرفية' : 'cbi-audit@rostro.iq'}
-                  </div>
-                </div>
-              </div>
-              <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-            </button>
-          </div>
-        </aside>
-      ) : (
-        /* =====================================================================
-           COLLAPSED ICON RAIL (STRICTLY THE APP'S 7 ACTUAL NAVIGATION SECTIONS)
-           ===================================================================== */
-        <aside
-          aria-label="Primary Sidebar Rail (Collapsed)"
-          className="w-16 shrink-0 border-e border-zinc-200 dark:border-[#1f1f23] bg-white dark:bg-[#0c0c0e] flex flex-col justify-between py-3 select-none transition-all duration-200 z-30"
-        >
-          {/* Top Section: Toggle Button & Navigation Items */}
-          <div className="flex flex-col items-center w-full px-2">
-            {/* Top Sidebar Expand Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              aria-label={isAr ? 'توسيع القائمة الجانبية' : 'Expand sidebar'}
-              title={isAr ? 'توسيع القائمة الجانبية' : 'Expand sidebar'}
-              className="w-10 h-10 mb-3 rounded-xl flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors group relative"
-            >
-              <PanelLeft className="w-5 h-5" />
-              <div className="absolute start-full ms-3 px-2.5 py-1.5 rounded-lg bg-zinc-900/95 dark:bg-[#141416] border border-zinc-700/80 text-zinc-100 text-xs font-medium whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                {isAr ? 'توسيع القائمة' : 'Expand sidebar'}
-              </div>
-            </button>
-
-            {/* Group 1: Verification & Queue */}
-            <div className="flex flex-col items-center gap-1.5 w-full">
-              {[
-                {
-                  id: 'dashboard' as ActiveSection,
-                  icon: LayoutGrid,
-                  labelEn: 'Dashboard',
-                  labelAr: 'لوحة التحكم',
-                },
-                {
-                  id: 'queue' as ActiveSection,
-                  icon: Users,
-                  labelEn: 'Applicant Dossiers',
-                  labelAr: 'ملفات المتقدمين',
-                },
-                {
-                  id: 'forensics' as ActiveSection,
-                  icon: ShieldCheck,
-                  labelEn: 'Anti-Forgery Lab',
-                  labelAr: 'فاحص كشف التزوير',
-                },
-                {
-                  id: 'vault' as ActiveSection,
-                  icon: FolderClosed,
-                  labelEn: 'Document Vault',
-                  labelAr: 'خزنة الوثائق',
-                },
-              ].map((item) => {
+              {(
+                [
+                  {
+                    id: 'dashboard' as ActiveSection,
+                    icon: LayoutGrid,
+                    labelEn: 'Dashboard',
+                    labelAr: 'لوحة التحكم',
+                  },
+                  {
+                    id: 'forensics' as ActiveSection,
+                    icon: FileText,
+                    labelEn: 'Documents Lab',
+                    labelAr: 'مختبر الوثائق',
+                  },
+                  {
+                    id: 'automation' as ActiveSection,
+                    icon: Sliders,
+                    labelEn: 'Rules & AML',
+                    labelAr: 'قواعد الأتمتة',
+                  },
+                  {
+                    id: 'vault' as ActiveSection,
+                    icon: FolderClosed,
+                    labelEn: 'Registry (44)',
+                    labelAr: 'خزنة الوثائق',
+                  },
+                  {
+                    id: 'queue' as ActiveSection,
+                    icon: Users,
+                    labelEn: 'Dossiers Queue',
+                    labelAr: 'ملفات المتقدمين',
+                  },
+                  {
+                    id: 'audit' as ActiveSection,
+                    icon: History,
+                    labelEn: 'CBI Ledger',
+                    labelAr: 'سجل التدقيق',
+                  },
+                  {
+                    id: 'challenge' as ActiveSection,
+                    icon: Layers,
+                    labelEn: 'Architecture',
+                    labelAr: 'هيكلة النظام',
+                  },
+                ] as const
+              ).map((item) => {
                 const Icon = item.icon;
                 const active = activeSection === item.id;
+                const label = isAr ? item.labelAr : item.labelEn;
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setActiveSection(item.id)}
-                    aria-label={isAr ? item.labelAr : item.labelEn}
-                    title={isAr ? item.labelAr : item.labelEn}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative ${
+                    title={label}
+                    aria-label={label}
+                    className={`w-full relative flex items-center ${
+                      isSidebarCollapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-3 py-1.5'
+                    } rounded-xl text-xs transition-all cursor-pointer ${
                       active
-                        ? 'bg-zinc-100 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-700/60 text-zinc-900 dark:text-zinc-100 shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/40 border border-transparent'
+                        ? 'text-zinc-900 dark:text-white font-semibold bg-white/80 dark:bg-white/[0.05]'
+                        : 'text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-zinc-200 font-medium'
                     }`}
                   >
-                    <Icon className="w-5 h-5 shrink-0" />
-
-                    {/* Active vertical emerald green indicator pill on outer edge */}
+                    {/* Active Emerald Green Left Edge Pill Indicator */}
                     {active && (
-                      <span className="w-[3.5px] h-5 rounded-full bg-[#22c55e] absolute -end-[1.5px] top-1/2 -translate-y-1/2 shadow-[0_0_8px_rgba(34,197,94,0.7)]" />
+                      <span
+                        className={`w-1.5 h-5 rounded-e-full bg-[#10b981] absolute ${
+                          isSidebarCollapsed ? '-start-2' : '-start-3.5'
+                        } top-1/2 -translate-y-1/2 shadow-[0_0_12px_rgba(16,185,129,0.9)]`}
+                      />
                     )}
-
-                    {/* Popout Tooltip */}
-                    <div className="absolute start-full ms-3 px-2.5 py-1.5 rounded-lg bg-zinc-900/95 dark:bg-[#141416] border border-zinc-700/80 text-zinc-100 text-xs font-medium whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                      {isAr ? item.labelAr : item.labelEn}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Divider */}
-            <div className="w-6 h-px bg-zinc-200 dark:bg-[#222226] my-2" />
-
-            {/* Group 2: Competition Showcase */}
-            <div className="flex flex-col items-center gap-1.5 w-full">
-              {(() => {
-                const active = activeSection === 'challenge';
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection('challenge')}
-                    aria-label={t(lang, 'navChallenge')}
-                    title={t(lang, 'navChallenge')}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative ${
-                      active
-                        ? 'bg-zinc-100 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-700/60 text-zinc-900 dark:text-zinc-100 shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/40 border border-transparent'
-                    }`}
-                  >
-                    <Layers
-                      className={`w-5 h-5 shrink-0 ${
-                        active
-                          ? 'text-emerald-500'
-                          : 'text-zinc-400 group-hover:text-emerald-400'
+                    <Icon
+                      className={`w-4 h-4 shrink-0 ${
+                        active ? 'text-[#10b981] dark:text-[#34d399]' : 'text-zinc-400 dark:text-[#8a8d98]'
                       }`}
                     />
-
-                    {active && (
-                      <span className="w-[3.5px] h-5 rounded-full bg-[#22c55e] absolute -end-[1.5px] top-1/2 -translate-y-1/2 shadow-[0_0_8px_rgba(34,197,94,0.7)]" />
-                    )}
-
-                    <div className="absolute start-full ms-3 px-2.5 py-1.5 rounded-lg bg-zinc-900/95 dark:bg-[#141416] border border-zinc-700/80 text-zinc-100 text-xs font-medium whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                      {t(lang, 'navChallenge')}
-                    </div>
-                  </button>
-                );
-              })()}
-            </div>
-
-            {/* Divider */}
-            <div className="w-6 h-px bg-zinc-200 dark:bg-[#222226] my-2" />
-
-            {/* Group 3: Compliance Processor */}
-            <div className="flex flex-col items-center gap-1.5 w-full">
-              {[
-                {
-                  id: 'automation' as ActiveSection,
-                  icon: Sliders,
-                  labelEn: 'Automation Rules',
-                  labelAr: 'قواعد الأتمتة',
-                },
-                {
-                  id: 'audit' as ActiveSection,
-                  icon: History,
-                  labelEn: 'Cryptographic Audit',
-                  labelAr: 'سجل التدقيق التشفيري',
-                },
-              ].map((item) => {
-                const Icon = item.icon;
-                const active = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveSection(item.id)}
-                    aria-label={isAr ? item.labelAr : item.labelEn}
-                    title={isAr ? item.labelAr : item.labelEn}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all group relative ${
-                      active
-                        ? 'bg-zinc-100 dark:bg-[#18181b] border border-zinc-300 dark:border-zinc-700/60 text-zinc-900 dark:text-zinc-100 shadow-xs'
-                        : 'text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/40 border border-transparent'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-
-                    {active && (
-                      <span className="w-[3.5px] h-5 rounded-full bg-[#22c55e] absolute -end-[1.5px] top-1/2 -translate-y-1/2 shadow-[0_0_8px_rgba(34,197,94,0.7)]" />
-                    )}
-
-                    <div className="absolute start-full ms-3 px-2.5 py-1.5 rounded-lg bg-zinc-900/95 dark:bg-[#141416] border border-zinc-700/80 text-zinc-100 text-xs font-medium whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                      {isAr ? item.labelAr : item.labelEn}
-                    </div>
+                    {!isSidebarCollapsed && <span className="truncate">{label}</span>}
                   </button>
                 );
               })}
             </div>
+
+            {/* Middle Divider + Secondary Controls (Matches Figma Darkmode / Settings / Logout section) */}
+            <div className="pt-2">
+              <div className="w-full h-px bg-zinc-200 dark:bg-[#2d3039] mb-2" />
+              <div className="space-y-0.5">
+                {/* 1. Darkmode Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setDarkMode((d) => !d)}
+                  aria-label="Toggle Dark or Light Theme"
+                  title={isAr ? 'الوضع الداكن' : 'Darkmode'}
+                  className={`w-full flex items-center ${
+                    isSidebarCollapsed ? 'justify-center px-0 py-1.5' : 'gap-2.5 px-3 py-1.5'
+                  } rounded-xl text-xs font-medium text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer`}
+                >
+                  <div className="w-6 h-3.5 rounded-full border border-zinc-400 dark:border-[#8a8d98] flex items-center px-0.5 shrink-0">
+                    <span
+                      className={`w-2 h-2 rounded-full transition-transform ${
+                        darkMode
+                          ? 'bg-[#10b981] translate-x-2 rtl:-translate-x-2'
+                          : 'bg-zinc-500'
+                      }`}
+                    />
+                  </div>
+                  {!isSidebarCollapsed && <span>{isAr ? 'الوضع الداكن' : 'Darkmode'}</span>}
+                </button>
+
+                {/* 2. Language / Settings Switcher */}
+                <button
+                  type="button"
+                  onClick={() => setLang((prev) => (prev === 'en' ? 'ar' : 'en'))}
+                  aria-label={lang === 'en' ? 'Switch interface language' : 'تغيير لغة الواجهة'}
+                  title={lang === 'en' ? 'Language: EN' : 'اللغة: العربية'}
+                  className={`w-full flex items-center ${
+                    isSidebarCollapsed ? 'justify-center px-0 py-1.5' : 'gap-2.5 px-3 py-1.5'
+                  } rounded-xl text-xs font-medium text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer`}
+                >
+                  <Settings className="w-4 h-4 shrink-0" />
+                  {!isSidebarCollapsed && (
+                    <span>{lang === 'en' ? 'Language: EN' : 'اللغة: العربية'}</span>
+                  )}
+                </button>
+
+                {/* 3. Reset Demo (Coral Red like Figma's Logout button) */}
+                <button
+                  type="button"
+                  onClick={handleResetDemo}
+                  title={isAr ? 'إعادة ضبط النظام' : 'Reset Demo'}
+                  aria-label={isAr ? 'إعادة ضبط النظام' : 'Reset Demo'}
+                  className={`w-full flex items-center ${
+                    isSidebarCollapsed ? 'justify-center px-0 py-1.5' : 'gap-2.5 px-3 py-1.5'
+                  } rounded-xl text-xs font-medium text-[#f06449] hover:bg-[#f06449]/10 transition-colors cursor-pointer`}
+                >
+                  <LogOut className="w-4 h-4 shrink-0" />
+                  {!isSidebarCollapsed && (
+                    <span>{isAr ? 'إعادة ضبط النظام' : 'Reset Demo'}</span>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Bottom Compliance Officer Profile Pill */}
-          <div className="flex flex-col items-center w-full px-2 pt-2 border-t border-zinc-200 dark:border-[#1f1f23]">
-            <button
-              type="button"
-              onClick={() => setActiveSection('audit')}
-              aria-label={isAr ? 'مسؤول الامتثال' : 'Compliance Officer'}
-              title={
-                isAr
-                  ? 'مسؤول الامتثال · وحدة التدقيق والرقابة المصرفية'
-                  : 'Compliance Officer · cbi-audit@rostro.iq'
+          {/* Bottom Card: Matches Figma "Upgrade to Pro" Card -> Opens Live Document Intake */}
+          <div
+            onClick={() => setIsUploadModalOpen(true)}
+            role="button"
+            tabIndex={0}
+            title={isAr ? 'فحص وثيقة جديدة' : 'Live KYC Intake'}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsUploadModalOpen(true);
               }
-              className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors group relative"
-            >
-              <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-mono text-xs font-semibold">
-                {isAr ? 'م.ا' : 'CO'}
-              </div>
-              <div className="absolute start-full ms-3 px-2.5 py-1.5 rounded-lg bg-zinc-900/95 dark:bg-[#141416] border border-zinc-700/80 text-zinc-100 text-xs font-medium whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                <div className="font-semibold text-zinc-100">
-                  {isAr ? 'مسؤول الامتثال' : 'Compliance Officer'}
+            }}
+            className={`shrink-0 rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] ${
+              isSidebarCollapsed ? 'p-2.5' : 'p-3.5'
+            } text-center flex flex-col items-center justify-center gap-1.5 border border-zinc-200/60 dark:border-white/[0.03] hover:border-[#10b981]/50 transition-all cursor-pointer group`}
+          >
+            <div className="relative w-10 h-10 rounded-full bg-[#162a22] border border-[#10b981]/40 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform shrink-0">
+              <span className="absolute -top-0.5 -start-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 text-zinc-950 flex items-center justify-center text-[8px] font-bold shadow-xs">
+                ✓
+              </span>
+              <Sparkles className="w-4 h-4 text-[#34d399]" />
+            </div>
+            {!isSidebarCollapsed && (
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-zinc-900 dark:text-white">
+                  {isAr ? 'فحص وثيقة جديدة' : 'Live KYC Intake'}
                 </div>
-                <div className="text-[10px] text-zinc-400">
-                  {isAr ? 'وحدة التدقيق والرقابة' : 'cbi-audit@rostro.iq'}
-                </div>
+                <p className="text-[10px] text-zinc-500 dark:text-[#8a8d98] leading-tight">
+                  {isAr
+                    ? 'افحص الهويات العراقية والكردستانية'
+                    : 'Scan Iraqi & KRG IDs on AI Engine'}
+                </p>
               </div>
-            </button>
+            )}
           </div>
         </aside>
-      )}
 
-      {/* =====================================================================
-          MAIN RIGHT WORKSPACE COLUMN
-          ===================================================================== */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        {/* TOP ADMIN BAR (Matches Screenshot 1 & 2 Top Header) */}
-        <header className="h-14 px-4 sm:px-6 border-b border-zinc-200 dark:border-[#1f1f23] bg-white dark:bg-[#09090b] flex items-center justify-between gap-4">
-          {/* Left: Sidebar Trigger (if collapsed) + Breadcrumb Trail */}
-          <div className="flex items-center gap-2 text-xs min-w-0">
-            {!sidebarOpen && (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open Sidebar"
-                className="md:hidden p-1.5 rounded-md text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-            )}
-            <span className="text-zinc-500 dark:text-zinc-400 hidden sm:inline truncate">
-              {isAr ? 'نظام روسترو الرقابي' : 'Rostro Admin Kit'}
-            </span>
-            <span className="text-zinc-400 dark:text-zinc-600 hidden sm:inline">/</span>
-            <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-              {isAr
-                ? sectionTitleMap[activeSection].ar
-                : sectionTitleMap[activeSection].en}
-            </span>
-          </div>
-
-          {/* Center: Command Search Input (Matches Screenshot 2 "Search pages or run commands ⌘K") */}
-          <div className="hidden lg:flex items-center w-80">
-            <div className="relative w-full">
-              <Search className="w-3.5 h-3.5 text-zinc-400 absolute top-2.5 start-3 pointer-events-none" />
+        {/* =================================================================
+            COLUMN 2: CENTER MAIN WORKSPACE (FITS 100% IN SINGLE VIEWPORT)
+            ================================================================= */}
+        <main className="flex-1 min-w-0 h-full min-h-0 flex flex-col gap-2.5 overflow-hidden">
+          {/* Top Search Bar + 2 Notification/Action Badge Buttons (Exact match to Figma top row) */}
+          <div className="shrink-0 flex items-center gap-2.5">
+            {/* Wide Rounded Search Input */}
+            <div className="flex-1 h-10 rounded-[14px] bg-zinc-100/90 dark:bg-[#1f2128] px-3.5 flex items-center gap-2.5 border border-zinc-200/60 dark:border-white/[0.03] focus-within:border-[#10b981]/60 transition-colors">
+              <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-300 shrink-0" />
               <input
                 type="search"
+                aria-label={t(lang, 'searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  if (activeSection !== 'dashboard' && activeSection !== 'queue') {
-                    setActiveSection('queue');
-                  }
                 }}
                 placeholder={
                   isAr
-                    ? 'ابحث عن متقدم أو رقم وثيقة...'
-                    : 'Search dossiers or run commands...'
+                    ? 'اضغط هنا للبحث عن متقدم، رقم وثيقة، أو اسم كردي/عربي...'
+                    : 'Tap here to search dossiers, MRZ, or Kurdish/Arabic names...'
                 }
-                className="w-full ps-8 pe-12 py-1.5 text-xs rounded-full border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113] text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-700"
+                className="w-full bg-transparent text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-[#8a8d98] focus:outline-none"
               />
-              <span className="absolute top-1.5 end-2.5 px-1.5 py-0.5 text-[10px] font-mono rounded bg-zinc-200/70 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 pointer-events-none">
-                {isAr ? 'بحث' : '⌘K'}
-              </span>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-[11px] text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-white/5"
+                >
+                  {isAr ? 'مسح' : 'Clear'}
+                </button>
+              )}
             </div>
-          </div>
 
-          {/* Right: Language Toggle, Notification Bell, Dark/Light & Theme Preset Switcher (Supabase / Default) */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Single-Script Language Toggle */}
+            {/* Square Action Button 1: Pending Queue / Auto-Batch Evaluator with Emerald Badge */}
             <button
               type="button"
-              onClick={() => setLang((prev) => (prev === 'en' ? 'ar' : 'en'))}
-              aria-label={lang === 'en' ? 'Switch interface language' : 'تغيير لغة الواجهة'}
-              title={lang === 'en' ? 'Switch interface language' : 'تغيير لغة الواجهة'}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-[#141417] border border-zinc-200 dark:border-[#222225] rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+              onClick={handleRunAutomatedBatch}
+              title={t(lang, 'runBatchBtn')}
+              aria-label={t(lang, 'runBatchBtn')}
+              className="w-10 h-10 rounded-[14px] bg-zinc-100/90 dark:bg-[#1f2128] hover:bg-zinc-200 dark:hover:bg-[#282b34] border border-zinc-200/60 dark:border-white/[0.03] flex items-center justify-center relative shrink-0 transition-colors cursor-pointer"
             >
-              <Languages className="w-3.5 h-3.5 text-emerald-500" />
-              <span>{lang === 'en' ? 'Language: EN' : 'اللغة: العربية'}</span>
+              <Mail className="w-4 h-4 text-zinc-700 dark:text-zinc-200" />
+              <span className="absolute top-1.5 end-1.5 w-3.5 h-3.5 rounded-full bg-[#10b981] text-white text-[9px] font-mono font-bold flex items-center justify-center shadow-xs">
+                {kpi.pending}
+              </span>
             </button>
 
-            {/* Flagged Notifications Counter (Matches Bell with Red Badge in Screenshots) */}
+            {/* Square Action Button 2: Flagged Alerts Bell with Emerald Badge */}
             <button
               type="button"
               onClick={() => {
                 setStatusFilter('flagged');
                 setActiveSection('queue');
               }}
+              title={isAr ? 'عرض التنبيهات المعلقة' : 'View Flagged Dossiers'}
               aria-label="View Flagged Dossiers"
-              className="relative p-2 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-100 dark:bg-[#141417] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+              className="w-10 h-10 rounded-[14px] bg-zinc-100/90 dark:bg-[#1f2128] hover:bg-zinc-200 dark:hover:bg-[#282b34] border border-zinc-200/60 dark:border-white/[0.03] flex items-center justify-center relative shrink-0 transition-colors cursor-pointer"
             >
-              <Bell className="w-3.5 h-3.5" />
-              {kpi.flagged > 0 && (
-                <span className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-[#ef4444] text-white text-[9px] font-mono font-bold flex items-center justify-center">
-                  {kpi.flagged}
-                </span>
-              )}
-            </button>
-
-            {/* Dark / Light Mode Button */}
-            <button
-              type="button"
-              onClick={() => setDarkMode((d) => !d)}
-              aria-label="Toggle Dark or Light Theme"
-              className="p-2 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-100 dark:bg-[#141417] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-            >
-              {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              <Bell className="w-4 h-4 text-zinc-700 dark:text-zinc-200" />
+              <span className="absolute top-1.5 end-1.5 w-3.5 h-3.5 rounded-full bg-[#059669] text-white text-[9px] font-mono font-bold flex items-center justify-center shadow-xs">
+                {kpi.flagged}
+              </span>
             </button>
           </div>
-        </header>
 
-        {/* Mobile Quick Navigation Bar */}
-        <div className="flex md:hidden items-center gap-1.5 px-4 py-2 border-b border-zinc-200 dark:border-[#1f1f23] bg-white dark:bg-[#0c0c0e] overflow-x-auto">
-          {(
-            ['dashboard', 'queue', 'challenge', 'forensics', 'vault', 'automation', 'audit'] as ActiveSection[]
-          ).map((sec) => (
-            <button
-              key={sec}
-              type="button"
-              onClick={() => setActiveSection(sec)}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap shrink-0 ${
-                activeSection === sec
-                  ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950'
-                  : 'text-zinc-500 dark:text-zinc-400'
-              }`}
-            >
-              {isAr ? sectionTitleMap[sec].ar : sectionTitleMap[sec].en}
-            </button>
-          ))}
-        </div>
-
-        {/* MAIN CONTENT AREA */}
-        <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-8 py-6 space-y-6">
           {/* Live Feedback Toast Banner after Batch Run or Upload */}
           {batchBannerMessage && (
             <div
               role="status"
-              className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-emerald-700 dark:text-emerald-300"
+              className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 rounded-[14px] border border-[#10b981]/40 bg-[#10b981]/15 text-xs text-zinc-900 dark:text-emerald-200"
             >
-              <div className="flex items-center gap-2 font-medium">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>{batchBannerMessage}</span>
+              <div className="flex items-center gap-2 font-medium truncate">
+                <CheckCircle2 className="w-4 h-4 text-[#34d399] shrink-0" />
+                <span className="truncate">{batchBannerMessage}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setBatchBannerMessage(null)}
-                className="text-xs font-semibold underline hover:no-underline whitespace-nowrap shrink-0"
+                className="text-xs font-semibold underline hover:no-underline whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {isAr ? 'إغلاق' : 'Dismiss'}
               </button>
             </div>
           )}
 
-          {/* =================================================================
-              VIEW 0: OVERVIEW DASHBOARD (EXACT MATCH TO SCREENSHOT 1)
-              ================================================================= */}
+          {/* ===============================================================
+              VIEW 0: FIGMA FINANCE DASHBOARD OVERVIEW (LOCKED 1-PAGE FIT)
+              =============================================================== */}
           {activeSection === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Top Welcome Header + Export & Primary CTA Buttons */}
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {isAr
-                      ? 'مرحباً بعودتك، مسؤول الامتثال!'
-                      : 'Welcome Back, Compliance Officer!'}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-                    {isAr ? (
-                      <>
-                        لديك اليوم{' '}
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                          {kpi.pending} ملفات قيد الفحص
-                        </span>{' '}
-                        و{' '}
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                          {kpi.flagged} تنبيهات تزوير أو نقص
-                        </span>{' '}
-                        بانتظار القرار
-                      </>
-                    ) : (
-                      <>
-                        Today you have{' '}
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                          {kpi.pending} dossiers
-                        </span>{' '}
-                        to fulfill,{' '}
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                          {kpi.flagged} flagged reviews
-                        </span>{' '}
-                        pending
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setIsPartnerSdkOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>
-                      {isAr
-                        ? 'تجربة الكاميرا داخل تطبيقات الهواتف (SDK)'
-                        : 'Try In-App Camera SDK (Laptop Webcam)'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportCsv}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#141417] border border-zinc-200 dark:border-[#222225] hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'exportCsvBtn')}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg transition-colors ${primaryBtnClass}`}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'ctaUpload')}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 4-Column Divided KPI Strip (Matches Screenshot 1 Top Card Row) */}
+            <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
+              {/* ROW 1: Two Multi-Tone Emerald & Deep Forest-Green Gradient Hero KPI Cards with Circular Donut Rings */}
               <section
                 aria-label="Compliance Key Performance Indicators"
-                className="rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-[#222225]"
+                className="shrink-0 grid grid-cols-2 gap-3"
               >
-                {/* KPI 1 */}
-                <div className="p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'kpiTotal')}</span>
+                {/* Left Gradient Card: Vibrant Emerald to Forest Green (#10b981 -> #059669 -> #065f46) */}
+                <div
+                  onClick={() => {
+                    setStatusFilter('approved');
+                  }}
+                  className="rounded-[18px] bg-gradient-to-br from-[#10b981] via-[#059669] to-[#065f46] py-3 px-4 text-white shadow-lg shadow-[#059669]/20 flex items-center justify-between gap-3 cursor-pointer hover:brightness-105 transition-all"
+                >
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="text-[11px] font-medium text-white/85 truncate">
+                      {isAr ? 'إجمالي الملفات والوثائق المعتمدة' : 'Total Verified Dossiers'}
+                    </div>
+                    <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums tracking-tight">
+                      {kpi.approved}/{kpi.total}{' '}
+                      <span className="text-xs font-normal text-white/80">
+                        ({kpi.totalDocs} {isAr ? 'وثيقة' : 'Docs'})
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-white/75 flex items-center gap-1.5 truncate">
+                      <span>
+                        {t(lang, 'kpiTotal')}: {kpi.total}
+                      </span>
+                      <span>•</span>
+                      <span>{isAr ? 'قانون البنك المركزي 78' : 'CBI Law 78 Ready'}</span>
+                    </div>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-semibold font-mono tabular-nums tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {kpi.total}
-                  </div>
-                  <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                    <span className="text-[#10b981] font-mono">
-                      {isAr ? `+18.4% (${kpi.totalDocs} وثيقة)` : `+18.4% (${kpi.totalDocs} docs)`}
+
+                  {/* Right Circular Progress Ring (+70% style) */}
+                  <div className="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                    <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke="rgba(255,255,255,0.22)"
+                        strokeWidth="12"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke="#a7f3d0"
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        strokeDasharray={`${Math.round((kpi.approvalRate / 100) * 238)} 238`}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold font-mono tabular-nums text-white">
+                      +{kpi.approvalRate}%
                     </span>
-                    <span>•</span>
-                    <span>{isAr ? 'مقارنة بالدفعة السابقة' : 'vs Last Cycle'}</span>
                   </div>
                 </div>
 
-                {/* KPI 2 */}
-                <div className="p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'kpiApproved')}</span>
+                {/* Right Gradient Card: Darker Rich Jade-Green to Deep Pine (#0d9488 -> #047857 -> #064e3b) */}
+                <div
+                  onClick={() => {
+                    setStatusFilter('flagged');
+                  }}
+                  className="rounded-[18px] bg-gradient-to-br from-[#0d9488] via-[#047857] to-[#064e3b] py-3 px-4 text-white shadow-lg shadow-[#047857]/20 flex items-center justify-between gap-3 cursor-pointer hover:brightness-105 transition-all"
+                >
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="text-[11px] font-medium text-white/85 truncate">
+                      {isAr ? 'متوسط الأصالة وفحص التزوير' : 'Authenticity & OCR Confidence'}
+                    </div>
+                    <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums tracking-tight">
+                      {kpi.avgOcr}%
+                    </div>
+                    <div className="text-[10px] text-white/75 flex items-center gap-1.5 truncate">
+                      <span>
+                        {kpi.actionRequired} {t(lang, 'kpiActionRequired')}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {kpi.rejected} {t(lang, 'kpiRejected')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-semibold font-mono tabular-nums tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {kpi.approved}
-                  </div>
-                  <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                    <span className="text-[#10b981] font-mono">
-                      +{kpi.approvalRate}% ({t(lang, 'kpiApprovalRate')})
-                    </span>
-                    <span>•</span>
-                    <span>{isAr ? 'وثائق أصلية مؤكدة' : 'Authentic Verified'}</span>
-                  </div>
-                </div>
 
-                {/* KPI 3 */}
-                <div className="p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'kpiActionRequired')}</span>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-semibold font-mono tabular-nums tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {kpi.actionRequired}
-                  </div>
-                  <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                    <span className="text-[#10b981] font-mono">
-                      {kpi.pending} {t(lang, 'filterPending')}
+                  {/* Right Circular Progress Ring (+80% style) */}
+                  <div className="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                    <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke="rgba(255,255,255,0.22)"
+                        strokeWidth="12"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke="#6ee7b7"
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        strokeDasharray={`${Math.round((kpi.avgOcr / 100) * 238)} 238`}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold font-mono tabular-nums text-white">
+                      +{kpi.avgOcr}%
                     </span>
-                    <span>•</span>
-                    <span>
-                      {kpi.flagged} {t(lang, 'filterFlagged')}
-                    </span>
-                  </div>
-                </div>
-
-                {/* KPI 4 */}
-                <div className="p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'kpiRejected')}</span>
-                  </div>
-                  <div className="text-2xl sm:text-3xl font-semibold font-mono tabular-nums tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {kpi.rejected}
-                  </div>
-                  <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                    <span className="text-[#ef4444] font-mono">
-                      -13.7% ({t(lang, 'kpiAvgOcr')} {kpi.avgOcr}%)
-                    </span>
-                    <span>•</span>
-                    <span>{isAr ? 'كشف التزوير والرفض' : 'ELA / MRZ Blocked'}</span>
                   </div>
                 </div>
               </section>
 
-              {/* Middle Analytics Grid: 8-Col Area Telemetry Chart + 4-Col Status & Category Donut (Exact Match to Screenshot 1) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                {/* Left 8 Columns: Smooth Dual-Curve Emerald Area Chart */}
-                <div className="lg:col-span-8 rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] p-6 flex flex-col justify-between">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="text-2xl font-semibold font-mono tabular-nums text-zinc-900 dark:text-zinc-100">
-                        {kpi.avgOcr}.0% {isAr ? 'متوسط الثقة' : 'Mean Authenticity'}
-                      </div>
-                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        {isAr
-                          ? 'معدل فحص الوثائق العراقية وكشف التزوير (آخر 6 أشهر)'
-                          : 'Total Verification & Anti-Forgery Throughput (Last 6 Months)'}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                        <span>{isAr ? 'الوثائق الأصلية' : 'Authentic Pass'}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#065f46]" />
-                        <span>{isAr ? 'الدفعة السابقة' : 'Prev Cycle'}</span>
-                      </span>
-                    </div>
+              {/* ROW 2: Two Middle Analytics Cards (Left Spline Curve Card + Right Target Donut Card) */}
+              <div className="shrink-0 grid grid-cols-2 gap-3">
+                {/* Left Card: Smooth Spline Curve with Highlighted Node & Callout Pill */}
+                <div className="rounded-[18px] bg-zinc-100/90 dark:bg-[#1f2128] py-2.5 px-3.5 border border-zinc-200/60 dark:border-white/[0.03] flex flex-col justify-between">
+                  <div className="text-center">
+                    <h3 className="text-xs font-bold text-zinc-900 dark:text-white">
+                      {isAr
+                        ? 'الأربعاء، ٢٨ تشرين الأول ٢٠٢٦ · مسار التحقق'
+                        : 'Wednesday, 28 October 2026'}
+                    </h3>
+                    <p className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
+                      {isAr ? activeSplinePoint.subAr : activeSplinePoint.subEn}
+                    </p>
                   </div>
 
-                  {/* Clean Financial/Telemetry Area Chart SVG */}
-                  <div className="mt-6 pt-2">
+                  {/* Spline SVG */}
+                  <div>
                     <svg
-                      viewBox="0 0 720 220"
-                      className="w-full h-52 overflow-visible"
+                      viewBox="0 0 450 205"
+                      className="w-full h-28 overflow-visible"
                       role="img"
-                      aria-label="Verification throughput chart over 6 months"
+                      aria-label="Weekly KYC verification spline throughput"
                     >
-                      <defs>
-                        <linearGradient id="supabaseEmeraldGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                        </linearGradient>
-                        <linearGradient id="supabaseDeepGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#059669" stopOpacity="0.18" />
-                          <stop offset="100%" stopColor="#059669" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Horizontal Reference Grid Lines */}
+                      {/* Y-Axis Labels (350, 300, 250, 200 matching Figma) */}
                       {[
-                        { y: 20, label: '100%' },
-                        { y: 65, label: '75%' },
-                        { y: 110, label: '50%' },
-                        { y: 155, label: '25%' },
-                        { y: 195, label: '0%' },
-                      ].map((row) => (
-                        <g key={row.y}>
-                          <text
-                            x="0"
-                            y={row.y + 3}
-                            fill="#71717a"
-                            fontSize="10"
-                            fontFamily="JetBrains Mono, monospace"
-                          >
-                            {row.label}
-                          </text>
-                          <line
-                            x1="42"
-                            y1={row.y}
-                            x2="705"
-                            y2={row.y}
-                            stroke="#222225"
-                            strokeWidth="1"
-                          />
-                        </g>
-                      ))}
-
-                      {/* Secondary Curve Fill & Stroke */}
-                      <path
-                        d="M 42 125 C 110 105, 140 100, 175 105 C 230 112, 260 118, 308 112 C 365 104, 395 88, 440 92 C 495 97, 525 108, 572 100 C 625 90, 665 82, 705 74 L 705 195 L 42 195 Z"
-                        fill="url(#supabaseDeepGrad)"
-                      />
-                      <path
-                        d="M 42 125 C 110 105, 140 100, 175 105 C 230 112, 260 118, 308 112 C 365 104, 395 88, 440 92 C 495 97, 525 108, 572 100 C 625 90, 665 82, 705 74"
-                        fill="none"
-                        stroke="#059669"
-                        strokeWidth="2"
-                      />
-
-                      {/* Primary Curve Fill & Stroke */}
-                      <path
-                        d="M 42 115 C 100 122, 135 128, 175 118 C 230 102, 260 65, 308 68 C 365 72, 395 105, 440 96 C 495 85, 525 42, 572 44 C 625 46, 665 78, 705 90 L 705 195 L 42 195 Z"
-                        fill="url(#supabaseEmeraldGrad)"
-                      />
-                      <path
-                        d="M 42 115 C 100 122, 135 128, 175 118 C 230 102, 260 65, 308 68 C 365 72, 395 105, 440 96 C 495 85, 525 42, 572 44 C 625 46, 665 78, 705 90"
-                        fill="none"
-                        stroke="#10b981"
-                        strokeWidth="2.2"
-                      />
-
-                      {/* Month Labels */}
-                      {[
-                        { x: 48, labelEn: 'Jan', labelAr: 'كانون ٢' },
-                        { x: 175, labelEn: 'Feb', labelAr: 'شباط' },
-                        { x: 308, labelEn: 'Mar', labelAr: 'آذار' },
-                        { x: 440, labelEn: 'Apr', labelAr: 'نيسان' },
-                        { x: 572, labelEn: 'May', labelAr: 'أيار' },
-                        { x: 690, labelEn: 'Jun', labelAr: 'حزيران' },
-                      ].map((m) => (
+                        { y: 40, label: '350' },
+                        { y: 82, label: '300' },
+                        { y: 125, label: '250' },
+                        { y: 168, label: '200' },
+                      ].map((tick) => (
                         <text
-                          key={m.labelEn}
-                          x={m.x}
-                          y="214"
-                          fill="#71717a"
-                          fontSize="10"
+                          key={tick.label}
+                          x="6"
+                          y={tick.y}
+                          fill="#7e8290"
+                          fontSize="11"
                           fontFamily="JetBrains Mono, monospace"
                         >
-                          {isAr ? m.labelAr : m.labelEn}
+                          {tick.label}
                         </text>
                       ))}
+
+                      {/* Smooth Cubic-Bezier Spline Path */}
+                      <path
+                        d="M 52 165 C 95 90, 145 80, 195 97 C 235 111, 265 130, 292 127 C 335 123, 378 95, 412 50"
+                        fill="none"
+                        stroke="#8a8d98"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+
+                      {/* Floating Emerald Callout Pill Above Active Node */}
+                      <g
+                        transform={`translate(${activeSplinePoint.x}, ${activeSplinePoint.y - 40})`}
+                      >
+                        <rect
+                          x="-36"
+                          y="-14"
+                          width="72"
+                          height="24"
+                          rx="10"
+                          fill="#10b981"
+                        />
+                        <text
+                          x="0"
+                          y="2"
+                          textAnchor="middle"
+                          fill="#ffffff"
+                          fontSize="11"
+                          fontWeight="700"
+                          fontFamily="JetBrains Mono, monospace"
+                        >
+                          {activeSplinePoint.value}
+                        </text>
+                      </g>
+
+                      {/* Glowing Active Node Circle on the Curve */}
+                      <circle
+                        cx={activeSplinePoint.x}
+                        cy={activeSplinePoint.y - 5}
+                        r="8"
+                        fill="#10b981"
+                        fillOpacity="0.35"
+                      />
+                      <circle
+                        cx={activeSplinePoint.x}
+                        cy={activeSplinePoint.y - 5}
+                        r="5"
+                        fill="#ffffff"
+                        stroke="#059669"
+                        strokeWidth="3"
+                      />
+
+                      {/* Clickable Day Labels on X-Axis (Mon Tue Wed Thu Fri Sat Sun) */}
+                      {splineWeekData.map((d, idx) => {
+                        const isSelected = idx === activeSplineDayIdx;
+                        return (
+                          <g
+                            key={d.dayEn}
+                            onClick={() => setActiveSplineDayIdx(idx)}
+                            className="cursor-pointer"
+                          >
+                            <text
+                              x={d.x}
+                              y="196"
+                              textAnchor="middle"
+                              fill={isSelected ? '#10b981' : '#7e8290'}
+                              fontWeight={isSelected ? '700' : '500'}
+                              fontSize="11"
+                            >
+                              {isAr ? d.dayAr : d.dayEn}
+                            </text>
+                          </g>
+                        );
+                      })}
                     </svg>
                   </div>
                 </div>
 
-                {/* Right 4 Columns: Stacked Verification Status Bar + Documents by Category Donut */}
-                <div className="lg:col-span-4 flex flex-col gap-5">
-                  {/* Top Right Card: Verification Status (Matches "Order Status" in Screenshot 1) */}
-                  <div className="rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#141417] flex items-center justify-center text-zinc-400">
-                          <ShieldCheck className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                            {isAr ? 'حالة مسار التحقق' : 'Verification Status'}
-                          </h3>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {kpi.total} {isAr ? 'ملفات في الدفعة الحالية' : 'Dossiers This Cycle'}
-                          </p>
-                        </div>
-                      </div>
-                      <MoreHorizontal className="w-4 h-4 text-zinc-500" />
-                    </div>
+                {/* Right Card: "Your Finance Target" -> "CBI Compliance Target" Donut Card */}
+                <div className="rounded-[18px] bg-zinc-100/90 dark:bg-[#1f2128] py-2.5 px-3.5 border border-zinc-200/60 dark:border-white/[0.03] flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="w-5" />
+                    <h3 className="text-xs font-bold text-zinc-900 dark:text-white text-center">
+                      {isAr ? 'مؤشر امتثال البنك المركزي' : 'CBI Compliance Target'}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection('automation')}
+                      aria-label="Configure Automation Rules"
+                      className="p-0.5 rounded-lg text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </div>
 
-                    {/* Segmented Emerald Bar */}
-                    <div className="h-3 w-full rounded-full bg-zinc-100 dark:bg-[#1c1c20] overflow-hidden flex">
-                      <div
-                        style={{ width: `${approvedPct}%` }}
-                        className="bg-[#10b981] h-full transition-all"
+                  {/* Central Gradient Donut Chart */}
+                  <div className="relative w-20 h-20 mx-auto my-1 flex items-center justify-center">
+                    <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                      <defs>
+                        <linearGradient id="figmaTargetDonutGrad" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0%" stopColor="#059669" />
+                          <stop offset="100%" stopColor="#34d399" />
+                        </linearGradient>
+                      </defs>
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="46"
+                        fill="transparent"
+                        stroke="rgba(161,161,170,0.25)"
+                        strokeWidth="13"
                       />
-                      <div
-                        style={{ width: `${reviewPct}%` }}
-                        className="bg-[#059669] h-full transition-all"
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="46"
+                        fill="transparent"
+                        stroke="url(#figmaTargetDonutGrad)"
+                        strokeWidth="13"
+                        strokeLinecap="round"
+                        strokeDasharray={`${Math.max(195, Math.round((kpi.avgOcr / 100) * 289))} 289`}
                       />
-                      <div
-                        style={{ width: `${rejectedPct}%` }}
-                        className="bg-[#064e3b] h-full transition-all"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs font-mono tabular-nums text-zinc-400">
-                      <span>{approvedPct}%</span>
-                      <span>{reviewPct}%</span>
-                      <span>{rejectedPct}%</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs text-zinc-400 pt-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                        <span>{t(lang, 'filterApproved')}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#059669]" />
-                        <span>{t(lang, 'filterFlagged')}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#064e3b]" />
-                        <span>{t(lang, 'filterRejected')}</span>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-sm font-bold font-mono tabular-nums text-zinc-900 dark:text-white">
+                        {kpi.avgOcr}%
                       </span>
                     </div>
                   </div>
 
-                  {/* Bottom Right Card: Documents by Category (Matches "Sales by Category" in Screenshot 1) */}
-                  <div className="rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] p-5 space-y-4 flex-1 flex flex-col justify-between">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#141417] flex items-center justify-center text-zinc-400">
-                          <TrendingUp className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                            {isAr ? 'توزيع الوثائق العراقية' : 'Documents by Category'}
-                          </h3>
-                          <p className="text-xs text-zinc-500">
-                            <span className="text-[#10b981] font-mono">+12.4%</span>{' '}
-                            {isAr ? 'مقارنة بالشهر الماضي' : 'vs last cycle'}
-                          </p>
-                        </div>
+                  {/* Bottom 2-Column Legend (Result Achieved vs In The Process) */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-semibold text-zinc-900 dark:text-white">
+                        <span className="w-2 h-2 rounded-full bg-[#10b981] shrink-0" />
+                        <span className="truncate">
+                          {isAr ? 'تم التحقق والاعتماد' : 'Result Achieved'}
+                        </span>
                       </div>
-                      <MoreHorizontal className="w-4 h-4 text-zinc-500" />
+                      <p className="text-[10px] text-zinc-500 dark:text-[#8a8d98] ps-3.5 leading-tight truncate">
+                        {isAr
+                          ? `${kpi.approved} ملفات (${approvedPct}%)`
+                          : `Smoothly (${kpi.approved} verified)`}
+                      </p>
                     </div>
 
-                    <div className="flex items-center justify-between gap-4 pt-1">
-                      {/* Donut Chart SVG */}
-                      <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
-                        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="38"
-                            fill="transparent"
-                            stroke="#1f1f23"
-                            strokeWidth="12"
-                          />
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="38"
-                            fill="transparent"
-                            stroke="#10b981"
-                            strokeWidth="12"
-                            strokeDasharray="135 240"
-                            strokeDashoffset="0"
-                          />
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="38"
-                            fill="transparent"
-                            stroke="#059669"
-                            strokeWidth="12"
-                            strokeDasharray="60 240"
-                            strokeDashoffset="-138"
-                          />
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="38"
-                            fill="transparent"
-                            stroke="#064e3b"
-                            strokeWidth="12"
-                            strokeDasharray="40 240"
-                            strokeDashoffset="-200"
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                          <span className="text-sm font-bold font-mono tabular-nums text-zinc-900 dark:text-zinc-100">
-                            {kpi.totalDocs}
-                          </span>
-                          <span className="text-[10px] text-zinc-500">
-                            {isAr ? 'وثيقة' : 'Total'}
-                          </span>
-                        </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-semibold text-zinc-900 dark:text-white">
+                        <span className="w-2 h-2 rounded-full bg-zinc-900 dark:bg-white shrink-0" />
+                        <span className="truncate">
+                          {isAr ? 'قيد الفحص والمراجعة' : 'In The Process'}
+                        </span>
                       </div>
-
-                      {/* Category Legend List */}
-                      <div className="flex-1 space-y-2 text-xs">
-                        {categoryBreakdown.map((cat) => (
-                          <div
-                            key={cat.labelEn}
-                            className="flex items-center justify-between gap-2"
-                          >
-                            <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300 truncate">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: cat.color }}
-                              />
-                              <span className="truncate">
-                                {isAr ? cat.labelAr : cat.labelEn}
-                              </span>
-                            </span>
-                            <span className="font-mono tabular-nums text-zinc-900 dark:text-zinc-100 shrink-0">
-                              {cat.count}{' '}
-                              <span className="text-zinc-500 text-[11px]">{cat.pct}%</span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-[10px] text-zinc-500 dark:text-[#8a8d98] ps-3.5 leading-tight truncate">
+                        {isAr
+                          ? `${kpi.actionRequired} بانتظار القرار (${reviewPct}%)`
+                          : `Waiting (${kpi.actionRequired} active)`}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Bottom Section: Full Interactive Dossiers Table + Recent Audit Activity (Combines Screenshot 1 Bottom & Screenshot 2 Catalog) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                <div className="lg:col-span-8 rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] p-5 space-y-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#141417] flex items-center justify-center text-zinc-400">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                        {isAr ? 'سجل ملفات التحقق والوثائق' : 'Verification Dossiers'}
-                      </h2>
-                      <span className="px-2 py-0.5 text-[11px] font-mono rounded bg-zinc-100 dark:bg-[#1f1f23] text-zinc-600 dark:text-zinc-300">
-                        {filteredApplicants.length}
-                      </span>
-                    </div>
+              {/* ROW 3: Bottom Table Card ("Projects & KYC Dossiers" — flex-1 min-h-0 so bottom is never cut off!) */}
+              <div className="flex-1 min-h-0 rounded-[18px] bg-zinc-100/90 dark:bg-[#1f2128] p-3 border border-zinc-200/60 dark:border-white/[0.03] flex flex-col gap-2 overflow-hidden">
+                <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
+                      {isAr ? 'سجل ملفات التحقق والامتثال' : 'Projects & KYC Dossiers'}
+                    </h2>
+                    <span className="px-2 py-0.5 text-[10px] font-mono rounded-full bg-[#10b981]/20 text-[#34d399] border border-[#10b981]/30">
+                      {filteredApplicants.length}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#14151b] border border-zinc-200 dark:border-white/10 hover:border-[#10b981] rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>{t(lang, 'exportCsvBtn')}</span>
+                    </button>
 
                     <button
                       type="button"
-                      onClick={() => setActiveSection('queue')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141417] border border-zinc-200 dark:border-[#222225] hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                      onClick={() => setIsUploadModalOpen(true)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors cursor-pointer ${primaryBtnClass}`}
                     >
-                      <Filter className="w-3.5 h-3.5" />
-                      <span>{isAr ? 'عرض الجدول الكامل' : 'Full Catalog View'}</span>
+                      <Plus className="w-3 h-3" />
+                      <span>{t(lang, 'ctaUpload')}</span>
                     </button>
                   </div>
-
-                  {renderDossiersCatalogTable()}
                 </div>
 
-                {/* Right 4 Columns: Recent Activity Feed (Matches "Recent Activity" in Screenshot 1) */}
-                <div className="lg:col-span-4 rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] p-5 space-y-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#141417] flex items-center justify-center text-zinc-400">
-                        <Bell className="w-4 h-4" />
-                      </div>
-                      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                        {isAr ? 'أحدث حركات التدقيق' : 'Recent Activity'}
-                      </h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection('audit')}
-                      className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    >
-                      {isAr ? 'الكل' : 'View all'}
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-zinc-200 dark:divide-[#1f1f23]">
-                    {allAuditEvents.slice(0, 6).map(({ evt, applicant }) => (
-                      <div
-                        key={evt.id}
-                        onClick={() => setSelectedApplicantId(applicant.id)}
-                        className="py-3 first:pt-1 last:pb-1 flex items-start justify-between gap-3 cursor-pointer hover:opacity-90"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                            {isAr ? evt.actionAr : evt.actionEn}
-                          </div>
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
-                            {isAr ? applicant.fullNameAr : applicant.fullNameEn} ·{' '}
-                            <span className="font-mono">
-                              {formatReferenceCode(applicant.referenceCode, lang)}
-                            </span>
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-mono tabular-nums text-zinc-500 shrink-0">
-                          {formatTimestamp(evt.timestamp.replace('2026-10-17 ', ''), lang)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {renderDossiersCatalogTable(undefined, true)}
               </div>
             </div>
           )}
 
-          {/* =================================================================
-              VIEW 1: FULL APPLICANT DOSSIERS CATALOG (EXACT MATCH TO SCREENSHOT 2)
-              ================================================================= */}
-          {activeSection === 'queue' && (
-            <section className="space-y-5" aria-label={t(lang, 'navQueue')}>
-              {/* Page Title + Subtitle + Primary "+ Verify Document" Button */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-                    {isAr ? 'سجل ملفات المتقدمين والوثائق' : 'Applicant Dossiers'}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    {isAr
-                      ? 'تصفح وفلتر وافحص ملفات التحقق من الهوية العراقية وتقارير كشف التزوير.'
-                      : 'Browse, filter, and adjudicate Iraqi KYC dossiers and 5-layer anti-forgery reports.'}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleExportCsv}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#141417] border border-zinc-200 dark:border-[#222225] hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'exportCsvBtn')}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg transition-colors ${primaryBtnClass}`}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'ctaUpload')}</span>
-                  </button>
-                </div>
-              </div>
-
-              {renderDossiersCatalogTable()}
-            </section>
-          )}
-
-          {/* =================================================================
-              VIEW 1B: ZAINCASH MOBILE EDGE & DOCUMENT FORENSICS LAB
-              ================================================================= */}
-          {activeSection === 'forensics' && (
-            <section aria-label={t(lang, 'navForensics')}>
-              <ZainCashEdgeForensicsLab
-                lang={lang}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
-                onIngestTestedScenario={(newApp) => {
-                  handleIngestApplicant(newApp);
-                  setActiveSection('queue');
-                }}
-              />
-            </section>
-          )}
-
-          {/* =================================================================
-              VIEW 1C: COMPETITION SHOWCASE — HOW THE SYSTEM WORKS
-              ================================================================= */}
-          {activeSection === 'challenge' && (
-            <section aria-label={t(lang, 'navChallenge')}>
-              <CompetitionShowcaseTab
-                lang={lang}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
-                onNavigateToQueue={() => setActiveSection('queue')}
-                onIngestTestedScenario={(newApp) => {
-                  handleIngestApplicant(newApp);
-                  setActiveSection('queue');
-                }}
-              />
-            </section>
-          )}
-
-          {/* =================================================================
-              VIEW 2: DOCUMENT VAULT & 44-TYPE IRAQI REGISTRY
-              ================================================================= */}
-          {activeSection === 'vault' && (
-            <section className="space-y-6" aria-label={t(lang, 'navVault')}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-[#222225]">
-                <div>
-                  <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                    {t(lang, 'vaultSectionTitle')}
-                  </h2>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    {t(lang, 'vaultSectionSubtitle')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="relative w-64">
-                    <Search className="w-3.5 h-3.5 text-zinc-400 absolute top-2.5 start-3 pointer-events-none" />
-                    <input
-                      type="search"
-                      value={vaultSearchQuery}
-                      onChange={(e) => setVaultSearchQuery(e.target.value)}
-                      placeholder={t(lang, 'vaultSearchPlaceholder')}
-                      className="w-full ps-8 pe-3 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] text-zinc-900 dark:text-zinc-100"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${primaryBtnClass}`}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{t(lang, 'ctaUpload')}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Document Index List */}
-                <div className="lg:col-span-5 border border-zinc-200 dark:border-[#222225] rounded-xl bg-white dark:bg-[#111113] divide-y divide-zinc-200 dark:divide-[#1f1f23]">
-                  {allDocuments.map(({ doc, applicant }) => {
-                    const isSelected = activeVaultItem?.doc.id === doc.id;
-                    return (
-                      <div
-                        key={doc.id}
-                        className={`p-4 flex items-center justify-between gap-3 transition-colors ${
-                          isSelected
-                            ? 'bg-emerald-500/10'
-                            : 'hover:bg-zinc-50 dark:hover:bg-[#18181b]'
-                        }`}
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                            <FileText className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <span className="truncate">
-                              {lang === 'ar' ? doc.titleAr : doc.titleEn}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                            <span>
-                              {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
-                            </span>
-                            <span className="mx-1" aria-hidden="true">
-                              ·
-                            </span>
-                            <span className="font-mono">
-                              {formatReferenceCode(doc.docNumber, lang)}
-                            </span>
-                            <span className="mx-1" aria-hidden="true">
-                              ·
-                            </span>
-                            <span className="font-mono">
-                              {formatSupportStatus(doc.supportStatus, lang)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedVaultDocId(doc.id);
-                            setVaultRotation(0);
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md transition-colors whitespace-nowrap shrink-0"
-                        >
-                          {t(lang, 'inspectBtn')}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right Column Specimen Preview */}
-                <div className="lg:col-span-7 space-y-4">
-                  {activeVaultItem && (
-                    <>
-                      <DocumentSpecimenViewer
-                        document={activeVaultItem.doc}
-                        lang={lang}
-                        zoomed={vaultZoomed}
-                        rotation={vaultRotation}
-                        onToggleZoom={() => setVaultZoomed((z) => !z)}
-                        onRotate={() => setVaultRotation((r) => (r + 90) % 360)}
-                      />
-                      <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] flex items-center justify-between">
-                        <div className="text-xs">
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            {lang === 'ar' ? 'المتقدم المرتبط: ' : 'Associated Applicant: '}
-                          </span>
-                          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                            {lang === 'ar'
-                              ? activeVaultItem.applicant.fullNameAr
-                              : activeVaultItem.applicant.fullNameEn}
-                          </span>
-                          <span className="mx-1.5 text-zinc-400">·</span>
-                          <span className="font-mono text-zinc-500">
-                            {formatReferenceCode(activeVaultItem.applicant.referenceCode, lang)}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedApplicantId(activeVaultItem.applicant.id)}
-                          className="px-3 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                        >
-                          {lang === 'ar'
-                            ? 'فتح ملف الامتثال الكامل ←'
-                            : 'Open Full Compliance Dossier →'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* 44-Type Iraqi & MENA Document Registry Matrix (Categories A–H) */}
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl bg-white dark:bg-[#111113] overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#141417] flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                    {lang === 'ar'
-                      ? 'مصفوفة تغطية سجل الوثائق (44 نوع وثيقة عراقية وكردستانية · الفئات أ–ح)'
-                      : 'DOCUMENT_REGISTRY Coverage Matrix (44 Registered Iraqi & KRG Types · Categories A–H)'}
-                  </span>
-                  <span className="text-[11px] font-mono text-zinc-500">
-                    {lang === 'ar'
-                      ? 'فصل شفاف لحالة الدعم'
-                      : 'HONEST SUPPORT STATUS SEPARATION'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-zinc-200 dark:divide-[#222225] text-xs">
-                  {iraqiDocumentRegistrySummary.map((cat) => (
-                    <div key={cat.code} className="p-4 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                          {lang === 'ar' ? cat.titleAr : cat.titleEn}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 font-mono text-[11px]">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                          {cat.testedTypes}/{cat.totalTypes}{' '}
-                          {lang === 'ar' ? 'مختبرة' : 'TESTED'}
-                        </span>
-                        <span>·</span>
-                        <span className="text-zinc-500">
-                          {formatSupportStatus(cat.defaultStatus, lang)}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                        {lang === 'ar' ? cat.examplesAr : cat.examplesEn}
+          {/* ===============================================================
+              SECONDARY VIEWS (SCROLL CLEANLY INSIDE CENTER WORKSPACE)
+              =============================================================== */}
+          {activeSection !== 'dashboard' && (
+            <div className="flex-1 min-h-0 overflow-y-auto pe-1 space-y-4">
+              {/* VIEW 1: FULL APPLICANT DOSSIERS CATALOG */}
+              {activeSection === 'queue' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03] space-y-4"
+                  aria-label={t(lang, 'navQueue')}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h1 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
+                        {isAr ? 'سجل ملفات المتقدمين والوثائق' : 'Applicant Dossiers Queue'}
+                      </h1>
+                      <p className="text-xs text-zinc-500 dark:text-[#8a8d98] mt-0.5">
+                        {isAr
+                          ? 'تصفح وفلتر وافحص ملفات التحقق من الهوية العراقية والكردستانية وتقارير كشف التزوير.'
+                          : 'Browse, filter, and adjudicate Iraqi & KRG KYC dossiers and 9-stage anti-forgery reports.'}
                       </p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
 
-          {/* =================================================================
-              VIEW 3: AUTOMATED WORKFLOW RULES
-              ================================================================= */}
-          {activeSection === 'automation' && (
-            <section aria-label={t(lang, 'navAutomation')}>
-              <AutomationRulesPanel
-                config={automationConfig}
-                applicants={applicants}
-                lang={lang}
-                onChangeConfig={setAutomationConfig}
-                onRunBatch={handleRunAutomatedBatch}
-              />
-            </section>
-          )}
-
-          {/* =================================================================
-              VIEW 4: SYSTEM AUDIT TRAIL & CRYPTOGRAPHIC CHAIN VERIFIER
-              ================================================================= */}
-          {activeSection === 'audit' && (
-            <section className="space-y-4" aria-label={t(lang, 'navAudit')}>
-              <div className="pb-4 border-b border-zinc-200 dark:border-[#222225] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-                    {t(lang, 'auditSectionTitle')}
-                  </h2>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    {t(lang, 'auditSectionSubtitle')}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleVerifyCryptographicAuditChain()}
-                  disabled={isVerifyingChain}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors disabled:opacity-60 cursor-pointer shrink-0"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>
-                    {isVerifyingChain
-                      ? isAr
-                        ? 'جاري التحقق التشفيري من السلسلة...'
-                        : 'Verifying SHA-256 + HMAC Chain...'
-                      : isAr
-                        ? 'فحص سلامة سلسلة التدقيق التشفيرية (SHA-256)'
-                        : 'Verify Cryptographic Audit Chain (SHA-256)'}
-                  </span>
-                </button>
-              </div>
-
-              {/* UPGRADE 3.2: Cryptographic Audit Chain Verifier Proof Report */}
-              {auditChainReport && (
-                <div
-                  className="rounded-xl border border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/20 p-4 space-y-3"
-                  data-testid="audit-chain-verification-report"
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap border-b border-emerald-500/20 pb-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300">
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
-                        <span>
-                          {isAr
-                            ? 'نتيجة فحص عدم الإنكار والتسلسل التشفيري (قانون التوقيع الإلكتروني رقم 78 لسنة 2012)'
-                            : 'CRYPTOGRAPHIC HASH-CHAIN INTEGRITY VERIFIED · IRAQ LAW NO. 78 OF 2012'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-700 dark:text-zinc-300">
-                        {isAr ? auditChainReport.summaryAr : auditChainReport.summaryEn}
-                      </p>
-                    </div>
-                    <div className="text-end font-mono text-[11px]">
-                      <div className="font-bold text-emerald-600 dark:text-emerald-400">
-                        {auditChainReport.totalBlocks}/{auditChainReport.totalBlocks} BLOCKS VALID
-                      </div>
-                      <div className="text-zinc-500 dark:text-zinc-400">
-                        MERKLE ROOT: {auditChainReport.merkleRootHash.slice(0, 16)}…
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e]">
-                    <table className="w-full text-[11px] font-mono text-start border-collapse">
-                      <thead className="bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400">
-                        <tr>
-                          <th className="py-2 px-3 text-start">#</th>
-                          <th className="py-2 px-3 text-start">
-                            {isAr ? 'المرجع والحدث' : 'Dossier & Action'}
-                          </th>
-                          <th className="py-2 px-3 text-start">
-                            {isAr ? 'هاش الكتلة السابقة' : 'Prev Block Hash'}
-                          </th>
-                          <th className="py-2 px-3 text-start">
-                            {isAr ? 'هاش الكتلة الحالية (SHA-256)' : 'Computed Block Hash'}
-                          </th>
-                          <th className="py-2 px-3 text-start">
-                            {isAr ? 'توقيع HMAC قانون 78' : 'CBI Law 78 HMAC'}
-                          </th>
-                          <th className="py-2 px-3 text-end">
-                            {isAr ? 'الحالة' : 'Status'}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                        {auditChainReport.blocks.slice(0, 8).map((blk) => (
-                          <tr key={`${blk.blockIndex}-${blk.eventId}`}>
-                            <td className="py-1.5 px-3 font-bold text-emerald-600 dark:text-emerald-400">
-                              #{blk.blockIndex}
-                            </td>
-                            <td className="py-1.5 px-3 font-sans text-zinc-800 dark:text-zinc-200">
-                              <span className="font-mono font-semibold">
-                                {blk.applicantRef || 'SYS'}
-                              </span>{' '}
-                              · {blk.actionEn}
-                            </td>
-                            <td className="py-1.5 px-3 text-zinc-500">
-                              {blk.prevBlockHash.slice(0, 12)}…
-                            </td>
-                            <td className="py-1.5 px-3 text-cyan-600 dark:text-cyan-400 font-semibold">
-                              {blk.computedBlockHash.slice(0, 14)}…
-                            </td>
-                            <td className="py-1.5 px-3 text-emerald-700 dark:text-emerald-400">
-                              {blk.hmacSignature.slice(0, 22)}…
-                            </td>
-                            <td className="py-1.5 px-3 text-end">
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
-                                VERIFIED ✓
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl bg-white dark:bg-[#111113] divide-y divide-zinc-200 dark:divide-[#1f1f23]">
-                {allAuditEvents.map(({ evt, applicant }) => (
-                  <div
-                    key={evt.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 flex-wrap">
-                        <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
-                          {formatReferenceCode(applicant.referenceCode, lang)}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span>
-                          {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span>{lang === 'ar' ? evt.actorAr : evt.actorEn}</span>
-                      </div>
-                      <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {lang === 'ar' ? evt.actionAr : evt.actionEn}
-                      </div>
-                      {(evt.noteEn || evt.noteAr) && (
-                        <div className="text-zinc-600 dark:text-zinc-400">
-                          {lang === 'ar' ? evt.noteAr : evt.noteEn}
-                        </div>
-                      )}
-                      {evt.cbiLaw78HmacReceipt && (
-                        <div className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
-                          {lang === 'ar'
-                            ? `توقيع قانون البنك المركزي رقم 78: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'ar')}`
-                            : `CBI Law No. 78 HMAC Signature: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'en')}`}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-mono tabular-nums text-zinc-500">
-                        {formatTimestamp(evt.timestamp, lang)}
-                      </span>
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setSelectedApplicantId(applicant.id)}
-                        className="px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
+                        onClick={handleExportCsv}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#14151b] border border-zinc-200 dark:border-white/10 rounded-xl transition-colors cursor-pointer"
                       >
-                        {t(lang, 'inspectBtn')}
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{t(lang, 'exportCsvBtn')}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-xl transition-colors cursor-pointer ${primaryBtnClass}`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{t(lang, 'ctaUpload')}</span>
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </main>
 
-        {/* UPGRADE 2.4: Rapid Compliance Officer Keyboard Triage Bar */}
-        <div className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 pt-4">
-          <div className="rounded-xl border border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113] px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
-                {isAr ? 'الفرز السريع لموظف الامتثال' : 'RAPID OFFICER TRIAGE HOTKEYS'}
-              </span>
-              {filteredApplicants[focusedQueueIndex] && (
-                <span className="text-zinc-600 dark:text-zinc-300 font-mono">
-                  {isAr ? 'الملف المحدد:' : 'Focused:'}{' '}
-                  <strong className="text-zinc-900 dark:text-white">
-                    {isAr
-                      ? filteredApplicants[focusedQueueIndex].fullNameAr
-                      : filteredApplicants[focusedQueueIndex].fullNameEn}
-                  </strong>{' '}
-                  ({filteredApplicants[focusedQueueIndex].referenceCode})
-                </span>
+                  {renderDossiersCatalogTable()}
+                </section>
+              )}
+
+              {/* VIEW 1B: ZAINCASH MOBILE EDGE & DOCUMENT FORENSICS LAB */}
+              {activeSection === 'forensics' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03]"
+                  aria-label={t(lang, 'navForensics')}
+                >
+                  <ZainCashEdgeForensicsLab
+                    lang={lang}
+                    onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                    onIngestTestedScenario={(newApp) => {
+                      handleIngestApplicant(newApp);
+                      setActiveSection('queue');
+                    }}
+                  />
+                </section>
+              )}
+
+              {/* VIEW 1C: COMPETITION SHOWCASE — HOW THE SYSTEM WORKS */}
+              {activeSection === 'challenge' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03]"
+                  aria-label={t(lang, 'navChallenge')}
+                >
+                  <CompetitionShowcaseTab
+                    lang={lang}
+                    onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                    onNavigateToQueue={() => setActiveSection('queue')}
+                    onIngestTestedScenario={(newApp) => {
+                      handleIngestApplicant(newApp);
+                      setActiveSection('queue');
+                    }}
+                  />
+                </section>
+              )}
+
+              {/* VIEW 2: DOCUMENT VAULT & 44-TYPE IRAQI REGISTRY */}
+              {activeSection === 'vault' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03] space-y-5"
+                  aria-label={t(lang, 'navVault')}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-zinc-200 dark:border-white/10">
+                    <div>
+                      <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {t(lang, 'vaultSectionTitle')}
+                      </h2>
+                      <p className="text-xs text-zinc-500 dark:text-[#8a8d98] mt-0.5">
+                        {t(lang, 'vaultSectionSubtitle')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-64">
+                        <Search className="w-3.5 h-3.5 text-zinc-400 absolute top-2.5 start-3 pointer-events-none" />
+                        <input
+                          type="search"
+                          value={vaultSearchQuery}
+                          onChange={(e) => setVaultSearchQuery(e.target.value)}
+                          placeholder={t(lang, 'vaultSearchPlaceholder')}
+                          className="w-full ps-8 pe-3 py-1.5 text-xs rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-[#14151b] text-zinc-900 dark:text-zinc-100"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${primaryBtnClass}`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{t(lang, 'ctaUpload')}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    <div className="lg:col-span-5 border border-zinc-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#14151b] divide-y divide-zinc-200 dark:divide-white/5 overflow-hidden">
+                      {allDocuments.map(({ doc, applicant }) => {
+                        const isSelected = activeVaultItem?.doc.id === doc.id;
+                        return (
+                          <div
+                            key={doc.id}
+                            className={`p-3.5 flex items-center justify-between gap-3 transition-colors ${
+                              isSelected
+                                ? 'bg-[#10b981]/15'
+                                : 'hover:bg-zinc-50 dark:hover:bg-white/[0.03]'
+                            }`}
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                                <FileText className="w-3.5 h-3.5 text-[#34d399] shrink-0" />
+                                <span className="truncate">
+                                  {lang === 'ar' ? doc.titleAr : doc.titleEn}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-zinc-500 dark:text-[#8a8d98]">
+                                <span>
+                                  {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
+                                </span>
+                                <span className="mx-1" aria-hidden="true">
+                                  ·
+                                </span>
+                                <span className="font-mono">
+                                  {formatReferenceCode(doc.docNumber, lang)}
+                                </span>
+                                <span className="mx-1" aria-hidden="true">
+                                  ·
+                                </span>
+                                <span className="font-mono">
+                                  {formatSupportStatus(doc.supportStatus, lang)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedVaultDocId(doc.id);
+                                setVaultRotation(0);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-[#1f2128] border border-zinc-200 dark:border-white/10 hover:bg-[#10b981] hover:text-white rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                            >
+                              {t(lang, 'inspectBtn')}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="lg:col-span-7 space-y-4">
+                      {activeVaultItem && (
+                        <>
+                          <DocumentSpecimenViewer
+                            document={activeVaultItem.doc}
+                            lang={lang}
+                            zoomed={vaultZoomed}
+                            rotation={vaultRotation}
+                            onToggleZoom={() => setVaultZoomed((z) => !z)}
+                            onRotate={() => setVaultRotation((r) => (r + 90) % 360)}
+                          />
+                          <div className="p-3.5 rounded-2xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-[#14151b] flex items-center justify-between">
+                            <div className="text-xs">
+                              <span className="text-zinc-500 dark:text-[#8a8d98]">
+                                {lang === 'ar' ? 'المتقدم المرتبط: ' : 'Associated Applicant: '}
+                              </span>
+                              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                                {lang === 'ar'
+                                  ? activeVaultItem.applicant.fullNameAr
+                                  : activeVaultItem.applicant.fullNameEn}
+                              </span>
+                              <span className="mx-1.5 text-zinc-400">·</span>
+                              <span className="font-mono text-zinc-500">
+                                {formatReferenceCode(
+                                  activeVaultItem.applicant.referenceCode,
+                                  lang
+                                )}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedApplicantId(activeVaultItem.applicant.id)
+                              }
+                              className="px-3 py-1 text-xs font-semibold text-[#34d399] hover:underline cursor-pointer"
+                            >
+                              {lang === 'ar'
+                                ? 'فتح ملف الامتثال الكامل ←'
+                                : 'Open Full Compliance Dossier →'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="border border-zinc-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#14151b] overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#1a1c23] flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        {lang === 'ar'
+                          ? 'مصفوفة تغطية سجل الوثائق (44 نوع وثيقة عراقية وكردستانية · الفئات أ–ح)'
+                          : 'DOCUMENT_REGISTRY Coverage Matrix (44 Registered Iraqi & KRG Types · Categories A–H)'}
+                      </span>
+                      <span className="text-[11px] font-mono text-[#34d399]">
+                        {lang === 'ar'
+                          ? 'فصل شفاف لحالة الدعم'
+                          : 'HONEST SUPPORT STATUS SEPARATION'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-zinc-200 dark:divide-white/10 text-xs">
+                      {iraqiDocumentRegistrySummary.map((cat) => (
+                        <div key={cat.code} className="p-3.5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                              {lang === 'ar' ? cat.titleAr : cat.titleEn}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 font-mono text-[11px]">
+                            <span className="text-[#34d399] font-semibold">
+                              {cat.testedTypes}/{cat.totalTypes}{' '}
+                              {lang === 'ar' ? 'مختبرة' : 'TESTED'}
+                            </span>
+                            <span>·</span>
+                            <span className="text-zinc-500">
+                              {formatSupportStatus(cat.defaultStatus, lang)}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-[#8a8d98] leading-relaxed">
+                            {lang === 'ar' ? cat.examplesAr : cat.examplesEn}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* VIEW 3: AUTOMATED WORKFLOW RULES */}
+              {activeSection === 'automation' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03]"
+                  aria-label={t(lang, 'navAutomation')}
+                >
+                  <AutomationRulesPanel
+                    config={automationConfig}
+                    applicants={applicants}
+                    lang={lang}
+                    onChangeConfig={setAutomationConfig}
+                    onRunBatch={handleRunAutomatedBatch}
+                  />
+                </section>
+              )}
+
+              {/* VIEW 4: SYSTEM AUDIT TRAIL & CRYPTOGRAPHIC CHAIN VERIFIER */}
+              {activeSection === 'audit' && (
+                <section
+                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03] space-y-4"
+                  aria-label={t(lang, 'navAudit')}
+                >
+                  <div className="pb-3 border-b border-zinc-200 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {t(lang, 'auditSectionTitle')}
+                      </h2>
+                      <p className="text-xs text-zinc-500 dark:text-[#8a8d98] mt-0.5">
+                        {t(lang, 'auditSectionSubtitle')}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleVerifyCryptographicAuditChain()}
+                      disabled={isVerifyingChain}
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60 cursor-pointer shrink-0 ${primaryBtnClass}`}
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>
+                        {isVerifyingChain
+                          ? isAr
+                            ? 'جاري التحقق التشفيري من السلسلة...'
+                            : 'Verifying SHA-256 + HMAC Chain...'
+                          : isAr
+                            ? 'فحص سلامة سلسلة التدقيق التشفيرية (SHA-256)'
+                            : 'Verify Cryptographic Audit Chain (SHA-256)'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {auditChainReport && (
+                    <div
+                      className="rounded-2xl border border-[#10b981]/40 bg-[#10b981]/10 p-4 space-y-3"
+                      data-testid="audit-chain-verification-report"
+                    >
+                      <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[#10b981]/20 pb-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#6ee7b7]">
+                            <ShieldCheck className="w-4 h-4 shrink-0" />
+                            <span>
+                              {isAr
+                                ? 'نتيجة فحص عدم الإنكار والتسلسل التشفيري (قانون التوقيع الإلكتروني رقم 78 لسنة 2012)'
+                                : 'CRYPTOGRAPHIC HASH-CHAIN INTEGRITY VERIFIED · IRAQ LAW NO. 78 OF 2012'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-700 dark:text-zinc-300">
+                            {isAr ? auditChainReport.summaryAr : auditChainReport.summaryEn}
+                          </p>
+                        </div>
+                        <div className="text-end font-mono text-[11px]">
+                          <div className="font-bold text-[#34d399]">
+                            {auditChainReport.totalBlocks}/{auditChainReport.totalBlocks} BLOCKS
+                            VALID
+                          </div>
+                          <div className="text-zinc-500 dark:text-zinc-400">
+                            MERKLE ROOT: {auditChainReport.merkleRootHash.slice(0, 16)}…
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-[#14151b]">
+                        <table className="w-full text-[11px] font-mono text-start border-collapse">
+                          <thead className="bg-zinc-100 dark:bg-[#1a1c23] text-zinc-500 dark:text-zinc-400">
+                            <tr>
+                              <th className="py-2 px-3 text-start">#</th>
+                              <th className="py-2 px-3 text-start">
+                                {isAr ? 'المرجع والحدث' : 'Dossier & Action'}
+                              </th>
+                              <th className="py-2 px-3 text-start">
+                                {isAr ? 'هاش الكتلة السابقة' : 'Prev Block Hash'}
+                              </th>
+                              <th className="py-2 px-3 text-start">
+                                {isAr ? 'هاش الكتلة الحالية (SHA-256)' : 'Computed Block Hash'}
+                              </th>
+                              <th className="py-2 px-3 text-start">
+                                {isAr ? 'توقيع HMAC قانون 78' : 'CBI Law 78 HMAC'}
+                              </th>
+                              <th className="py-2 px-3 text-end">
+                                {isAr ? 'الحالة' : 'Status'}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-200 dark:divide-white/5">
+                            {auditChainReport.blocks.slice(0, 8).map((blk) => (
+                              <tr key={`${blk.blockIndex}-${blk.eventId}`}>
+                                <td className="py-1.5 px-3 font-bold text-[#34d399]">
+                                  #{blk.blockIndex}
+                                </td>
+                                <td className="py-1.5 px-3 font-sans text-zinc-800 dark:text-zinc-200">
+                                  <span className="font-mono font-semibold">
+                                    {blk.applicantRef || 'SYS'}
+                                  </span>{' '}
+                                  · {blk.actionEn}
+                                </td>
+                                <td className="py-1.5 px-3 text-zinc-500">
+                                  {blk.prevBlockHash.slice(0, 12)}…
+                                </td>
+                                <td className="py-1.5 px-3 text-cyan-600 dark:text-cyan-400 font-semibold">
+                                  {blk.computedBlockHash.slice(0, 14)}…
+                                </td>
+                                <td className="py-1.5 px-3 text-[#6ee7b7]">
+                                  {blk.hmacSignature.slice(0, 22)}…
+                                </td>
+                                <td className="py-1.5 px-3 text-end">
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold">
+                                    VERIFIED ✓
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="border border-zinc-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#14151b] divide-y divide-zinc-200 dark:divide-white/5">
+                    {allAuditEvents.map(({ evt, applicant }) => (
+                      <div
+                        key={evt.id}
+                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-zinc-500 dark:text-[#8a8d98] flex-wrap">
+                            <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                              {formatReferenceCode(applicant.referenceCode, lang)}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                              {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span>{lang === 'ar' ? evt.actorAr : evt.actorEn}</span>
+                          </div>
+                          <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                            {lang === 'ar' ? evt.actionAr : evt.actionEn}
+                          </div>
+                          {(evt.noteEn || evt.noteAr) && (
+                            <div className="text-zinc-600 dark:text-[#8a8d98]">
+                              {lang === 'ar' ? evt.noteAr : evt.noteEn}
+                            </div>
+                          )}
+                          {evt.cbiLaw78HmacReceipt && (
+                            <div className="font-mono text-[10px] text-[#34d399]">
+                              {lang === 'ar'
+                                ? `توقيع قانون البنك المركزي رقم 78: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'ar')}`
+                                : `CBI Law No. 78 HMAC Signature: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'en')}`}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="font-mono tabular-nums text-zinc-500">
+                            {formatTimestamp(evt.timestamp, lang)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedApplicantId(applicant.id)}
+                            className="px-2.5 py-1 text-xs font-medium text-[#34d399] hover:bg-[#10b981]/15 rounded-lg transition-colors cursor-pointer"
+                          >
+                            {t(lang, 'inspectBtn')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
+          )}
+        </main>
+      </div>
 
-            <div className="flex items-center gap-2 flex-wrap font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">
-                  J
-                </kbd>
-                /
-                <kbd className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">
-                  K
-                </kbd>{' '}
-                {isAr ? 'التنقل' : 'Next/Prev'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">
-                  Enter
-                </kbd>{' '}
-                {isAr ? 'فحص الملف' : 'Inspect'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-600 dark:text-emerald-300">
-                  A
-                </kbd>{' '}
-                {isAr ? 'موافقة' : 'Approve'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-600 dark:text-amber-300">
-                  F
-                </kbd>{' '}
-                {isAr ? 'مراجعة' : 'Flag'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-600 dark:text-rose-300">
-                  R
-                </kbd>{' '}
-                {isAr ? 'رفض' : 'Reject'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-600 dark:text-cyan-300">
-                  M
-                </kbd>{' '}
-                {isAr ? 'عدسة 4x' : '4x Loupe'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 text-purple-600 dark:text-purple-300">
-                  C
-                </kbd>{' '}
-                {isAr ? 'شهادة البنك المركزي' : 'CBI Cert'}
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">
-                  L
-                </kbd>{' '}
-                {isAr ? 'تبديل اللغة' : 'AR/EN'}
-              </span>
-            </div>
-          </div>
+      {/* Ultra-Sleek Single-Line Officer Hotkey Bar at Bottom of 1-Page Shell */}
+      <div className="shrink-0 mt-2 pt-1.5 border-t border-zinc-200/70 dark:border-white/[0.05] flex items-center justify-between gap-2 text-[10px] overflow-x-auto">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="px-2 py-0.5 rounded bg-[#10b981]/20 text-[#059669] dark:text-[#6ee7b7] font-mono font-bold">
+            {isAr ? 'اختصارات الفرز السريع' : 'RAPID OFFICER TRIAGE HOTKEYS'}
+          </span>
+          {filteredApplicants[focusedQueueIndex] && (
+            <span className="text-zinc-600 dark:text-[#8a8d98] font-mono">
+              {isAr ? 'المحدد:' : 'Focused:'}{' '}
+              <strong className="text-zinc-900 dark:text-white">
+                {isAr
+                  ? filteredApplicants[focusedQueueIndex].fullNameAr
+                  : filteredApplicants[focusedQueueIndex].fullNameEn}
+              </strong>{' '}
+              ({filteredApplicants[focusedQueueIndex].referenceCode})
+            </span>
+          )}
         </div>
 
-        {/* Quiet Compliance Footer */}
-        <footer className="max-w-[1440px] w-full mx-auto px-4 sm:px-8 py-5 mt-4 border-t border-zinc-200 dark:border-[#1f1f23] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
-          <div>
-            {isAr
-              ? 'منصة روسترو للامتثال · قانون التوقيع الإلكتروني للبنك المركزي العراقي رقم 78 لسنة 2012 ونظام التحقق من الوثائق العراقية'
-              : 'Project Rostro · Central Bank of Iraq (CBI) Law No. 78 of 2012 & Universal Iraqi/KRG KYC Platform'}
-          </div>
-          <div className="flex items-center gap-4">
-            <span>
-              {isAr
-                ? 'دعم كامل للغات العربية والكردية والإنجليزية'
-                : 'Multi-Script AR / KU / EN Ready'}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>
-              {isAr
-                ? 'فحص معادلة التحقق الرقمي [7,3,1] مفعل'
-                : 'ICAO 9303 Modulo-10 [7,3,1] Verified'}
-            </span>
-          </div>
-        </footer>
+        <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-500 dark:text-[#8a8d98] shrink-0">
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-[#1f2128] text-zinc-800 dark:text-zinc-200">
+              J/K
+            </kbd>{' '}
+            {isAr ? 'تنقل' : 'Nav'}
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-[#1f2128] text-zinc-800 dark:text-zinc-200">
+              Enter
+            </kbd>{' '}
+            {isAr ? 'فحص' : 'Inspect'}
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-500 dark:text-emerald-400">
+              A
+            </kbd>{' '}
+            {isAr ? 'موافقة' : 'Approve'}
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-rose-500/20 text-rose-500 dark:text-rose-400">
+              R
+            </kbd>{' '}
+            {isAr ? 'رفض' : 'Reject'}
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-[#10b981]/25 text-[#059669] dark:text-[#6ee7b7]">
+              M
+            </kbd>{' '}
+            {isAr ? 'عدسة 4x' : '4x Loupe'}
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-[#1f2128] text-zinc-800 dark:text-zinc-200">
+              L
+            </kbd>{' '}
+            {isAr ? 'اللغة' : 'AR/EN'}
+          </span>
+        </div>
       </div>
 
       {/* Slide-over Dossier Inspector */}
@@ -2804,6 +2477,7 @@ export default function App() {
         onRegisterCandidateDoc={handleRegisterCandidateDoc}
         onAttachOrUpdatePacketResidenceCard={handleAttachOrUpdatePacketResidenceCard}
         onApplyAntiSpoofPreset={handleApplyAntiSpoofPreset}
+        onApplyKurdishDialectTranslation={handleApplyKurdishDialectTranslation}
         onNavigateApplicant={handleNavigateApplicant}
         currentIndex={selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0}
         totalQueueCount={filteredApplicants.length}
@@ -2816,43 +2490,6 @@ export default function App() {
         onClose={() => setIsUploadModalOpen(false)}
         onIngestApplicant={handleIngestApplicant}
       />
-
-      {/* Partner App Headless Camera SDK Simulator Modal */}
-      {isPartnerSdkOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
-          role="dialog"
-          aria-modal="true"
-          aria-label={
-            isAr
-              ? 'محاكي دمج الكاميرا الخفي داخل تطبيقات الهواتف'
-              : 'Partner App Headless Camera SDK Simulator'
-          }
-        >
-          <div className="w-full max-w-6xl rounded-2xl bg-[#f8f8f9] dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
-            <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-[#0d0d10]">
-              <div className="flex items-center gap-2.5">
-                <Smartphone className="w-4 h-4 text-emerald-500" />
-                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                  {isAr
-                    ? 'دمج نظام Rostro الخفي داخل كاميرا تطبيقات الهواتف (ZainCash / SuperQi / Baly)'
-                    : 'Headless In-App Camera Integration (ZainCash / SuperQi / Baly Native UI)'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPartnerSdkOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors cursor-pointer"
-              >
-                {isAr ? 'إغلاق' : 'Close'}
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto">
-              <PartnerAppSdkSimulator lang={lang} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

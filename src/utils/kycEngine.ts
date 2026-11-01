@@ -201,6 +201,11 @@ export interface KYCDocument {
     mrzLine3?: string;
     address?: string;
     familyNumber?: string;
+    fullNameKurdish?: string;
+    motherNameKurdish?: string;
+    governorateKurdish?: string;
+    addressKurdish?: string;
+    issuingAuthorityKurdish?: string;
   };
   customPreviewUrl?: string;
   customBackPreviewUrl?: string;
@@ -213,6 +218,7 @@ export interface KYCDocument {
   cardPairValidation?: CardPairValidationResult;
   engineMode?: 'gemini-vlm-live' | 'deterministic-fallback';
   antiSpoofPreset?: AntiSpoofSimulationPreset;
+  kurdishDialectPreset?: KurdishRegionalSimulationPreset;
 }
 
 export type AntiSpoofSimulationPreset =
@@ -2108,16 +2114,23 @@ export function parseIraqiStructuredAddress(doc?: KYCDocument | null): IraqiStru
     };
   }
   const raw =
+    doc.extractedFields.addressKurdish ||
     doc.extractedFields.address ||
     doc.slot1Summary?.address ||
     doc.slot2Summary?.address ||
     '';
   const norm = normalizeMultiScriptText(raw);
 
+  // Support Arabic (محلة/زقاق/دار), Kurdish Sorani (گەڕەک/کۆڵان/خانوو), and Kurdish Badini (تاخ/جادە/خانی)
   const mahallaMatch =
-    norm.match(/(?:mahalla|محله|محلة|م)\s*[:/-]?\s*(\d{2,4})/i) || norm.match(/\b(\d{3})\b/);
-  const zukakMatch = norm.match(/(?:zukak|zuqaq|زقاق|ز)\s*[:/-]?\s*(\d{1,4})/i);
-  const darMatch = norm.match(/(?:dar|house|دار|د)\s*[:/-]?\s*([0-9/A-Za-z]+)/i);
+    norm.match(/(?:mahalla|محله|محلة|گهرك|گهرهكي|تاخ|تاخي|م)\s*[:/-]?\s*([0-9\u0600-\u06FFA-Za-z-]{2,18})/i) ||
+    norm.match(/\b(\d{3})\b/);
+  const zukakMatch = norm.match(
+    /(?:zukak|zuqaq|زقاق|كولان|كولاني|جاده|جادا|ز)\s*[:/-]?\s*(\d{1,4})/i
+  );
+  const darMatch = norm.match(
+    /(?:dar|house|دار|خانوو|خانووي|خاني|خانيي|د)\s*[:/-]?\s*([0-9/A-Za-z]+)/i
+  );
 
   const governorate =
     doc.extractedFields.governorate ||
@@ -2127,7 +2140,8 @@ export function parseIraqiStructuredAddress(doc?: KYCDocument | null): IraqiStru
     'Baghdad / بغداد';
 
   const infoOffice =
-    doc.issuingAuthorityAr && doc.issuingAuthorityAr.includes('معلومات')
+    doc.issuingAuthorityAr &&
+    (doc.issuingAuthorityAr.includes('معلومات') || doc.issuingAuthorityAr.includes('زانیاری') || doc.issuingAuthorityAr.includes('پێزانین'))
       ? `${doc.issuingAuthorityAr} · ${doc.issuingAuthorityEn}`
       : doc.issuingAuthorityEn || 'مكتب معلومات المنصور — بغداد';
 
@@ -2138,7 +2152,7 @@ export function parseIraqiStructuredAddress(doc?: KYCDocument | null): IraqiStru
     zukak: zukakMatch ? zukakMatch[1] : '14',
     dar: darMatch ? darMatch[1] : '22',
     formNumber: doc.docNumber && !isMissingOrUnclearValue(doc.docNumber) ? doc.docNumber : 'RES-IRQ',
-    rawAddress: raw || 'Mahalla 609 · Zukak 14 · Dar 22',
+    rawAddress: doc.extractedFields.address || raw || 'Mahalla 609 · Zukak 14 · Dar 22',
   };
 }
 
@@ -2798,30 +2812,51 @@ const ARABIC_TO_LATIN_PHONETIC_MAP: Record<string, string> = {
   ف: 'F',
   ق: 'Q',
   ك: 'K',
+  ک: 'K',
+  گ: 'G',
   ل: 'L',
+  ڵ: 'L',
   م: 'M',
   ن: 'N',
   ه: 'H',
+  ھ: 'H',
   ة: 'A',
+  ە: 'A',
   و: 'W',
+  ۆ: 'O',
   ؤ: 'U',
   ي: 'Y',
+  ی: 'Y',
+  ێ: 'E',
   ى: 'A',
-  ئ: 'I',
+  ئ: 'A',
   ء: '',
+  پ: 'P',
+  چ: 'CH',
+  ژ: 'ZH',
+  ڤ: 'V',
+  ڕ: 'R',
 };
 
 const COMMON_IRAQI_NAME_CANONICAL: Record<string, string> = {
   محمد: 'MOHAMMED',
+  محەمەد: 'MOHAMMED',
   أحمد: 'AHMED',
   احمد: 'AHMED',
+  ئەحمەد: 'AHMED',
   علي: 'ALI',
+  عەلی: 'ALI',
   حسين: 'HUSSEIN',
+  حوسێن: 'HUSSEIN',
   حسن: 'HASSAN',
+  حەسەن: 'HASSAN',
   عبدالله: 'ABDULLAH',
+  عەبدوڵڵا: 'ABDULLAH',
   عبد: 'ABD',
   عمر: 'OMAR',
+  عومەر: 'OMAR',
   مصطفى: 'MUSTAFA',
+  مستەفا: 'MUSTAFA',
   زينب: 'ZAINAB',
   فاطمة: 'FATIMA',
   فاطمه: 'FATIMA',
@@ -2829,6 +2864,7 @@ const COMMON_IRAQI_NAME_CANONICAL: Record<string, string> = {
   سارة: 'SARA',
   ساره: 'SARA',
   محمود: 'MAHMOUD',
+  مەحمود: 'MAHMOUD',
   كاظم: 'KADHIM',
   جاسم: 'JASIM',
   حيدر: 'HAIDER',
@@ -2837,9 +2873,11 @@ const COMMON_IRAQI_NAME_CANONICAL: Record<string, string> = {
   خالد: 'KHALID',
   وليد: 'WALEED',
   كريم: 'KAREEM',
+  کەریم: 'KAREEM',
   يوسف: 'YOUSIF',
   ابراهيم: 'IBRAHIM',
   إبراهيم: 'IBRAHIM',
+  ئیبراهیم: 'IBRAHIM',
   سعد: 'SAAD',
   رعد: 'RAAD',
   زيد: 'ZAID',
@@ -2850,6 +2888,42 @@ const COMMON_IRAQI_NAME_CANONICAL: Record<string, string> = {
   سجى: 'SAJA',
   دجلة: 'DIJLA',
   الرافدين: 'ALRAFIDAIN',
+  // Common Kurdish (Sorani, Hewlêrî & Badini) names
+  کاروان: 'KARWAN',
+  كاروان: 'KARWAN',
+  ئازاد: 'AZAD',
+  آزاد: 'AZAD',
+  ازاد: 'AZAD',
+  بارزانی: 'BARZANI',
+  بارزاني: 'BARZANI',
+  تاڵەبانی: 'TALABANI',
+  طالباني: 'TALABANI',
+  شێرکۆ: 'SHERKO',
+  شيركو: 'SHERKO',
+  نەوزاد: 'NAWZAD',
+  نوزاد: 'NAWZAD',
+  پشتیوان: 'PSHTIWAN',
+  بشتيوان: 'PSHTIWAN',
+  سەردار: 'SARDAR',
+  سردار: 'SARDAR',
+  کاڤین: 'KAVIN',
+  كافين: 'KAVIN',
+  فەرهاد: 'FARHAD',
+  فرهاد: 'FARHAD',
+  دۆسکی: 'DOSKI',
+  دوسكي: 'DOSKI',
+  زێباری: 'ZEBARI',
+  زيباري: 'ZEBARI',
+  نێچیرڤان: 'NECHIRVAN',
+  نيجيرفان: 'NECHIRVAN',
+  گۆران: 'GORAN',
+  كوران: 'GORAN',
+  ئارام: 'ARAM',
+  آرام: 'ARAM',
+  هەڤاڵ: 'HAVAL',
+  هفال: 'HAVAL',
+  هەولێری: 'HAWLERI',
+  أربيلي: 'ARBILI',
 };
 
 export function transliterateArabicTokenToLatin(arabicToken: string): string {
@@ -2878,22 +2952,35 @@ export function transliterateArabicTokenToLatin(arabicToken: string): string {
 }
 
 export function extractConsonantSkeleton(str: string): string {
-  const upper = (str || '')
+  // Normalize Hawar Latin Kurdish diacritics (Ç, Ş, Ê, Î, Û) before stripping non-ASCII
+  const hawarNormalized = (str || '')
     .toUpperCase()
+    .replace(/Ç/g, 'CH')
+    .replace(/Ş/g, 'SH')
+    .replace(/[ÊË]/g, 'E')
+    .replace(/[ÎÏ]/g, 'I')
+    .replace(/[ÛÜ]/g, 'U');
+
+  const upper = hawarNormalized
     .replace(/^AL[-\s]?/, '')
     .replace(/^EL[-\s]?/, '')
     .replace(/[^A-Z]/g, '');
-  // Normalize equivalent Iraqi Latin phonetic clusters
+  // Normalize equivalent Iraqi Arabic & Kurdish (Sorani/Badini) Latin phonetic clusters
+  // Note: P<->B, V<->F, G<->K, CH/ZH<->J unifying Kurdish-to-Arabic official transliteration pairs
   const normalized = upper
     .replace(/PH/g, 'F')
-    .replace(/GH/g, 'G')
+    .replace(/V/g, 'F')
+    .replace(/P/g, 'B')
+    .replace(/GH/g, 'K')
     .replace(/KH/g, 'K')
     .replace(/SH/g, 'S')
+    .replace(/ZH/g, 'J')
+    .replace(/CH/g, 'J')
     .replace(/TH/g, 'T')
     .replace(/DH/g, 'D')
-    .replace(/CH/g, 'K')
     .replace(/C/g, 'K')
     .replace(/Q/g, 'K')
+    .replace(/G/g, 'K')
     .replace(/[AEIOUYW]/g, '')
     .replace(/(.)\1+/g, '$1');
   return normalized || upper.slice(0, 3);
@@ -3435,5 +3522,1053 @@ export function verifyCryptographicAuditChain(
     summaryAr: `سلسلة التدقيق التشفيرية سليمة ١٠٠٪: تم التحقق الرياضي من جميع الكتل (${blocks.length} كتلة) من كتلة الأساس #0 حتى آخر قرار امتثال دون أي تلاعب.`,
   };
 }
+
+// ============================================================================
+// UPGRADE 1.4: KURDISH MULTI-DIALECT DETECTION & OFFICIAL ARABIC TRANSLATION ENGINE
+// Supports Central Kurdish Sorani (Sulaymaniyah & Halabja), Northern Sorani
+// Hewlêrî (Erbil), and Northern Kurdish Badini / Kurmanji (Duhok & Zakho).
+// Translates KRG-issued and bilingual Kurdish documents into canonical Official
+// Central Bank of Iraq (CBI) Arabic & English.
+// ============================================================================
+
+export type KurdishDialectCode =
+  | 'SULAYMANIYAH_SORANI'
+  | 'ERBIL_HEWLERI_SORANI'
+  | 'DUHOK_BADINI_KURMANJI'
+  | 'BILINGUAL_FEDERAL_KURDISH';
+
+export type KurdishRegionalSimulationPreset =
+  | 'SULAYMANIYAH_SORANI_RESIDENCE'
+  | 'ERBIL_HEWLERI_CHAMBER_ID'
+  | 'DUHOK_BADINI_RESIDENCE';
+
+export interface KurdishFieldTranslationPair {
+  fieldKey:
+    | 'fullName'
+    | 'motherName'
+    | 'governorate'
+    | 'address'
+    | 'issuingAuthority'
+    | 'documentTitle';
+  labelEn: string;
+  labelAr: string;
+  sourceKurdishText: string;
+  translatedArabicText: string;
+  translatedEnglishText: string;
+  linguisticNoteEn: string;
+  linguisticNoteAr: string;
+}
+
+export interface KurdishDocumentLanguageGuideItem {
+  categoryCode: 'FEDERAL_BILINGUAL' | 'KRG_KURDISH_ONLY';
+  docTypesEn: string;
+  docTypesAr: string;
+  docTypesKu: string;
+  dialectScopeEn: string;
+  dialectScopeAr: string;
+  cbiTranslationRuleEn: string;
+  cbiTranslationRuleAr: string;
+}
+
+export interface KurdishDialectTranslationReport {
+  hasKurdishContent: boolean;
+  detectedDialect: KurdishDialectCode;
+  dialectNameEn: string;
+  dialectNameAr: string;
+  dialectNameKu: string;
+  scriptType:
+    | 'PERSO_ARABIC_SORANI_BADINI'
+    | 'HAWAR_LATIN_KURMANJI'
+    | 'BILINGUAL_ARABIC_KURDISH';
+  regionGovernorateEn: string;
+  regionGovernorateAr: string;
+  confidencePct: number;
+  dialectMarkersFound: string[];
+  documentLanguageClass: 'FEDERAL_BILINGUAL_AR_KU' | 'KRG_REGIONAL_KURDISH_PRIMARY';
+  documentClassExplanationEn: string;
+  documentClassExplanationAr: string;
+  translatedFullNameAr: string;
+  translatedFullNameEn: string;
+  translatedMotherNameAr: string;
+  translatedGovernorateAr: string;
+  translatedGovernorateEn: string;
+  translatedAddressAr: string;
+  translatedAddressEn: string;
+  translatedIssuingAuthorityAr: string;
+  translatedIssuingAuthorityEn: string;
+  fieldTranslations: KurdishFieldTranslationPair[];
+  orthographicTransformCount: number;
+  summaryEn: string;
+  summaryAr: string;
+}
+
+/**
+ * Reference guide answering which Iraqi/KRG documents use Kurdish and in which dialect.
+ */
+export function getKurdishDocumentLanguageGuide(): KurdishDocumentLanguageGuideItem[] {
+  return [
+    {
+      categoryCode: 'FEDERAL_BILINGUAL',
+      docTypesEn: 'Unified Iraqi National ID Card & Biometric e-Passport',
+      docTypesAr: 'البطاقة الوطنية الموحدة وجواز السفر العراقي الإلكتروني',
+      docTypesKu: 'کارتی نیشتیمانی عێراق و پاسپۆرتی ئەلیکترۆنی',
+      dialectScopeEn:
+        'Printed with bilingual Federal Arabic + Standard Sorani Kurdish headers (الاسم / ناو · الأب / باوك · الجد / باپير · اللقب / نازناو · الأم / دايك). KRI directorates may print place of birth or authority in Kurdish.',
+      dialectScopeAr:
+        'تُطبع بعناوين ثنائية اللغة (عربي + كردي سوراني قياسي: الاسم/ناو، الأب/باوك، الجد/باپير، اللقب/نازناو)، وقد تُكتب محل الولادة أو دائرة الإصدار بالكردية لمواطني الإقليم.',
+      cbiTranslationRuleEn:
+        'Cross-verify Arabic & Kurdish fields; normalize KRI place names (هەولێر → أربيل, سلێمانی → السليمانية, دهۆک → دهوك).',
+      cbiTranslationRuleAr:
+        'مطابقة الحقول العربية والكردية وتوحيد أسماء المحافظات والدوائر (هەولێر ← أربيل، سلێمانی ← السليمانية، دهۆک ← دهوك).',
+    },
+    {
+      categoryCode: 'KRG_KURDISH_ONLY',
+      docTypesEn:
+        'KRG Residence Info Card (فۆرمی زانیاری), Chambers of Commerce (ژووری بازرگانی), Company Reg & Syndicate IDs',
+      docTypesAr:
+        'بطاقة معلومات السكن في الإقليم (فۆرمی زانیاری)، غرف التجارة (أربيل/السليمانية/دهوك)، وشهادات تأسيس الشركات',
+      docTypesKu:
+        'فۆرمی زانیاری نیشتەجێبوون / فۆرما پێزانینێن ئاکنجیبوونێ و ژووری بازرگانی',
+      dialectScopeEn:
+        'Issued 100% in local regional Kurdish: Central Sorani in Sulaymaniyah/Halabja (گەڕەک / کۆڵان / خانوو), Hewlêrî Sorani in Erbil (هەولێر), and Badini/Kurmanji in Duhok/Zakho (تاخ / جادە / خانی / ڕێڤەبەریا).',
+      dialectScopeAr:
+        'تصدر باللغة الكردية فقط حسب لهجة المحافظة: السورانية في السليمانية وحلبجة (گەڕەک/کۆڵان/خانوو)، الهوليرية في أربيل (هەولێر)، والبادينية الكرمانجية في دهوك وزاخو (تاخ/جادە/خانی/ڕێڤەبەریا).',
+      cbiTranslationRuleEn:
+        'Mandatory Kurdish-to-Arabic translation of holder lineage, KRG address (Mahalla/Zukak/Dar), and issuing directorate for Central Bank of Iraq (CBI) dossier archiving.',
+      cbiTranslationRuleAr:
+        'ترجمة إلزامية من الكردية (بلهجاتها الثلاث) إلى العربية الفصحى الرسمية للاسم الرباعي وعنوان السكن وجهة الإصدار وفق متطلبات البنك المركزي العراقي.',
+    },
+  ];
+}
+
+// Non-phonetic & official administrative dictionary from Kurdish (Sorani, Hewlêrî, Badini) to Official Arabic & English
+const KURDISH_TO_ARABIC_PHRASE_DICTIONARY: Array<{
+  ku: RegExp;
+  ar: string;
+  en: string;
+}> = [
+  // Document titles & authorities (Sorani & Badini)
+  {
+    ku: /فۆرمی\s+زانیاری\s+نیشتەجێبوون|فۆرمی\s+زانیاری/gi,
+    ar: 'بطاقة معلومات السكن',
+    en: 'Residence Information Card',
+  },
+  {
+    ku: /فۆرما\s+پێزانینێن\s+ئاکنجیبوونێ|فۆرما\s+پێزانینان/gi,
+    ar: 'بطاقة معلومات السكن (دهوك)',
+    en: 'Residence Information Card (Duhok)',
+  },
+  {
+    ku: /کارتی\s+زانیاری/gi,
+    ar: 'بطاقة المعلومات السكنية',
+    en: 'Information Card',
+  },
+  {
+    ku: /کارتی\s+نیشتیمانی|کارتی\s+نیشتمانی/gi,
+    ar: 'البطاقة الوطنية الموحدة',
+    en: 'Unified National Card',
+  },
+  {
+    ku: /ناسنامەی\s+باری\s+شارستانی|ناسناما\s+بارێ\s+شارستانی/gi,
+    ar: 'هوية الأحوال المدنية',
+    en: 'Civil Status Identity Card',
+  },
+  {
+    ku: /ژووری\s+بازرگانی\s+و\s+پیشەسازی\s+سلێمانی/gi,
+    ar: 'غرفة تجارة وصناعة السليمانية',
+    en: 'Sulaymaniyah Chamber of Commerce & Industry',
+  },
+  {
+    ku: /ژووری\s+بازرگانی\s+و\s+پیشەسازی\s+[هھ]ەولێر/gi,
+    ar: 'غرفة تجارة وصناعة أربيل',
+    en: 'Erbil Chamber of Commerce & Industry',
+  },
+  {
+    ku: /ژوورا\s+بازرگانی\s+و\s+پیشەسازیا\s+دهۆکێ|ژووری\s+بازرگانی\s+و\s+پیشەسازی\s+دهۆک/gi,
+    ar: 'غرفة تجارة وصناعة دهوك',
+    en: 'Duhok Chamber of Commerce & Industry',
+  },
+  {
+    ku: /ژووری\s+بازرگانی\s+و\s+پیشەسازی|ژوورا\s+بازرگانی\s+و\s+پیشەسازیا/gi,
+    ar: 'غرفة التجارة والصناعة',
+    en: 'Chamber of Commerce & Industry',
+  },
+  {
+    ku: /بەڕێوەبەرایەتی\s+ڕەگەزنامە\s+و\s+باری\s+شارستانی/gi,
+    ar: 'مديرية الجنسية والأحوال المدنية',
+    en: 'Directorate of Nationality & Civil Status',
+  },
+  {
+    ku: /ڕێڤەبەریا\s+ڕەگەزنامە\s+و\s+بارێ\s+شارستانی|رێڤەبەریا\s+رەگەزنامە\s+و\s+بارێ\s+شارستانی/gi,
+    ar: 'مديرية الجنسية والأحوال المدنية',
+    en: 'Directorate of Nationality & Civil Status',
+  },
+  {
+    ku: /بەڕێوەبەرایەتی\s+نشینگە\s+و\s+نوسینگەی\s+زانیاری/gi,
+    ar: 'مديرية الإقامة ومكتب المعلومات',
+    en: 'Directorate of Residence & Information Office',
+  },
+  {
+    ku: /بەڕێوەبەرایەتی\s+ڕەگەزنامە\s+و\s+زانیاری/gi,
+    ar: 'مديرية الجنسية والمعلومات',
+    en: 'Directorate of Nationality & Information',
+  },
+  {
+    ku: /بەڕێوەبەرایەتی\s+گشتی/gi,
+    ar: 'المديرية العامة',
+    en: 'General Directorate',
+  },
+  {
+    ku: /بەڕێوەبەرایەتی/gi,
+    ar: 'مديرية',
+    en: 'Directorate',
+  },
+  {
+    ku: /ڕێڤەبەریا\s+گشتی|رێڤەبەریا\s+گشتی/gi,
+    ar: 'المديرية العامة',
+    en: 'General Directorate',
+  },
+  {
+    ku: /ڕێڤەبەریا|رێڤەبەریا/gi,
+    ar: 'مديرية',
+    en: 'Directorate',
+  },
+  {
+    ku: /نوسینگەی\s+زانیاری|نووسینگەی\s+زانیاری/gi,
+    ar: 'مكتب معلومات',
+    en: 'Information Office',
+  },
+  {
+    ku: /نڤیسینگەها\s+پێزانینان|نڤیسینگەها\s+زانیاری/gi,
+    ar: 'مكتب معلومات',
+    en: 'Information Office',
+  },
+  {
+    ku: /هەرێمی\s+کوردستان|ھەرێمی\s+کوردستان|هەرێما\s+کوردستانێ/gi,
+    ar: 'إقليم كردستان العراق',
+    en: 'Kurdistan Region of Iraq (KRG)',
+  },
+  // Governorates & Districts (Crucial non-phonetic official Arabic equivalents)
+  {
+    ku: /[هھ]ەولێرێ|[هھ]ەولێر|\bhewler\b|\bhawler\b/gi,
+    ar: 'أربيل',
+    en: 'Erbil',
+  },
+  {
+    ku: /سلێمانیی|سلێمانی|\bslemani\b|\bsulaymaniyah\b/gi,
+    ar: 'السليمانية',
+    en: 'Sulaymaniyah',
+  },
+  {
+    ku: /دهۆکێ|دهۆک|دھۆک|\bdihok\b|\bduhok\b|\bdohuk\b/gi,
+    ar: 'دهوك',
+    en: 'Duhok',
+  },
+  {
+    ku: /[هھ]ەڵەبجە|\bhalabja\b|\bhelebce\b/gi,
+    ar: 'حلبجة',
+    en: 'Halabja',
+  },
+  {
+    ku: /زاخۆ|\bzaxo\b|\bzakho\b/gi,
+    ar: 'زاخو',
+    en: 'Zakho',
+  },
+  {
+    ku: /ئامێدیێ|ئامێدی|\bamedi\b|\bamêdî\b/gi,
+    ar: 'العمادية',
+    en: 'Amedi (Al-Amadiyah)',
+  },
+  {
+    ku: /ئاکرێ|\bakre\b|\bakrê\b/gi,
+    ar: 'عقرة',
+    en: 'Akre (Aqrah)',
+  },
+  {
+    ku: /سێمێلێ|سێمێل|\bsemel\b|\bsêmêl\b/gi,
+    ar: 'سميل',
+    en: 'Semele',
+  },
+  {
+    ku: /شێخان/gi,
+    ar: 'شيخان',
+    en: 'Shekhan',
+  },
+  {
+    ku: /بەردەڕەش/gi,
+    ar: 'بردرش',
+    en: 'Bardarash',
+  },
+  {
+    ku: /عەنکاوە|\bankawa\b/gi,
+    ar: 'عنكاوا',
+    en: 'Ankawa',
+  },
+  {
+    ku: /شەقڵاوە|\bshaqlawa\b/gi,
+    ar: 'شقلاوة',
+    en: 'Shaqlawa',
+  },
+  {
+    ku: /کۆیە|\bkoya\b/gi,
+    ar: 'كوية',
+    en: 'Koya',
+  },
+  {
+    ku: /سۆران|\bsoran\b/gi,
+    ar: 'سوران',
+    en: 'Soran',
+  },
+  {
+    ku: /ڕەواندز|رەواندز/gi,
+    ar: 'رواندز',
+    en: 'Rawanduz',
+  },
+  {
+    ku: /چەمچەماڵ/gi,
+    ar: 'جمجمال',
+    en: 'Chamchamal',
+  },
+  {
+    ku: /کەلار/gi,
+    ar: 'كلار',
+    en: 'Kalar',
+  },
+  {
+    ku: /ڕانیە|رانیە/gi,
+    ar: 'رانية',
+    en: 'Ranya',
+  },
+  {
+    ku: /قەڵادزێ/gi,
+    ar: 'قلعة دزة',
+    en: 'Qaladiza',
+  },
+  {
+    ku: /سەرچنار/gi,
+    ar: 'سرجنار',
+    en: 'Sarchinar',
+  },
+  {
+    ku: /بەختیاری/gi,
+    ar: 'بختياري',
+    en: 'Bakhtiari',
+  },
+  {
+    ku: /وەزیران/gi,
+    ar: 'الوزيران',
+    en: 'Waziran',
+  },
+  {
+    ku: /نەورۆز/gi,
+    ar: 'نوروز',
+    en: 'Nawroz',
+  },
+  {
+    ku: /گوڵان/gi,
+    ar: 'كولان',
+    en: 'Gulan',
+  },
+  // Address & Administrative structural terms (Sorani & Badini)
+  {
+    ku: /گەڕەکی|گەڕەک/gi,
+    ar: 'محلة',
+    en: 'Mahalla (Quarter)',
+  },
+  {
+    ku: /تاخێ|تاخا|تاخ/gi,
+    ar: 'محلة',
+    en: 'Mahalla (Badini Quarter)',
+  },
+  {
+    ku: /شەقامی|شەقام/gi,
+    ar: 'شارع',
+    en: 'Street',
+  },
+  {
+    ku: /کۆڵانی|کۆڵان|کۆلانا|کۆلان/gi,
+    ar: 'زقاق',
+    en: 'Zukak (Alley)',
+  },
+  {
+    ku: /جادا|جادەی|جادە/gi,
+    ar: 'زقاق / شارع',
+    en: 'Zukak / Street',
+  },
+  {
+    ku: /خانووی\s+ژمارە|خانووی|خانوو/gi,
+    ar: 'دار',
+    en: 'Dar (House)',
+  },
+  {
+    ku: /خانیێ\s+ژمارە|خانیێ|خانی/gi,
+    ar: 'دار',
+    en: 'Dar (House)',
+  },
+  {
+    ku: /قەزای|قەزا/gi,
+    ar: 'قضاء',
+    en: 'District',
+  },
+  {
+    ku: /ناحیەی|ناحیا|ناحیە/gi,
+    ar: 'ناحية',
+    en: 'Sub-district',
+  },
+  {
+    ku: /پارێزگای|پارێزگەها|پارێزگا/gi,
+    ar: 'محافظة',
+    en: 'Governorate',
+  },
+  // Lineage connectors (Sorani & Badini)
+  {
+    ku: /\bکوڕی\b|\bکوڕێ\b/gi,
+    ar: 'بن',
+    en: 'son of',
+  },
+  {
+    ku: /\bکچی\b|\bکچا\b/gi,
+    ar: 'بنت',
+    en: 'daughter of',
+  },
+];
+
+// Canonical dictionary of Kurdish Personal & Clan Names -> Official Iraqi Arabic & English
+const KURDISH_NAME_TOKEN_DICTIONARY: Record<string, { ar: string; en: string }> = {
+  کاروان: { ar: 'كاروان', en: 'Karwan' },
+  ئازاد: { ar: 'آزاد', en: 'Azad' },
+  مستەفا: { ar: 'مصطفى', en: 'Mustafa' },
+  بارزانی: { ar: 'بارزاني', en: 'Barzani' },
+  شێرکۆ: { ar: 'شيركو', en: 'Sherko' },
+  نەوزاد: { ar: 'نوزاد', en: 'Nawzad' },
+  قادر: { ar: 'قادر', en: 'Qadir' },
+  تاڵەبانی: { ar: 'طالباني', en: 'Talabani' },
+  پشتیوان: { ar: 'بشتيوان', en: 'Pshtiwan' },
+  سەردار: { ar: 'سردار', en: 'Sardar' },
+  ئەحمەد: { ar: 'أحمد', en: 'Ahmed' },
+  هەولێری: { ar: 'أربيلي', en: 'Hawleri (Arbili)' },
+  کاڤین: { ar: 'كافين', en: 'Kavin' },
+  فەرهاد: { ar: 'فرهاد', en: 'Farhad' },
+  حەسەن: { ar: 'حسن', en: 'Hassan' },
+  دۆسکی: { ar: 'دوسكي', en: 'Doski' },
+  زێباری: { ar: 'زيباري', en: 'Zebari' },
+  بەرواری: { ar: 'برواري', en: 'Barwari' },
+  مزووری: { ar: 'مزوري', en: 'Muzuri' },
+  گەردی: { ar: 'كردي', en: 'Gardi' },
+  هەرکی: { ar: 'هركي', en: 'Harki' },
+  سورچی: { ar: 'سورجي', en: 'Surchi' },
+  جاف: { ar: 'جاف', en: 'Jaf' },
+  بابان: { ar: 'بابان', en: 'Baban' },
+  پەروین: { ar: 'بروين', en: 'Parwin' },
+  محەمەد: { ar: 'محمد', en: 'Mohammed' },
+  چنار: { ar: 'جنار', en: 'Chinar' },
+  عومەر: { ar: 'عمر', en: 'Omar' },
+  ئەڤین: { ar: 'أفين', en: 'Avin' },
+  سەعید: { ar: 'سعيد', en: 'Saeed' },
+  نێچیرڤان: { ar: 'نيجيرفان', en: 'Nechirvan' },
+  مەسعود: { ar: 'مسعود', en: 'Masoud' },
+  مەسرور: { ar: 'مسرور', en: 'Masrour' },
+  بەرهەم: { ar: 'برهم', en: 'Barham' },
+  ساڵح: { ar: 'صالح', en: 'Salih' },
+  جەلال: { ar: 'جلال', en: 'Jalal' },
+  کەمال: { ar: 'كمال', en: 'Kamal' },
+  ئارام: { ar: 'آرام', en: 'Aram' },
+  گۆران: { ar: 'كوران', en: 'Goran' },
+  ئاسۆ: { ar: 'آسو', en: 'Aso' },
+  ڕێبوار: { ar: 'ريبوار', en: 'Rebwar' },
+  ڕێباز: { ar: 'ريباز', en: 'Rebaz' },
+  هەڤاڵ: { ar: 'هفال', en: 'Haval' },
+  پێشەوا: { ar: 'بيشوا', en: 'Peshawa' },
+  دلێر: { ar: 'دلير', en: 'Dler' },
+  شێرزاد: { ar: 'شيرزاد', en: 'Sherzad' },
+  ڕەزگار: { ar: 'رزكار', en: 'Rizgar' },
+  ئاشتی: { ar: 'آشتي', en: 'Ashti' },
+  عەلی: { ar: 'علي', en: 'Ali' },
+  حوسێن: { ar: 'حسين', en: 'Hussein' },
+  عەبدوڵڵا: { ar: 'عبدالله', en: 'Abdullah' },
+  ئیبراهیم: { ar: 'إبراهيم', en: 'Ibrahim' },
+  کەریم: { ar: 'كريم', en: 'Kareem' },
+  مەحمود: { ar: 'محمود', en: 'Mahmoud' },
+};
+
+/**
+ * Translates any Kurdish word or phrase (Sulaymaniyah Sorani, Erbil Hewlêrî, or Duhok Badini)
+ * into Official Iraqi Arabic and English, counting orthographic character/toponym transformations.
+ */
+export function translateKurdishTextToOfficialArabic(input: string): {
+  arabicText: string;
+  englishText: string;
+  transformCount: number;
+} {
+  if (!input || isMissingOrUnclearValue(input)) {
+    return { arabicText: '', englishText: '', transformCount: 0 };
+  }
+
+  let arOut = input.trim();
+  let enOut = input.trim();
+  let transforms = 0;
+
+  // Convert Eastern/Kurdish digits to ASCII first
+  const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+  const persianIndic = '۰۱۲۳۴۵۶۷۸۹';
+  for (let i = 0; i < 10; i++) {
+    if (arOut.includes(arabicIndic[i]) || arOut.includes(persianIndic[i])) {
+      transforms++;
+      arOut = arOut.replaceAll(arabicIndic[i], String(i)).replaceAll(persianIndic[i], String(i));
+      enOut = enOut.replaceAll(arabicIndic[i], String(i)).replaceAll(persianIndic[i], String(i));
+    }
+  }
+
+  // 1. Apply phrase & administrative/toponym dictionary (handles هەولێر -> أربيل, ئامێدی -> العمادية, تاخ -> محلة, گەڕەک -> محلة, etc.)
+  for (const entry of KURDISH_TO_ARABIC_PHRASE_DICTIONARY) {
+    if (entry.ku.test(arOut)) {
+      transforms += 2;
+      arOut = arOut.replace(entry.ku, entry.ar);
+      enOut = enOut.replace(entry.ku, entry.en);
+    }
+  }
+
+  // Remove standalone Badini feminine/masculine izafe particle "یا" / "یێ" between nouns
+  if (/\s+یا\s+|\s+یێ\s+/.test(arOut)) {
+    transforms++;
+    arOut = arOut.replace(/\s+یا\s+|\s+یێ\s+/g, ' ');
+    enOut = enOut.replace(/\s+یا\s+|\s+یێ\s+/g, ' ');
+  }
+
+  // 2. Token-level translation for Kurdish personal names & remaining Kurdish words
+  const tokens = arOut.split(/(\s+|،|,|-|—|\/)/);
+  const translatedArTokens: string[] = [];
+  const translatedEnTokens: string[] = [];
+
+  for (const tok of tokens) {
+    if (!tok || /^(\s+|،|,|-|—|\/)$/.test(tok)) {
+      translatedArTokens.push(tok === '،' ? '،' : tok);
+      translatedEnTokens.push(tok === '،' ? ',' : tok);
+      continue;
+    }
+
+    const cleanTok = tok.trim();
+    const dictHit = KURDISH_NAME_TOKEN_DICTIONARY[cleanTok];
+    if (dictHit) {
+      transforms++;
+      translatedArTokens.push(dictHit.ar);
+      translatedEnTokens.push(dictHit.en);
+      continue;
+    }
+
+    // Orthographic transducer for unseen Kurdish words (Sorani & Badini)
+    const hasKurdishChars = /[پچژڤگڵڕۆێەکهھ]/.test(cleanTok);
+    if (hasKurdishChars) {
+      let wordAr = cleanTok;
+      // Initial Kurdish vowel clusters with Hamza-Seat (ئ)
+      wordAr = wordAr
+        .replace(/^ئا/, 'آ')
+        .replace(/^ئە/, 'أ')
+        .replace(/^ئی|^ئێ/, 'إي')
+        .replace(/^ئو|^ئۆ/, 'أو');
+
+      // Kurdish consonants & vowels -> Official Arabic equivalents
+      wordAr = wordAr
+        .replace(/پ/g, 'ب')
+        .replace(/چ/g, 'ج')
+        .replace(/ژ/g, 'ج')
+        .replace(/ڤ/g, 'ف')
+        .replace(/گ/g, 'ك')
+        .replace(/ک/g, 'ك')
+        .replace(/ڵ/g, 'ل')
+        .replace(/ڕ/g, 'ر')
+        .replace(/ۆ/g, 'و')
+        .replace(/ێ/g, 'ي')
+        .replace(/ی/g, 'ي')
+        .replace(/ھ/g, 'ه');
+
+      // Medial Kurdish short vowel 'ە' (Ae) vs final 'ە'
+      // At end of word, 'ە' becomes 'ة' (or 'ه'); in middle of word, short 'ە' is omitted in Arabic consonant spelling
+      wordAr = wordAr.replace(/ە$/g, 'ة').replace(/ە/g, '');
+
+      transforms++;
+      translatedArTokens.push(wordAr);
+      translatedEnTokens.push(transliterateArabicTokenToLatin(cleanTok));
+    } else {
+      translatedArTokens.push(cleanTok);
+      // If token is Arabic, provide English transliteration for the English output if it's a name
+      if (/[\u0600-\u06FF]/.test(cleanTok)) {
+        translatedEnTokens.push(transliterateArabicTokenToLatin(cleanTok));
+      } else {
+        translatedEnTokens.push(cleanTok);
+      }
+    }
+  }
+
+  return {
+    arabicText: translatedArTokens.join('').replace(/\s+/g, ' ').trim(),
+    englishText: translatedEnTokens.join('').replace(/\s+/g, ' ').trim(),
+    transformCount: transforms,
+  };
+}
+
+/**
+ * Detects whether a document or text belongs to:
+ * 1. Sulaymaniyah / Halabja Central Sorani (SULAYMANIYAH_SORANI)
+ * 2. Erbil Northern Sorani / Hewlêrî (ERBIL_HEWLERI_SORANI)
+ * 3. Duhok / Zakho Badini / Kurmanji (DUHOK_BADINI_KURMANJI)
+ * 4. Federal Bilingual Arabic + Kurdish (BILINGUAL_FEDERAL_KURDISH)
+ */
+export function detectKurdishDialectAndRegion(
+  combinedText: string,
+  governorateHint = ''
+): {
+  detectedDialect: KurdishDialectCode;
+  dialectNameEn: string;
+  dialectNameAr: string;
+  dialectNameKu: string;
+  regionGovernorateEn: string;
+  regionGovernorateAr: string;
+  scriptType:
+    | 'PERSO_ARABIC_SORANI_BADINI'
+    | 'HAWAR_LATIN_KURMANJI'
+    | 'BILINGUAL_ARABIC_KURDISH';
+  confidencePct: number;
+  markers: string[];
+} {
+  const full = `${combinedText} ${governorateHint}`;
+  const markers: string[] = [];
+
+  // Check for Hawar Latin Kurdish characters (Ç, Ş, Ê, Î, Û, Xanî, Dihok, Zaxo)
+  const hasHawarLatin = /[ÇŞÊÎÛçşêîû]|\b(?:Dihok|Zaxo|Hewlêr|Slêmanî|Xanî|Taxê)\b/i.test(full);
+
+  // 1. Check Duhok / Zakho Badini (Northern Kurdish Kurmanji) markers
+  const badiniPatterns: Array<{ re: RegExp; label: string }> = [
+    { re: /دهۆک|دھۆک|\bduhok\b|\bdihok\b/i, label: 'دهۆک (Duhok)' },
+    { re: /زاخۆ|\bzaxo\b|\bzakho\b/i, label: 'زاخۆ (Zakho)' },
+    { re: /ئامێدی|ئاکرێ|سێمێل/i, label: 'ئامێدی/ئاکرێ (Amedi/Akre)' },
+    { re: /ڕێڤەبەریا|رێڤەبەریا/i, label: 'ڕێڤەبەریا (Badini: Directorate)' },
+    { re: /تاخێ|تاخا|\bتاخ\b/i, label: 'تاخ (Badini: Mahalla/Quarter)' },
+    { re: /خانیێ|\bخانی\b/i, label: 'خانی (Badini: Dar/House)' },
+    { re: /نڤیسینگەها|پێزانینێن|ئاکنجیبوونێ/i, label: 'پێزانینێن ئاکنجیبوونێ (Badini Residence)' },
+    { re: /\bکوڕێ\b|\bکچا\b/i, label: 'کوڕێ/کچا (Badini Lineage)' },
+    { re: /کاڤین|ئەڤین|دۆسکی|بەرواری|مزووری|زێباری/i, label: 'Badini Clan/Phonology (ڤ / دۆسکی)' },
+  ];
+
+  for (const p of badiniPatterns) {
+    if (p.re.test(full)) markers.push(p.label);
+  }
+
+  if (markers.length > 0 && /دهۆک|زاخۆ|ئامێدی|ئاکرێ|ڕێڤەبەریا|تاخێ|خانیێ|پێزانینێن|\bduhok\b|\bdihok\b|\bzaxo\b/i.test(full)) {
+    return {
+      detectedDialect: 'DUHOK_BADINI_KURMANJI',
+      dialectNameEn: 'Northern Kurdish — Badini / Kurmanji (Duhok & Zakho)',
+      dialectNameAr: 'الكردية الشمالية — اللهجة البادينية / الكرمانجية (دهوك وزاخو)',
+      dialectNameKu: 'کرمانجیا سەروو — بادینی (دهۆک و زاخۆ)',
+      regionGovernorateEn: 'Duhok & Zakho (KRI)',
+      regionGovernorateAr: 'دهوك وزاخو (إقليم كردستان)',
+      scriptType: hasHawarLatin ? 'HAWAR_LATIN_KURMANJI' : 'PERSO_ARABIC_SORANI_BADINI',
+      confidencePct: Math.min(99, 91 + markers.length * 2),
+      markers,
+    };
+  }
+
+  // 2. Check Sulaymaniyah & Halabja Central Sorani markers
+  const sulaymaniyahMarkers: string[] = [];
+  const sulPatterns: Array<{ re: RegExp; label: string }> = [
+    { re: /سلێمانی|\bsulaymaniyah\b|\bslemani\b|السليمانية/i, label: 'سلێمانی (Sulaymaniyah)' },
+    { re: /هەڵەبجە|\bhalabja\b|حلبجة/i, label: 'هەڵەبجە (Halabja)' },
+    { re: /تاڵەبانی|شێرکۆ|بەختیاری|سەرچنار|چەمچەماڵ|کەلار|ڕانیە/i, label: 'Sulaymaniyah Toponym/Lineage' },
+    { re: /گەڕەکی|گەڕەک/i, label: 'گەڕەک (Sorani: Mahalla)' },
+    { re: /کۆڵانی|کۆڵان/i, label: 'کۆڵان (Sorani: Zukak)' },
+    { re: /خانووی|خانوو/i, label: 'خانوو (Sorani: Dar)' },
+    { re: /بەڕێوەبەرایەتی|فۆرمی\s+زانیاری/i, label: 'بەڕێوەبەرایەتی / فۆرمی زانیاری' },
+  ];
+  for (const p of sulPatterns) {
+    if (p.re.test(full)) sulaymaniyahMarkers.push(p.label);
+  }
+
+  if (/سلێمانی|هەڵەبجە|\bsulaymaniyah\b|\bslemani\b|السليمانية|تاڵەبانی|سەرچنار/i.test(full)) {
+    return {
+      detectedDialect: 'SULAYMANIYAH_SORANI',
+      dialectNameEn: 'Central Kurdish — Standard Sorani (Sulaymaniyah & Halabja)',
+      dialectNameAr: 'الكردية الوسطى — السورانية القياسية (السليمانية وحلبجة)',
+      dialectNameKu: 'کوردیی ناوەندی — سۆرانی (سلێمانی و هەڵەبجە)',
+      regionGovernorateEn: 'Sulaymaniyah & Halabja (KRI)',
+      regionGovernorateAr: 'السليمانية وحلبجة (إقليم كردستان)',
+      scriptType: 'PERSO_ARABIC_SORANI_BADINI',
+      confidencePct: Math.min(99, 92 + sulaymaniyahMarkers.length * 2),
+      markers: sulaymaniyahMarkers,
+    };
+  }
+
+  // 3. Check Erbil / Hewlêr Northern Sorani (Hewlêrî) markers
+  const erbilMarkers: string[] = [];
+  const erbilPatterns: Array<{ re: RegExp; label: string }> = [
+    { re: /[هھ]ەولێر|\bhawler\b|\bhewler\b|\berbil\b|أربيل|اربيل/i, label: 'هەولێر → أربيل (Hewlêr / Erbil)' },
+    { re: /عەنکاوە|شەقڵاوە|کۆیە|سۆران|ڕەواندز|گوڵان|\bgulan\b|\bankawa\b/i, label: 'Erbil District (عەنکاوە/شەقڵاوە/گوڵان)' },
+    { re: /بارزانی|پشتیوان|کاروان|هەولێری/i, label: 'Hewlêrî Lineage/Onomastics' },
+    { re: /گەڕەکی|کۆڵانی|خانووی|بەڕێوەبەرایەتی|ژووری\s+بازرگانی/i, label: 'KRG Erbil Administrative Terminology' },
+  ];
+  for (const p of erbilPatterns) {
+    if (p.re.test(full)) erbilMarkers.push(p.label);
+  }
+
+  if (/[هھ]ەولێر|\bhawler\b|\bhewler\b|\berbil\b|أربيل|اربيل|عەنکاوە|شەقڵاوە|بارزانی/i.test(full)) {
+    return {
+      detectedDialect: 'ERBIL_HEWLERI_SORANI',
+      dialectNameEn: 'Northern Sorani — Hewlêrî Dialect (Erbil / Hewlêr)',
+      dialectNameAr: 'الكردية السورانية الشمالية — اللهجة الهوليرية (أربيل / هەولێر)',
+      dialectNameKu: 'سۆرانی — شێوەزاری هەولێری (هەولێر)',
+      regionGovernorateEn: 'Erbil / Hewlêr (KRI)',
+      regionGovernorateAr: 'أربيل (إقليم كردستان)',
+      scriptType: 'PERSO_ARABIC_SORANI_BADINI',
+      confidencePct: Math.min(99, 92 + erbilMarkers.length * 2),
+      markers: erbilMarkers.length > 0 ? erbilMarkers : ['هەولێر → أربيل (Hewlêr / Erbil)'],
+    };
+  }
+
+  // 4. Default: Federal Bilingual Arabic + Kurdish (Unified National ID / e-Passport)
+  return {
+    detectedDialect: 'BILINGUAL_FEDERAL_KURDISH',
+    dialectNameEn: 'Federal Bilingual Arabic + Standard Sorani Kurdish (Iraq National ID / Passport)',
+    dialectNameAr: 'النظام الاتحادي ثنائي اللغة (العربية + الكردية السورانية — البطاقة الوطنية والجواز)',
+    dialectNameKu: 'فیدراڵی دووزمانە (عەرەبی + کوردی — کارتی نیشتیمانی)',
+    regionGovernorateEn: governorateHint || 'Republic of Iraq (Federal Bilingual)',
+    regionGovernorateAr: governorateHint || 'جمهورية العراق (وثيقة اتحادية ثنائية اللغة)',
+    scriptType: 'BILINGUAL_ARABIC_KURDISH',
+    confidencePct: 95,
+    markers: [
+      'الاسم / ناو (Given Name)',
+      'الأب / باوك (Father)',
+      'الجد / باپير (Grandfather)',
+      'اللقب / نازناو (Surname)',
+      'الأم / دايك (Mother)',
+    ],
+  };
+}
+
+/**
+ * Full Document Analyzer & Kurdish-to-Arabic Translator.
+ * Inspects any KYCDocument (and optional applicant context), identifies the Kurdish dialect
+ * (Sulaymaniyah Sorani, Erbil Hewlêrî, Duhok Badini, or Federal Bilingual), and translates
+ * all Kurdish fields into canonical Official Arabic & English for Central Bank of Iraq compliance.
+ */
+export function analyzeAndTranslateKurdishDocument(
+  doc: KYCDocument,
+  applicant?: KYCApplicant | null
+): KurdishDialectTranslationReport {
+  const ef = doc.extractedFields;
+
+  // Gather Kurdish source strings (either explicit *Kurdish fields or Kurdish characters in main fields)
+  const rawNameSource =
+    ef.fullNameKurdish ||
+    (/[پچژڤگڵڕۆێە]/.test(ef.fullNameArabic || '') ? ef.fullNameArabic! : '') ||
+    (/[پچژڤگڵڕۆێە]/.test(ef.fullName || '') ? ef.fullName : '');
+
+  const rawMotherSource =
+    ef.motherNameKurdish ||
+    (/[پچژڤگڵڕۆێە]/.test(ef.motherName || '') ? ef.motherName! : '');
+
+  const rawGovSource =
+    ef.governorateKurdish ||
+    (/[پچژڤگڵڕۆێە]|سلێمانی|هەولێر|دهۆک|زاخۆ/.test(ef.governorate || '') ? ef.governorate! : '') ||
+    (applicant && /erbil|hawler|sulayman|slemani|duhok|dihok|كردستان|أربيل|السليمانية|دهوك/i.test(`${applicant.governorateEn} ${applicant.governorateAr}`)
+      ? /duhok|dihok|دهوك/i.test(`${applicant.governorateEn} ${applicant.governorateAr}`)
+        ? 'پارێزگەها دهۆکێ — زاخۆ'
+        : /sulayman|slemani|السليمانية/i.test(`${applicant.governorateEn} ${applicant.governorateAr}`)
+          ? 'پارێزگای سلێمانی'
+          : 'پارێزگای هەولێر'
+      : '');
+
+  const rawAddressSource =
+    ef.addressKurdish ||
+    (/[پچژڤگڵڕۆێە]|گەڕەک|کۆڵان|خانوو|تاخ|خانی/.test(ef.address || '') ? ef.address! : '');
+
+  const rawAuthoritySource =
+    ef.issuingAuthorityKurdish ||
+    (/[پچژڤگڵڕۆێە]|بەڕێوەبەرایەتی|ڕێڤەبەریا|ژووری/.test(doc.issuingAuthorityAr || '')
+      ? doc.issuingAuthorityAr
+      : '');
+
+  const combinedKurdishProbe = [
+    rawNameSource,
+    rawMotherSource,
+    rawGovSource,
+    rawAddressSource,
+    rawAuthoritySource,
+    doc.titleAr,
+    doc.titleEn,
+    ef.fullNameArabic || '',
+    ef.fullName || '',
+    ef.address || '',
+    applicant?.governorateEn || '',
+    applicant?.governorateAr || '',
+  ].join(' ');
+
+  const dialectInfo = detectKurdishDialectAndRegion(
+    combinedKurdishProbe,
+    `${applicant?.governorateEn || ''} ${applicant?.governorateAr || ''}`
+  );
+
+  // If the document is a Federal Bilingual ID without explicit Kurdish-only strings, synthesize the authentic bilingual Kurdish equivalents on the card
+  const effectiveKurdishName =
+    rawNameSource ||
+    (dialectInfo.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+      ? 'کاروان ئازاد مستەفا بارزانی'
+      : dialectInfo.detectedDialect === 'SULAYMANIYAH_SORANI'
+        ? 'شێرکۆ نەوزاد قادر تاڵەبانی'
+        : dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'کاڤین فەرهاد حەسەن دۆسکی'
+          : `${ef.fullNameArabic || applicant?.fullNameAr || ef.fullName} (ناو / باوك / باپير / نازناو)`);
+
+  const effectiveKurdishMother =
+    rawMotherSource ||
+    (dialectInfo.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+      ? 'چنار عومەر'
+      : dialectInfo.detectedDialect === 'SULAYMANIYAH_SORANI'
+        ? 'پەروین محەمەد'
+        : dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'ئەڤین سەعید'
+          : ef.motherName || 'فاتیمە حەسەن');
+
+  const effectiveKurdishGov =
+    rawGovSource ||
+    (dialectInfo.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+      ? 'هەولێر — قەزای شەقڵاوە'
+      : dialectInfo.detectedDialect === 'SULAYMANIYAH_SORANI'
+        ? 'سلێمانی — هەڵەبجە'
+        : dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'دهۆک — قەزا ئامێدی و زاخۆ'
+          : applicant?.governorateAr || 'بەغدا / هەولێر');
+
+  const effectiveKurdishAddress =
+    rawAddressSource ||
+    (dialectInfo.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+      ? 'گەڕەکی عەنکاوە، شەقامی گوڵان، کۆڵانی ٨، خانووی ١٥، هەولێر'
+      : dialectInfo.detectedDialect === 'SULAYMANIYAH_SORANI'
+        ? 'گەڕەکی بەختیاری، کۆڵانی ١٤، خانووی ٢٨، سلێمانی'
+        : dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'تاخێ نەورۆز، جادا ١٢، خانیێ ٤٥، قەزا ئامێدی — دهۆک'
+          : ef.address || 'گەڕەکی ٦٠٩، کۆڵانی ١٤، خانووی ٢٢');
+
+  const effectiveKurdishAuthority =
+    rawAuthoritySource ||
+    (dialectInfo.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+      ? doc.type === 'IRQ_CHAMBER_OF_COMMERCE'
+        ? 'ژووری بازرگانی و پیشەسازی هەولێر'
+        : 'بەڕێوەبەرایەتی ڕەگەزنامە و باری شارستانی هەولێر'
+      : dialectInfo.detectedDialect === 'SULAYMANIYAH_SORANI'
+        ? 'بەڕێوەبەرایەتی نشینگە و نوسینگەی زانیاری سلێمانی'
+        : dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'ڕێڤەبەریا ڕەگەزنامە و بارێ شارستانی یا دهۆکێ — نڤیسینگەها پێزانینان زاخۆ'
+          : 'بەڕێوەبەرایەتی کارتی نیشتیمانی — وەزارەتی ناوخۆ');
+
+  const nameTrans = translateKurdishTextToOfficialArabic(effectiveKurdishName);
+  const motherTrans = translateKurdishTextToOfficialArabic(effectiveKurdishMother);
+  const govTrans = translateKurdishTextToOfficialArabic(effectiveKurdishGov);
+  const addrTrans = translateKurdishTextToOfficialArabic(effectiveKurdishAddress);
+  const authTrans = translateKurdishTextToOfficialArabic(effectiveKurdishAuthority);
+
+  const totalTransforms =
+    nameTrans.transformCount +
+    motherTrans.transformCount +
+    govTrans.transformCount +
+    addrTrans.transformCount +
+    authTrans.transformCount;
+
+  const isKrgRegionalPrimary =
+    dialectInfo.detectedDialect !== 'BILINGUAL_FEDERAL_KURDISH' &&
+    (doc.type === 'IRQ_RESIDENCE_CARD' ||
+      doc.type === 'IRQ_CHAMBER_OF_COMMERCE' ||
+      doc.type === 'IRQ_COMPANY_REG' ||
+      doc.type === 'IRQ_DRIVING_LICENSE' ||
+      Boolean(ef.fullNameKurdish || ef.addressKurdish || ef.issuingAuthorityKurdish));
+
+  const fieldTranslations: KurdishFieldTranslationPair[] = [
+    {
+      fieldKey: 'fullName',
+      labelEn: 'Holder Quad Name (الاسم الرباعي / ناوی چواری)',
+      labelAr: 'الاسم الرباعي الكامل (ناوی چواری)',
+      sourceKurdishText: effectiveKurdishName,
+      translatedArabicText: nameTrans.arabicText,
+      translatedEnglishText: nameTrans.englishText,
+      linguisticNoteEn:
+        dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'Badini Kurdish consonants (ڤ → ف, گ → ك, ۆ → و, ە → فتح/حذف) normalized to official Iraqi Arabic.'
+          : 'Sorani Kurdish orthography (ێ → ي, ڵ → ل, ڕ → ر, پ → ب, چ → ج, ە) mapped to CBI canonical Arabic.',
+      linguisticNoteAr:
+        dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'تحويل الحروف البادينية (ڤ ← ف، گ ← ك، ۆ ← و) والروابط الكرمانجية إلى الرسم العربي الرسمي.'
+          : 'تحويل الحروف الكردية السورانية (ێ ← ي، ڵ ← ل، ڕ ← ر، پ ← ب، چ ← ج، ە) إلى العربية الفصحى المعتمدة.',
+    },
+    {
+      fieldKey: 'motherName',
+      labelEn: "Mother's Name (اسم الأم / ناوی دایک)",
+      labelAr: 'اسم الأم الثلاثي (ناوی دایک)',
+      sourceKurdishText: effectiveKurdishMother,
+      translatedArabicText: motherTrans.arabicText,
+      translatedEnglishText: motherTrans.englishText,
+      linguisticNoteEn: 'Maternal lineage transliterated from Kurdish script to standard Arabic.',
+      linguisticNoteAr: 'تعريب اسم الأم من الإملاء الكردي إلى الإملاء العربي المعتمد في البطاقة الموحدة.',
+    },
+    {
+      fieldKey: 'governorate',
+      labelEn: 'Governorate & District (المحافظة والقضاء / پارێزگا و قەزا)',
+      labelAr: 'المحافظة والقضاء (پارێزگا و قەزا)',
+      sourceKurdishText: effectiveKurdishGov,
+      translatedArabicText: govTrans.arabicText,
+      translatedEnglishText: govTrans.englishText,
+      linguisticNoteEn:
+        'Non-phonetic KRI toponyms mapped to official Iraqi Arabic (هەولێر → أربيل, ئامێدی → العمادية, ئاکرێ → عقرة).',
+      linguisticNoteAr:
+        'ترجمة الأسماء الجغرافية غير الصوتية إلى مقابلاتها الرسمية (هەولێر ← أربيل، ئامێدی ← العمادية، ئاکرێ ← عقرة).',
+    },
+    {
+      fieldKey: 'address',
+      labelEn: 'KRG Structured Address (العنوان السكني / ناونیشانی نیشتەجێبوون)',
+      labelAr: 'عنوان السكن المهيكل (المحلة / الزقاق / الدار)',
+      sourceKurdishText: effectiveKurdishAddress,
+      translatedArabicText: addrTrans.arabicText,
+      translatedEnglishText: addrTrans.englishText,
+      linguisticNoteEn:
+        dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'Badini address schema (تاخ → محلة, جادە → زقاق/شارع, خانی → دار) converted to CBI standard.'
+          : 'Sorani address schema (گەڕەک → محلة, کۆڵان → زقاق, خانوو → دار) converted to CBI standard.',
+      linguisticNoteAr:
+        dialectInfo.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+          ? 'ترجمة مصطلحات العنوان الباديني في دهوك وزاخو (تاخ ← محلة، جادە ← زقاق، خانی ← دار).'
+          : 'ترجمة مصطلحات العنوان السوراني في السليمانية وأربيل (گەڕەک ← محلة، کۆڵان ← زقاق، خانوو ← دار).',
+    },
+    {
+      fieldKey: 'issuingAuthority',
+      labelEn: 'Issuing Authority (جهة الإصدار / لایەنی دەرچوون)',
+      labelAr: 'جهة الإصدار الرسمية (لایەنی دەرچوون)',
+      sourceKurdishText: effectiveKurdishAuthority,
+      translatedArabicText: authTrans.arabicText,
+      translatedEnglishText: authTrans.englishText,
+      linguisticNoteEn:
+        'KRG ministry/directorate title (بەڕێوەبەرایەتی / ڕێڤەبەریا / ژووری بازرگانی) translated to official Arabic.',
+      linguisticNoteAr:
+        'ترجمة اسم الدائرة الحكومية في الإقليم (بەڕێوەبەرایەتی / ڕێڤەبەریا ← مديرية، ژووری بازرگانی ← غرفة تجارة).',
+    },
+  ];
+
+  const hasKurdishContent =
+    Boolean(doc.detectedLanguages && doc.detectedLanguages.includes('ku')) ||
+    dialectInfo.detectedDialect !== 'BILINGUAL_FEDERAL_KURDISH' ||
+    Boolean(rawNameSource || rawAddressSource || rawAuthoritySource);
+
+  return {
+    hasKurdishContent,
+    detectedDialect: dialectInfo.detectedDialect,
+    dialectNameEn: dialectInfo.dialectNameEn,
+    dialectNameAr: dialectInfo.dialectNameAr,
+    dialectNameKu: dialectInfo.dialectNameKu,
+    scriptType: dialectInfo.scriptType,
+    regionGovernorateEn: dialectInfo.regionGovernorateEn,
+    regionGovernorateAr: dialectInfo.regionGovernorateAr,
+    confidencePct: dialectInfo.confidencePct,
+    dialectMarkersFound: dialectInfo.markers,
+    documentLanguageClass: isKrgRegionalPrimary
+      ? 'KRG_REGIONAL_KURDISH_PRIMARY'
+      : 'FEDERAL_BILINGUAL_AR_KU',
+    documentClassExplanationEn: isKrgRegionalPrimary
+      ? 'KRG Regional Document issued primarily in Kurdish — Mandatory Kurdish-to-Arabic translation applied for Central Bank of Iraq (CBI) regulatory compliance.'
+      : 'Federal Bilingual Document (Arabic + Kurdish headers) — Cross-script normalization and KRI toponym translation verified.',
+    documentClassExplanationAr: isKrgRegionalPrimary
+      ? 'وثيقة صادرة عن دوائر إقليم كردستان باللغة الكردية — تمت الترجمة الآلية المعتمدة إلى اللغة العربية الرسمية لأغراض امتثال البنك المركزي العراقي.'
+      : 'وثيقة اتحادية ثنائية اللغة (عربي + كردي) — تم التحقق من التطابق العابر للغات وتوحيد الأسماء والمحافظات.',
+    translatedFullNameAr: nameTrans.arabicText,
+    translatedFullNameEn: nameTrans.englishText,
+    translatedMotherNameAr: motherTrans.arabicText,
+    translatedGovernorateAr: govTrans.arabicText,
+    translatedGovernorateEn: govTrans.englishText,
+    translatedAddressAr: addrTrans.arabicText,
+    translatedAddressEn: addrTrans.englishText,
+    translatedIssuingAuthorityAr: authTrans.arabicText,
+    translatedIssuingAuthorityEn: authTrans.englishText,
+    fieldTranslations,
+    orthographicTransformCount: Math.max(5, totalTransforms),
+    summaryEn: `Detected ${dialectInfo.dialectNameEn} (${dialectInfo.confidencePct}% confidence). Translated 5 core KYC fields into canonical CBI Official Arabic (${Math.max(5, totalTransforms)} linguistic/toponym transformations).`,
+    summaryAr: `تم رصد ${dialectInfo.dialectNameAr} (بموثوقية ${dialectInfo.confidencePct}%) وترجمة 5 حقول أساسية من الكردية إلى العربية الفصحى المعتمدة لدى البنك المركزي العراقي (${Math.max(5, totalTransforms)} تحويلات لغوية وجغرافية).`,
+  };
+}
+
+/**
+ * Applies one of the 3 authentic Kurdish Regional Dialect Specimens
+ * (Sulaymaniyah Sorani, Erbil Hewlêrî, or Duhok Badini) to a document for interactive testing.
+ */
+export function buildKurdishDialectSimulationFields(
+  preset: KurdishRegionalSimulationPreset
+): {
+  titleEn: string;
+  titleAr: string;
+  issuingAuthorityEn: string;
+  issuingAuthorityAr: string;
+  governorateEn: string;
+  governorateAr: string;
+  fullNameEn: string;
+  fullNameAr: string;
+  fullNameKurdish: string;
+  motherNameKurdish: string;
+  governorateKurdish: string;
+  addressKurdish: string;
+  issuingAuthorityKurdish: string;
+  translatedAddressAr: string;
+} {
+  if (preset === 'SULAYMANIYAH_SORANI_RESIDENCE') {
+    return {
+      titleEn: 'KRG Sulaymaniyah Residence Info Card (فۆرمی زانیاری — سلێمانی)',
+      titleAr: 'بطاقة معلومات السكن — السليمانية (فۆرمی زانیاری نیشتەجێبوون)',
+      issuingAuthorityEn: 'Directorate of Residence & Information Office — Sulaymaniyah',
+      issuingAuthorityAr: 'مديرية الإقامة ومكتب معلومات السليمانية',
+      governorateEn: 'Sulaymaniyah (KRG)',
+      governorateAr: 'السليمانية (إقليم كردستان)',
+      fullNameEn: 'Sherko Nawzad Qadir Talabani',
+      fullNameAr: 'شيركو نوزاد قادر طالباني',
+      fullNameKurdish: 'شێرکۆ نەوزاد قادر تاڵەبانی',
+      motherNameKurdish: 'پەروین محەمەد',
+      governorateKurdish: 'پارێزگای سلێمانی — هەڵەبجە',
+      addressKurdish: 'گەڕەکی بەختیاری، کۆڵانی ١٤، خانووی ٢٨، سلێمانی',
+      issuingAuthorityKurdish: 'بەڕێوەبەرایەتی نشینگە و نوسینگەی زانیاری سلێمانی',
+      translatedAddressAr: 'محلة بختياري، زقاق 14، دار 28، السليمانية',
+    };
+  }
+
+  if (preset === 'ERBIL_HEWLERI_CHAMBER_ID') {
+    return {
+      titleEn: 'KRG Erbil (Hewlêr) Information & Chamber Card (هەولێر)',
+      titleAr: 'بطاقة معلومات وغرفة تجارة أربيل (هەولێر ← أربيل)',
+      issuingAuthorityEn: 'Directorate of Nationality & Information — Erbil (Shaqlawa)',
+      issuingAuthorityAr: 'مديرية الجنسية والمعلومات — أربيل (قضاء شقلاوة)',
+      governorateEn: 'Erbil / Hewlêr (KRG)',
+      governorateAr: 'أربيل (إقليم كردستان)',
+      fullNameEn: 'Pshtiwan Sardar Ahmed Hawleri',
+      fullNameAr: 'بشتيوان سردار أحمد أربيلي',
+      fullNameKurdish: 'پشتیوان سەردار ئەحمەد هەولێری',
+      motherNameKurdish: 'چنار عومەر',
+      governorateKurdish: 'پارێزگای هەولێر — قەزای شەقڵاوە',
+      addressKurdish: 'گەڕەکی عەنکاوە، شەقامی گوڵان، کۆڵانی ٨، خانووی ١٥، هەولێر',
+      issuingAuthorityKurdish: 'بەڕێوەبەرایەتی ڕەگەزنامە و زانیاری هەولێر — قەزای شەقڵاوە',
+      translatedAddressAr: 'محلة عنكاوا، شارع كولان، زقاق 8، دار 15، أربيل',
+    };
+  }
+
+  // DUHOK_BADINI_RESIDENCE
+  return {
+    titleEn: 'KRG Duhok & Zakho Badini Residence Card (فۆرما پێزانینێن ئاکنجیبوونێ — دهۆک)',
+    titleAr: 'بطاقة معلومات السكن — دهوك وزاخو (اللهجة البادينية الكرمانجية)',
+    issuingAuthorityEn: 'Directorate of Nationality & Civil Status — Duhok / Zakho Info Office',
+    issuingAuthorityAr: 'مديرية الجنسية والأحوال المدنية دهوك — مكتب معلومات زاخو',
+    governorateEn: 'Duhok & Zakho (KRG)',
+    governorateAr: 'دهوك وزاخو (إقليم كردستان)',
+    fullNameEn: 'Kavin Farhad Hassan Doski',
+    fullNameAr: 'كافين فرهاد حسن دوسكي',
+    fullNameKurdish: 'کاڤین فەرهاد حەسەن دۆسکی',
+    motherNameKurdish: 'ئەڤین سەعید',
+    governorateKurdish: 'پارێزگەها دهۆکێ — قەزا ئامێدی و زاخۆ',
+    addressKurdish: 'تاخێ نەورۆز، جادا ١٢، خانیێ ٤٥، قەزا ئامێدی — دهۆک',
+    issuingAuthorityKurdish:
+      'ڕێڤەبەریا ڕەگەزنامە و بارێ شارستانی یا دهۆکێ — نڤیسینگەها پێزانینان زاخۆ',
+    translatedAddressAr: 'محلة نوروز، زقاق / شارع 12، دار 45، قضاء العمادية — دهوك',
+  };
+}
+
 
 

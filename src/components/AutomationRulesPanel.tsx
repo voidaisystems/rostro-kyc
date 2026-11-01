@@ -41,7 +41,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
   return (
     <div className="space-y-6">
       {/* Header & Primary Batch Trigger */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-[#1f1f23]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/80 dark:border-white/[0.06]">
         <div>
           <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
             {t(lang, 'workflowSectionTitle')}
@@ -54,7 +54,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
         <button
           type="button"
           onClick={onRunBatch}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#059669] hover:bg-[#10b981] border border-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-[#10b981] to-[#047857] hover:from-[#5b36eb] hover:to-[#8b22d1] border border-[#10b981]/40 rounded-xl shadow-sm shadow-[#10b981]/25 transition-all whitespace-nowrap shrink-0"
         >
           <Cpu className="w-4 h-4" />
           <span>
@@ -66,9 +66,9 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
       {/* Two-Column Split: Threshold Controls & Live Simulation Preview */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left Column: Rule Threshold Sliders & Toggles */}
-        <div className="lg:col-span-7 border border-zinc-200 dark:border-[#1a1a1e] rounded-xl p-5 bg-white dark:bg-[#0c0c0e] space-y-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100 pb-2 border-b border-zinc-200 dark:border-[#1f1f23]">
-            <Sliders className="w-4 h-4 text-[#10b981]" />
+        <div className="lg:col-span-7 border border-zinc-200/80 dark:border-white/[0.06] rounded-[20px] p-5 bg-[#f4fbf7] dark:bg-[#181a20] space-y-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100 pb-2 border-b border-zinc-200/80 dark:border-white/[0.06]">
+            <Sliders className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
             <span>
               {lang === 'ar'
                 ? '01. حدود المعالجة الفورية التلقائية'
@@ -86,7 +86,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
                 >
                   {t(lang, 'ruleMaxRiskLabel')}
                 </label>
-                <span className="font-mono font-bold tabular-nums text-[#10b981]">
+                <span className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7]">
                   &le; {config.autoApproveMaxRiskScore} / 100
                 </span>
               </div>
@@ -115,7 +115,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
                 >
                   {t(lang, 'ruleMinOcrLabel')}
                 </label>
-                <span className="font-mono font-bold tabular-nums text-[#10b981]">
+                <span className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7]">
                   &ge; {config.minOcrConfidence}%
                 </span>
               </div>
@@ -144,7 +144,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
                 >
                   {t(lang, 'ruleMinBioLabel')}
                 </label>
-                <span className="font-mono font-bold tabular-nums text-[#10b981]">
+                <span className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7]">
                   &ge; {config.minBiometricScore}%
                 </span>
               </div>
@@ -166,7 +166,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
           </div>
 
           {/* Boolean Policy Toggles */}
-          <div className="pt-3 border-t border-zinc-200 dark:border-[#1f1f23] space-y-3">
+          <div className="pt-3 border-t border-zinc-200/80 dark:border-white/[0.06] space-y-3">
             <label className="flex items-center justify-between gap-3 text-xs cursor-pointer">
               <span className="font-medium text-zinc-800 dark:text-zinc-200">
                 {t(lang, 'ruleSanctionsToggle')}
@@ -221,29 +221,29 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
         </div>
 
         {/* Right Column: Live Impact Preview on Queue */}
-        <div className="lg:col-span-5 border border-zinc-200 dark:border-[#1a1a1e] rounded-xl p-5 bg-white dark:bg-[#0c0c0e] flex flex-col justify-between space-y-4">
+        <div className="lg:col-span-5 border border-zinc-200/80 dark:border-white/[0.06] rounded-[20px] p-5 bg-[#f4fbf7] dark:bg-[#181a20] flex flex-col justify-between space-y-4">
           <div className="space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-[#1f1f23]">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-200/80 dark:border-white/[0.06]">
               <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                 {lang === 'ar'
                   ? `02. محاكاة قائمة الانتظار (${pendingOrFlagged.length} نشط)`
                   : `02. Dry-Run Queue Simulation (${pendingOrFlagged.length} Active)`}
               </span>
-              <span className="text-xs font-mono text-zinc-500">
+              <span className="text-xs font-mono text-[#10b981] dark:text-[#34d399]">
                 {lang === 'ar' ? 'معاينة حتمية' : 'DETERMINISTIC PREVIEW'}
               </span>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-[#111113] border border-zinc-200 dark:border-[#222225]">
-                <div className="text-xl font-bold font-mono tabular-nums text-emerald-600 dark:text-[#10b981]">
+              <div className="p-3 rounded-xl bg-white dark:bg-[#1f2128] border border-zinc-200/80 dark:border-white/[0.06]">
+                <div className="text-xl font-bold font-mono tabular-nums text-[#10b981] dark:text-[#6ee7b7]">
                   {wouldApproveCount}
                 </div>
                 <div className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
                   {lang === 'ar' ? 'اعتماد تلقائي' : 'Auto-Approve'}
                 </div>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-[#111113] border border-zinc-200 dark:border-[#222225]">
+              <div className="p-3 rounded-xl bg-white dark:bg-[#1f2128] border border-zinc-200/80 dark:border-white/[0.06]">
                 <div className="text-xl font-bold font-mono tabular-nums text-amber-600 dark:text-amber-400">
                   {wouldFlagCount}
                 </div>
@@ -251,7 +251,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
                   {lang === 'ar' ? 'تحويل للمراجعة' : 'Escalate / Flag'}
                 </div>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-[#111113] border border-zinc-200 dark:border-[#222225]">
+              <div className="p-3 rounded-xl bg-white dark:bg-[#1f2128] border border-zinc-200/80 dark:border-white/[0.06]">
                 <div className="text-xl font-bold font-mono tabular-nums text-red-600 dark:text-red-400">
                   {wouldRejectCount}
                 </div>
@@ -262,7 +262,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
             </div>
 
             {/* Per-applicant preview list */}
-            <div className="divide-y divide-zinc-200 dark:divide-[#1f1f23] border-t border-zinc-200 dark:border-[#1f1f23] max-h-60 overflow-y-auto">
+            <div className="divide-y divide-zinc-200/80 dark:divide-white/[0.06] border-t border-zinc-200/80 dark:border-white/[0.06] max-h-60 overflow-y-auto">
               {simulatedOutcomes.length === 0 ? (
                 <div className="py-6 text-center text-xs text-zinc-500">
                   {lang === 'ar'
@@ -279,7 +279,7 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
                       <span
                         className={`font-mono font-semibold uppercase ${
                           evalResult.nextStatus === 'approved'
-                            ? 'text-emerald-600 dark:text-[#10b981]'
+                            ? 'text-[#10b981] dark:text-[#6ee7b7]'
                             : evalResult.nextStatus === 'rejected'
                             ? 'text-red-600 dark:text-red-400'
                             : 'text-amber-600 dark:text-amber-400'
@@ -304,9 +304,9 @@ export const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({
             </div>
           </div>
 
-          <div className="pt-3 border-t border-zinc-200 dark:border-[#1f1f23] flex items-center justify-between text-[11px] text-zinc-500">
+          <div className="pt-3 border-t border-zinc-200/80 dark:border-white/[0.06] flex items-center justify-between text-[11px] text-zinc-500">
             <span className="inline-flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981]" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981] dark:text-[#34d399]" />
               {lang === 'ar'
                 ? 'متوافق مع التوصية العاشرة لمجموعة العمل المالي'
                 : 'FATF Recommendation 10 Compliant'}

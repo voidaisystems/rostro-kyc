@@ -24,13 +24,17 @@ import {
   Languages,
 } from 'lucide-react';
 import {
+  analyzeAndTranslateKurdishDocument,
   analyzeDocumentAntiSpoofing,
+  buildKurdishDialectSimulationFields,
   evaluateForeignIdComplianceProtocol,
   generateDeterministicCaseExplanation,
+  getKurdishDocumentLanguageGuide,
   verifyArabicLatinPhoneticCrossCheck,
   verifyIraqiAccountPacket,
   type AntiSpoofSimulationPreset,
   type BilingualCaseExplanation,
+  type KurdishRegionalSimulationPreset,
   type KYCApplicant,
   type KYCDocument,
   type Language,
@@ -71,6 +75,11 @@ interface ApplicantInspectorDrawerProps {
     docId: string,
     preset: AntiSpoofSimulationPreset
   ) => void;
+  onApplyKurdishDialectTranslation?: (
+    applicantId: string,
+    docId: string,
+    preset: KurdishRegionalSimulationPreset
+  ) => void;
   onNavigateApplicant?: (direction: 'prev' | 'next') => void;
   currentIndex?: number;
   totalQueueCount?: number;
@@ -85,6 +94,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   onRegisterCandidateDoc,
   onAttachOrUpdatePacketResidenceCard,
   onApplyAntiSpoofPreset,
+  onApplyKurdishDialectTranslation,
   onNavigateApplicant,
   currentIndex = 0,
   totalQueueCount = 1,
@@ -100,10 +110,16 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   const [isCertificateModalOpen, setIsCertificateModalOpen] = useState(false);
   const [aiCaseBrief, setAiCaseBrief] = useState<BilingualCaseExplanation | null>(null);
   const [isGeneratingAiBrief, setIsGeneratingAiBrief] = useState(false);
+  const [selectedKurdishPreset, setSelectedKurdishPreset] =
+    useState<KurdishRegionalSimulationPreset | null>(null);
+  const [showKurdishDocGuide, setShowKurdishDocGuide] = useState(false);
+  const [appliedKurdishBanner, setAppliedKurdishBanner] = useState<string | null>(null);
 
-  // Reset AI case brief when switching applicant
+  // Reset AI case brief & Kurdish simulation when switching applicant
   useEffect(() => {
     setAiCaseBrief(null);
+    setSelectedKurdishPreset(null);
+    setAppliedKurdishBanner(null);
   }, [applicant?.id]);
 
   const handleGenerateVividAiBrief = async () => {
@@ -160,13 +176,14 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
         onNavigateApplicant?.('prev');
       } else if (e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        handleDecision('approved');
-      } else if (e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        handleDecision('flagged');
+        if (applicant.status !== 'approved' && applicant.stage9Outcome !== 'AUTO_APPROVED') {
+          handleDecision('approved');
+        }
       } else if (e.key.toLowerCase() === 'r') {
         e.preventDefault();
-        handleDecision('rejected');
+        if (applicant.status !== 'approved' && applicant.stage9Outcome !== 'AUTO_APPROVED') {
+          handleDecision('rejected');
+        }
       } else if (e.key.toLowerCase() === 'm') {
         e.preventDefault();
         setExternalLoupeEnabled((prev) => !prev);
@@ -213,8 +230,8 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
   const getRowHighlightClass = (field: OcrHighlightField) =>
     `grid grid-cols-3 px-4 py-2.5 transition-colors cursor-pointer ${
       highlightedField === field
-        ? 'bg-emerald-500/15'
-        : 'hover:bg-zinc-50 dark:hover:bg-[#18181b]'
+        ? 'bg-[#10b981]/15'
+        : 'hover:bg-zinc-50 dark:hover:bg-[#282b34]/70'
     }`;
 
   const signalRows: { key: string; labelEn: string; labelAr: string; value: number }[] = [
@@ -268,25 +285,258 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
     },
   ];
 
+  const customerDisplayNameEn =
+    applicant.fullNameEn &&
+    applicant.fullNameEn !== 'Verified Record' &&
+    !applicant.fullNameEn.includes('MISSING') &&
+    !applicant.fullNameEn.includes('غير موجود')
+      ? applicant.fullNameEn
+      : applicant.fullNameAr && !applicant.fullNameAr.includes('MISSING')
+      ? transliterateArabicToLatin(applicant.fullNameAr)
+      : 'Identified Applicant';
+
+  const customerDisplayNameAr =
+    applicant.fullNameAr &&
+    !applicant.fullNameAr.includes('MISSING') &&
+    !applicant.fullNameAr.includes('غير موجود')
+      ? applicant.fullNameAr
+      : applicant.fullNameEn && !applicant.fullNameEn.includes('MISSING')
+      ? applicant.fullNameEn
+      : 'سجل معتمد';
+
+  const customerInitials = (lang === 'ar' ? customerDisplayNameAr : customerDisplayNameEn)
+    .trim()
+    .slice(0, 2)
+    .toUpperCase();
+
+  const minCustomerOcr = Math.min(...applicant.documents.map((d) => d.ocrConfidence));
+
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-[2px]"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-stretch justify-end gap-3 p-2.5 sm:p-4 bg-black/70 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-labelledby="inspector-drawer-title"
     >
-      <div className="w-full max-w-2xl bg-white dark:bg-[#0c0c0e] h-full border-s border-zinc-200 dark:border-[#222225] flex flex-col justify-between overflow-hidden">
+      {/* =====================================================================
+          FLOATING SUBMITTED CUSTOMER PROFILE CARD (OVERLAPS ON TOP LAYER)
+          Matches the Figma Profile Card design, dynamically populated with
+          the selected submitted customer's identity, actions, docs & ledger.
+          ===================================================================== */}
+      <aside
+        onClick={(e) => e.stopPropagation()}
+        aria-label="Submitted Customer Profile Summary"
+        className="hidden md:flex md:w-[258px] xl:w-[276px] shrink-0 h-full min-h-0 flex-col justify-between gap-2.5 select-none"
+      >
+        {/* Top Tall Card: Customer Avatar + Name + 3 Purple Action Buttons + About + Submitted Docs */}
+        <div className="flex-1 min-h-0 rounded-[22px] bg-[#f4fbf7] dark:bg-[#1f2128] p-4 border border-zinc-200/80 dark:border-white/[0.08] shadow-2xl flex flex-col justify-between overflow-y-auto">
+          <div>
+            {/* Circular Customer Avatar with Purple Ring & Status Dot */}
+            <div className="flex flex-col items-center text-center">
+              <div className="relative w-14 h-14 rounded-full p-0.5 border-2 border-[#10b981] shadow-md shadow-[#10b981]/25">
+                {activeDoc?.customImageUrl ? (
+                  <img
+                    src={activeDoc.customImageUrl}
+                    alt={customerDisplayNameEn}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-br from-[#10b981] via-[#059669] to-[#047857] flex items-center justify-center text-sm font-bold text-white">
+                    {customerInitials}
+                  </div>
+                )}
+                <span
+                  title={formatStage9Outcome(applicant.stage9Outcome, lang)}
+                  className={`w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#1f2128] absolute bottom-0 end-0 ${
+                    applicant.status === 'approved'
+                      ? 'bg-[#10b981]'
+                      : applicant.status === 'rejected'
+                        ? 'bg-rose-500'
+                        : 'bg-amber-400'
+                  }`}
+                />
+              </div>
+
+              <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white mt-2.5 line-clamp-1">
+                {lang === 'ar' ? customerDisplayNameAr : customerDisplayNameEn}
+              </h3>
+              <p className="text-[10px] font-mono text-zinc-500 dark:text-[#8a8d98] mt-0.5">
+                {formatReferenceCode(applicant.referenceCode, lang)} ·{' '}
+                {lang === 'ar' ? applicant.governorateAr : applicant.governorateEn}
+              </p>
+            </div>
+
+            {/* 3 Purple Rounded-Square Action Buttons for the Submitted Customer */}
+            <div className="grid grid-cols-3 gap-2 my-3.5">
+              <button
+                type="button"
+                onClick={() => onRunSingleAutoEval(applicant.id)}
+                title={lang === 'ar' ? 'تشغيل مسار الفحص ذو الـ 10 مراحل' : 'Run 10-Stage Pipeline'}
+                className="h-10 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white flex flex-col items-center justify-center gap-0.5 shadow-sm shadow-[#10b981]/25 transition-all cursor-pointer"
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span className="text-[9px] font-medium opacity-95">
+                  {lang === 'ar' ? 'فحص آلي' : 'Pipeline'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCertificateModalOpen(true)}
+                title="Official CBI Certificate (Print/PDF)"
+                className="h-10 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white flex flex-col items-center justify-center gap-0.5 shadow-sm shadow-[#10b981]/25 transition-all cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="text-[9px] font-medium opacity-95">
+                  {lang === 'ar' ? 'شهادة CBI' : 'CBI PDF'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleGenerateVividAiBrief()}
+                title="Generate Bilingual Forensic Case Summary"
+                className="h-10 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white flex flex-col items-center justify-center gap-0.5 shadow-sm shadow-[#10b981]/25 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="text-[9px] font-medium opacity-95">
+                  {lang === 'ar' ? 'ملخص ذكي' : 'AI Brief'}
+                </span>
+              </button>
+            </div>
+
+            <div className="w-full h-px bg-zinc-200/80 dark:bg-[#2d3039] my-2.5" />
+
+            {/* About / Customer Dossier Summary */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-zinc-900 dark:text-white">
+                  {lang === 'ar' ? 'بيانات العميل المقدم' : 'About Customer'}
+                </h4>
+                <span className="text-[10px] font-mono font-bold text-[#10b981] dark:text-[#6ee7b7]">
+                  {minCustomerOcr}% OCR · Risk {applicant.riskScore}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500 dark:text-[#8a8d98] leading-relaxed">
+                {lang === 'ar'
+                  ? `ملف العميل (${customerDisplayNameAr}) خاضع لضوابط البنك المركزي العراقي رقم 78 لسنة 2012 مع التحقق من ${applicant.documents.length} وثائق رسمية.`
+                  : `Submitted KYC dossier for ${customerDisplayNameEn} (${applicant.governorateEn}), evaluated across ${applicant.documents.length} official document(s) under CBI Law No. 78.`}
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
+                <div className="p-2 rounded-xl bg-white dark:bg-[#14151b] border border-zinc-200/70 dark:border-white/[0.05]">
+                  <div className="text-zinc-400 dark:text-[#8a8d98]">
+                    {lang === 'ar' ? 'المرحلة 9' : 'Stage 9'}
+                  </div>
+                  <div className="font-mono font-bold text-[#10b981] dark:text-[#6ee7b7] truncate mt-0.5">
+                    {formatStage9Outcome(applicant.stage9Outcome, lang)}
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-white dark:bg-[#14151b] border border-zinc-200/70 dark:border-white/[0.05]">
+                  <div className="text-zinc-400 dark:text-[#8a8d98]">
+                    {lang === 'ar' ? 'مستوى المخاطر' : 'Risk Tier'}
+                  </div>
+                  <div className="font-mono font-bold text-zinc-900 dark:text-white uppercase truncate mt-0.5">
+                    {applicant.riskTier} ({applicant.riskScore}/100)
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Submitted Customer Documents List (Bottom of Profile Card) */}
+          <div className="space-y-1.5 pt-3 border-t border-zinc-200/80 dark:border-[#2d3039]">
+            <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 dark:text-[#8a8d98] pb-0.5">
+              {lang === 'ar'
+                ? `الوثائق المرفقة (${applicant.documents.length})`
+                : `Submitted Documents (${applicant.documents.length})`}
+            </div>
+            {applicant.documents.map((doc, idx) => {
+              const isSelectedDoc = idx === safeDocIndex;
+              return (
+                <button
+                  key={doc.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDocIndex(idx);
+                    setActiveTab('documents');
+                    setZoomed(false);
+                    setRotation(0);
+                  }}
+                  className={`w-full flex items-center gap-2.5 text-start p-1.5 rounded-xl transition-colors cursor-pointer ${
+                    isSelectedDoc
+                      ? 'bg-[#10b981]/15 border border-[#10b981]/40'
+                      : 'hover:bg-zinc-200/60 dark:hover:bg-white/[0.04] border border-transparent'
+                  }`}
+                >
+                  <div className="relative w-8 h-8 rounded-full p-0.5 border border-[#10b981]/60 shrink-0">
+                    <div
+                      className={`w-full h-full rounded-full flex items-center justify-center text-[10px] font-mono font-bold text-white ${
+                        idx % 2 === 0
+                          ? 'bg-gradient-to-br from-[#10b981] to-[#0d9488]'
+                          : 'bg-gradient-to-br from-[#059669] to-[#84cc16]'
+                      }`}
+                    >
+                      0{idx + 1}
+                    </div>
+                    <span className="w-2 h-2 rounded-full bg-[#10b981] border border-white dark:border-[#1f2128] absolute bottom-0 end-0" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-bold text-zinc-900 dark:text-white truncate">
+                      {lang === 'ar' ? doc.titleAr : doc.titleEn}
+                    </div>
+                    <div className="text-[10px] font-mono text-zinc-500 dark:text-[#8a8d98] truncate">
+                      {formatReferenceCode(doc.docNumber, lang)} · {doc.ocrConfidence}% OCR
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bottom Floating Customer Ledger Card */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('audit')}
+          className="shrink-0 w-full text-start rounded-[20px] bg-[#f4fbf7] dark:bg-[#1f2128] p-3.5 border border-zinc-200/80 dark:border-white/[0.08] hover:border-[#10b981]/60 shadow-2xl transition-all cursor-pointer"
+        >
+          <div className="text-xs font-bold text-zinc-900 dark:text-white">
+            {lang === 'ar' ? 'سجل التوقيع التشفيري للعميل' : 'CBI Law No. 78 Ledger'}
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-1.5">
+            <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+              <span className="w-3 h-3 rounded-full bg-[#34d399] shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
+              <span>{lang === 'ar' ? 'سلسلة HMAC' : 'HMAC Chain'}</span>
+            </div>
+            <div className="text-base font-bold font-mono tabular-nums text-zinc-900 dark:text-white">
+              {applicant.auditTrail.length} {lang === 'ar' ? 'توقيع' : 'Blocks'}
+            </div>
+          </div>
+        </button>
+      </aside>
+
+      {/* =====================================================================
+          MAIN FLOATING CUSTOMER DOSSIER & SPECIMEN INSPECTOR PANEL
+          ===================================================================== */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl bg-[#f4fbf7] dark:bg-[#14151b] h-full rounded-[22px] border border-zinc-200/80 dark:border-white/[0.08] flex flex-col justify-between overflow-hidden shadow-2xl"
+      >
         {/* Drawer Header */}
-        <div className="px-5 py-4 border-b border-zinc-200 dark:border-[#222225] flex items-start justify-between gap-4">
+        <div className="px-5 py-4 border-b border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 flex-wrap">
-              <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-300">
+            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-[#8a8d98] flex-wrap">
+              <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-[#10b981]/10 dark:bg-[#282b34] text-[#10b981] dark:text-[#6ee7b7]">
                 {formatReferenceCode(applicant.referenceCode, lang)}
               </span>
               <span aria-hidden="true">·</span>
-              <span>{lang === 'ar' ? applicant.governorateAr : applicant.governorateEn}</span>
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                {lang === 'ar' ? applicant.governorateAr : applicant.governorateEn}
+              </span>
               <span aria-hidden="true">·</span>
-              <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <span className="font-mono font-bold text-[10px] px-2.5 py-0.5 rounded-lg border border-[#10b981]/40 bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]">
                 {formatStage9Outcome(applicant.stage9Outcome, lang)}
               </span>
               {applicant.documents.some(
@@ -296,7 +546,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                   d.type === 'FOREIGN_PASSPORT' ||
                   (d.issuingCountryCode && d.issuingCountryCode !== 'IRQ')
               ) && (
-                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300">
                   {lang === 'ar' ? 'وثيقة أجنبية · محال للبشري' : 'FOREIGN DOC · REVERTED TO HUMAN'}
                 </span>
               )}
@@ -322,7 +572,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               return (
                 <h2
                   id="inspector-drawer-title"
-                  className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-1"
+                  className="text-lg font-bold text-zinc-900 dark:text-white mt-1.5"
                 >
                   {lang === 'ar' ? safeNameAr : safeNameEn}
                 </h2>
@@ -337,7 +587,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                   type="button"
                   onClick={() => onNavigateApplicant('prev')}
                   aria-label={t(lang, 'prevApplicantLabel')}
-                  className="p-1.5 rounded-lg border border-zinc-200 dark:border-[#222225] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                  className="p-1.5 rounded-xl border border-zinc-200 dark:border-white/[0.08] bg-zinc-100/80 dark:bg-[#1f2128] text-zinc-700 dark:text-zinc-200 hover:bg-[#10b981] hover:text-white transition-colors cursor-pointer"
                 >
                   {lang === 'ar' ? (
                     <ChevronRight className="w-4 h-4" />
@@ -345,14 +595,14 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     <ChevronLeft className="w-4 h-4" />
                   )}
                 </button>
-                <span className="text-xs font-mono tabular-nums text-zinc-500 px-1">
+                <span className="text-xs font-mono tabular-nums text-zinc-500 dark:text-[#8a8d98] px-1">
                   {currentIndex + 1}/{totalQueueCount}
                 </span>
                 <button
                   type="button"
                   onClick={() => onNavigateApplicant('next')}
                   aria-label={t(lang, 'nextApplicantLabel')}
-                  className="p-1.5 rounded-lg border border-zinc-200 dark:border-[#222225] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                  className="p-1.5 rounded-xl border border-zinc-200 dark:border-white/[0.08] bg-zinc-100/80 dark:bg-[#1f2128] text-zinc-700 dark:text-zinc-200 hover:bg-[#10b981] hover:text-white transition-colors cursor-pointer"
                 >
                   {lang === 'ar' ? (
                     <ChevronLeft className="w-4 h-4" />
@@ -367,7 +617,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               type="button"
               onClick={onClose}
               aria-label={t(lang, 'closeInspectorLabel')}
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              className="p-2 rounded-xl bg-zinc-100/80 dark:bg-[#1f2128] text-zinc-500 hover:text-white hover:bg-[#10b981] dark:text-zinc-300 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -375,15 +625,15 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
         </div>
 
         {/* Segmented Sub-Navigation */}
-        <div className="px-5 py-2.5 border-b border-zinc-200 dark:border-[#222225] bg-zinc-50/70 dark:bg-[#111113] flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-1 p-1 bg-zinc-200/70 dark:bg-[#18181b] rounded-lg overflow-x-auto max-w-full">
+        <div className="px-5 py-3 border-b border-zinc-200/80 dark:border-white/[0.07] bg-white/90 dark:bg-[#181a20] flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1 p-1 bg-zinc-200/70 dark:bg-[#1f2128] border border-zinc-300/50 dark:border-white/[0.05] rounded-2xl overflow-x-auto max-w-full">
             <button
               type="button"
               onClick={() => setActiveTab('documents')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'documents'
-                  ? 'bg-white dark:bg-[#0c0c0e] text-zinc-900 dark:text-zinc-100 shadow-xs'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  ? 'bg-[#10b981] text-white shadow-sm shadow-[#10b981]/30'
+                  : 'text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               {t(lang, 'tabDocuments')} ({applicant.documents.length})
@@ -391,10 +641,10 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
             <button
               type="button"
               onClick={() => setActiveTab('screening')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'screening'
-                  ? 'bg-white dark:bg-[#0c0c0e] text-zinc-900 dark:text-zinc-100 shadow-xs'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  ? 'bg-[#10b981] text-white shadow-sm shadow-[#10b981]/30'
+                  : 'text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               {t(lang, 'tabScreening')}
@@ -402,17 +652,17 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
             <button
               type="button"
               onClick={() => setActiveTab('audit')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'audit'
-                  ? 'bg-white dark:bg-[#0c0c0e] text-zinc-900 dark:text-zinc-100 shadow-xs'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  ? 'bg-[#10b981] text-white shadow-sm shadow-[#10b981]/30'
+                  : 'text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               {t(lang, 'tabAudit')} ({applicant.auditTrail.length})
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setIsCertificateModalOpen(true)}
@@ -421,7 +671,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                   ? 'إصدار شهادة الامتثال الرسمية للبنك المركزي العراقي للطباعة أو التنزيل (مفتاح C)'
                   : 'Generate Official Printable / Downloadable CBI KYC Certificate (Shortcut: C)'
               }
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#10b981] dark:text-[#6ee7b7] bg-[#10b981]/10 dark:bg-[#1f2128] hover:bg-[#10b981]/20 dark:hover:bg-[#282b34] border border-[#10b981]/35 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>
@@ -433,7 +683,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
             <button
               type="button"
               onClick={() => onRunSingleAutoEval(applicant.id)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-[#10b981] to-[#047857] hover:brightness-110 border border-[#10b981]/50 rounded-xl shadow-sm shadow-[#10b981]/25 transition-all whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Cpu className="w-3.5 h-3.5" />
               <span>{t(lang, 'evalSingleRuleBtn')}</span>
@@ -442,7 +692,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="p-5 pb-8 overflow-y-auto flex-1 space-y-6">
+        <div className="p-5 pb-8 overflow-y-auto flex-1 space-y-5">
           {/* Universal Foreign Document Alert Banner: Only Iraqi documents are acceptable */}
           {applicant.documents.some(
             (d) =>
@@ -451,7 +701,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               d.type === 'FOREIGN_PASSPORT' ||
               (d.issuingCountryCode && d.issuingCountryCode !== 'IRQ')
           ) && (
-            <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 dark:bg-amber-950/40 p-3.5 space-y-2 text-start shadow-xs">
+            <div className="rounded-[20px] border border-amber-500/50 bg-amber-500/10 dark:bg-amber-950/40 p-3.5 space-y-2 text-start shadow-xs">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -500,10 +750,10 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                         setSelectedDocIndex(idx);
                         setRotation(0);
                       }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 ${
+                      className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                         safeDocIndex === idx
-                          ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : 'border-zinc-200 dark:border-[#222225] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-[#141417]'
+                          ? 'border-[#10b981] bg-[#10b981] text-white shadow-sm shadow-[#10b981]/30'
+                          : 'border-zinc-200 dark:border-white/[0.07] bg-white dark:bg-[#1f2128] text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                       }`}
                     >
                       {lang === 'ar' ? doc.titleAr : doc.titleEn}
@@ -653,12 +903,12 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               })()}
 
               {/* Extracted OCR & Multi-Script Normalization Key-Value Grid */}
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl overflow-hidden bg-white dark:bg-[#0c0c0e]">
-                <div className="px-4 py-2.5 bg-zinc-50 dark:bg-[#111113] border-b border-zinc-200 dark:border-[#222225] flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+              <div className="border border-zinc-200/80 dark:border-white/[0.07] rounded-[20px] overflow-hidden bg-white dark:bg-[#1f2128] shadow-xs">
+                <div className="px-4 py-3 bg-zinc-50 dark:bg-[#181a20] border-b border-zinc-200/80 dark:border-white/[0.06] flex items-center justify-between">
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
                     {t(lang, 'extractedOcrHeader')}
                   </span>
-                  <span className="text-xs font-mono tabular-nums font-semibold text-emerald-600 dark:text-[#10b981]">
+                  <span className="text-xs font-mono tabular-nums font-bold px-2 py-0.5 rounded-lg bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]">
                     {t(lang, 'ocrConfidenceLabel')}: {activeDoc.ocrConfidence}%
                   </span>
                 </div>
@@ -833,10 +1083,10 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                         onMouseLeave={() => setHighlightedField(null)}
                         className={getRowHighlightClass('normalizedName')}
                       >
-                        <span className="text-zinc-500 dark:text-zinc-400">
+                        <span className="text-zinc-500 dark:text-[#8a8d98]">
                           {t(lang, 'fieldNormalizedName')}
                         </span>
-                        <span className="col-span-2 font-semibold text-emerald-700 dark:text-[#10b981]">
+                        <span className="col-span-2 font-semibold text-[#10b981] dark:text-[#6ee7b7]">
                           {formatBilingualName(undefined, safeNameAr, safeNameEn)}
                         </span>
                       </div>
@@ -847,10 +1097,10 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                         onMouseLeave={() => setHighlightedField(null)}
                         className={getRowHighlightClass('docNumber')}
                       >
-                        <span className="text-zinc-500 dark:text-zinc-400">
+                        <span className="text-zinc-500 dark:text-[#8a8d98]">
                           {t(lang, 'fieldDocNumber')}
                         </span>
-                        <span className="col-span-2 font-mono text-emerald-700 dark:text-[#10b981] font-semibold">
+                        <span className="col-span-2 font-mono text-[#10b981] dark:text-[#34d399] font-semibold">
                           {formatReferenceCode(activeDoc.docNumber, lang)}
                         </span>
                       </div>
@@ -895,11 +1145,19 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                           className={getRowHighlightClass('gender')}
                         >
                           <span className="text-zinc-500 dark:text-zinc-400">
-                            {lang === 'ar' ? 'الجنس وفصيلة الدم' : 'Sex & Blood Type'}
+                            {activeDoc.extractedFields.bloodType
+                              ? lang === 'ar'
+                                ? 'الجنس وفصيلة الدم'
+                                : 'Sex & Blood Type'
+                              : lang === 'ar'
+                                ? 'الجنس'
+                                : 'Sex / Gender'}
                           </span>
                           <span className="col-span-2 font-mono text-zinc-800 dark:text-zinc-200">
-                            {sanitizeTextForLanguage(activeDoc.extractedFields.gender || '—', lang)} ·{' '}
-                            {sanitizeTextForLanguage(activeDoc.extractedFields.bloodType || '—', lang)}
+                            {sanitizeTextForLanguage(activeDoc.extractedFields.gender || '—', lang)}
+                            {activeDoc.extractedFields.bloodType
+                              ? ` · ${sanitizeTextForLanguage(activeDoc.extractedFields.bloodType, lang)}`
+                              : ''}
                           </span>
                         </div>
                       )}
@@ -942,21 +1200,24 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                         </span>
                       </div>
 
-                      {/* Family Number / Bottom-Left Card Tracking Code */}
-                      {trackingFamilyCode && (
-                        <div
-                          onMouseEnter={() => setHighlightedField('familyNumber')}
-                          onMouseLeave={() => setHighlightedField(null)}
-                          className={getRowHighlightClass('familyNumber')}
-                        >
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            {lang === 'ar' ? 'رقم البطاقة / الرقم العائلي (أسفل اليسار)' : 'Family / Card No. (Bottom-Left)'}
-                          </span>
-                          <span className="col-span-2 font-mono font-bold text-amber-700 dark:text-amber-400">
-                            {formatReferenceCode(trackingFamilyCode, lang)}
-                          </span>
-                        </div>
-                      )}
+                      {/* Family Number / Bottom-Left Card Tracking Code (Only for National ID / Civil / Residence cards, never Passports) */}
+                      {trackingFamilyCode &&
+                        trackingFamilyCode !== 'N/A' &&
+                        activeDoc.type !== 'IRQ_PASSPORT' &&
+                        activeDoc.type !== 'FOREIGN_PASSPORT' && (
+                          <div
+                            onMouseEnter={() => setHighlightedField('familyNumber')}
+                            onMouseLeave={() => setHighlightedField(null)}
+                            className={getRowHighlightClass('familyNumber')}
+                          >
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              {lang === 'ar' ? 'رقم البطاقة / الرقم العائلي (أسفل اليسار)' : 'Family / Card No. (Bottom-Left)'}
+                            </span>
+                            <span className="col-span-2 font-mono font-bold text-amber-700 dark:text-amber-400">
+                              {formatReferenceCode(trackingFamilyCode, lang)}
+                            </span>
+                          </div>
+                        )}
 
                       {/* Address */}
                       {activeDoc.extractedFields.address && (
@@ -1014,29 +1275,29 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
 
                 return (
                   <div
-                    className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-950/15 p-4 space-y-3 text-start"
+                    className="rounded-[20px] border border-[#10b981]/30 bg-white dark:bg-[#1f2128] p-4 space-y-3 text-start shadow-xs"
                     data-testid="phonetic-crosscheck-panel"
                   >
-                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-2.5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-white/[0.06] pb-2.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-xl bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] flex items-center justify-center shrink-0">
                           <Languages className="w-4 h-4" />
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                          <div className="text-xs font-bold text-zinc-900 dark:text-white">
                             {lang === 'ar'
                               ? 'محرك المطابقة الصوتية الذكية (العربية ↔ الشريط اللاتيني MRZ)'
                               : 'Smart Arabic Transliteration & Phonetic Cross-Check Engine'}
                           </div>
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <div className="text-[11px] text-zinc-500 dark:text-[#8a8d98]">
                             {lang === 'ar' ? phonetic.summaryAr : phonetic.summaryEn}
                           </div>
                         </div>
                       </div>
                       <span
-                        className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold border ${
+                        className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold border ${
                           phonetic.verdict === 'VERIFIED'
-                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                            ? 'bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] border-[#10b981]/40'
                             : phonetic.verdict === 'VARIANT_ACCEPTED'
                               ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
                               : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
@@ -1050,16 +1311,16 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                       {phonetic.tokenMatches.map((tm) => (
                         <div
                           key={tm.index}
-                          className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-2.5 text-xs space-y-1"
+                          className="rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b] p-2.5 text-xs space-y-1"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+                            <span className="text-[10px] font-mono text-zinc-500 dark:text-[#8a8d98]">
                               {lang === 'ar' ? tm.roleLabelAr : tm.roleLabelEn}
                             </span>
                             <span
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
                                 tm.status === 'MATCH'
-                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  ? 'bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]'
                                   : tm.status === 'PHONETIC_VARIANT'
                                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                                     : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
@@ -1068,13 +1329,137 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                               {tm.similarityPct}% {tm.status}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between gap-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                          <div className="flex items-center justify-between gap-2 font-mono font-semibold text-zinc-900 dark:text-white">
                             <span dir="rtl">{tm.arabicToken}</span>
                             <span className="text-zinc-400">↔</span>
-                            <span className="text-cyan-700 dark:text-cyan-300">{tm.latinToken}</span>
+                            <span className="text-[#10b981] dark:text-[#34d399]">{tm.latinToken}</span>
                           </div>
-                          <div className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+                          <div className="text-[10px] font-mono text-zinc-500 dark:text-[#8a8d98]">
                             {lang === 'ar' ? tm.noteAr : tm.noteEn}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* UPGRADE 1.4: KURDISH MULTI-DIALECT DETECTION & OFFICIAL ARABIC TRANSLATION ENGINE (Only shown for actual Kurdish documents) */}
+              {(() => {
+                const isActualKurdishDocument = Boolean(
+                  activeDoc.kurdishDialectPreset ||
+                  activeDoc.extractedFields.fullNameKurdish ||
+                  activeDoc.extractedFields.addressKurdish ||
+                  activeDoc.extractedFields.governorateKurdish ||
+                  activeDoc.extractedFields.issuingAuthorityKurdish ||
+                  activeDoc.extractedFields.motherNameKurdish ||
+                  /[پچژگڤڵڕۆێ]/.test(
+                    [
+                      activeDoc.extractedFields.fullName,
+                      activeDoc.extractedFields.fullNameArabic,
+                      activeDoc.extractedFields.address,
+                      activeDoc.extractedFields.governorate,
+                      activeDoc.titleEn,
+                      activeDoc.titleAr,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                  )
+                );
+
+                if (!isActualKurdishDocument) return null;
+
+                const kurdishReport = analyzeAndTranslateKurdishDocument(activeDoc, applicant);
+
+                const dialectBadgeClass =
+                  kurdishReport.detectedDialect === 'DUHOK_BADINI_KURMANJI'
+                    ? 'bg-[#059669]/15 text-[#059669] dark:text-[#d1fae5] border-[#059669]/40'
+                    : kurdishReport.detectedDialect === 'SULAYMANIYAH_SORANI'
+                      ? 'bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] border-[#10b981]/40'
+                      : kurdishReport.detectedDialect === 'ERBIL_HEWLERI_SORANI'
+                        ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/40'
+                        : 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/40';
+
+                return (
+                  <div
+                    className="rounded-[20px] border border-[#10b981]/30 bg-white dark:bg-[#1f2128] p-4 space-y-3.5 text-start shadow-xs"
+                    data-testid="kurdish-dialect-translation-panel"
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-white/[0.06] pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] flex items-center justify-center shrink-0">
+                          <Globe className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-zinc-900 dark:text-white">
+                            {lang === 'ar'
+                              ? 'محرك اللهجات الكردية والترجمة الرسمية للعربية (السليمانية · أربيل · دهوك)'
+                              : 'Kurdish Regional Dialect & Official CBI Arabic Translation'}
+                          </div>
+                          <div className="text-[11px] text-zinc-500 dark:text-[#8a8d98]">
+                            {lang === 'ar' ? kurdishReport.summaryAr : kurdishReport.summaryEn}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold border ${dialectBadgeClass}`}
+                          data-testid="detected-kurdish-dialect-badge"
+                        >
+                          {kurdishReport.confidencePct}% · {kurdishReport.detectedDialect}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Kurdish Source -> Official CBI Arabic & English Translation Table */}
+                    <div className="space-y-2">
+                      {kurdishReport.fieldTranslations.map((ft) => (
+                        <div
+                          key={ft.fieldKey}
+                          data-testid={`kurdish-field-${ft.fieldKey}`}
+                          className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-2.5 text-xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono font-bold text-zinc-500 dark:text-zinc-400">
+                              {lang === 'ar' ? ft.labelAr : ft.labelEn}
+                            </span>
+                            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
+                              {lang === 'ar'
+                                ? 'كردي أصلي ← عربي رسمي معتمد (CBI)'
+                                : 'Kurdish Source → Official CBI Arabic'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+                            <div
+                              className="px-2.5 py-1.5 rounded bg-amber-500/10 border border-amber-500/25 font-mono text-amber-900 dark:text-amber-200"
+                              dir="rtl"
+                            >
+                              <span className="text-[9px] uppercase block text-amber-600 dark:text-amber-400">
+                                {lang === 'ar' ? 'النص الكردي على الوثيقة:' : 'Kurdish on Document:'}
+                              </span>
+                              {ft.sourceKurdishText}
+                            </div>
+
+                            <div
+                              className="px-2.5 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/25 font-mono font-semibold text-emerald-900 dark:text-emerald-200"
+                              dir="rtl"
+                            >
+                              <span className="text-[9px] uppercase block text-emerald-600 dark:text-emerald-400">
+                                {lang === 'ar'
+                                  ? 'الترجمة العربية الرسمية المعتمدة:'
+                                  : 'Translated Official Arabic & English:'}
+                              </span>
+                              {ft.translatedArabicText} ·{' '}
+                              <span className="text-cyan-700 dark:text-cyan-300" dir="ltr">
+                                {ft.translatedEnglishText}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+                            {lang === 'ar' ? ft.linguisticNoteAr : ft.linguisticNoteEn}
                           </div>
                         </div>
                       ))}
@@ -1088,12 +1473,12 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                 const brief = aiCaseBrief || generateDeterministicCaseExplanation(applicant);
                 return (
                   <div
-                    className="rounded-xl border border-purple-500/35 bg-purple-500/5 dark:bg-purple-950/15 p-4 space-y-3.5 text-start"
+                    className="rounded-xl border border-emerald-500/35 bg-emerald-500/5 dark:bg-emerald-950/15 p-4 space-y-3.5 text-start"
                     data-testid="ai-forensic-explainability-panel"
                   >
                     <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                           <Sparkles className="w-4 h-4" />
                         </div>
                         <div>
@@ -1102,7 +1487,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                               ? 'التفسير الجنائي الذكي وملخص القضية ثنائي اللغة (AI Forensic Case Brief)'
                               : 'AI Forensic Explainability & Vivid Bilingual Case Summary'}
                           </div>
-                          <div className="text-[10px] font-mono text-purple-600 dark:text-purple-400">
+                          <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
                             {brief.engineBadge}
                           </div>
                         </div>
@@ -1117,7 +1502,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                             ? 'توليد شرح جنائي ورقابي مفصل باللغتين العربية والإنجليزية (مفتاح E)'
                             : 'Generate Vivid Bilingual AI Forensic Case Brief (Shortcut: E)'
                         }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-60 cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-60 cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>
@@ -1135,7 +1520,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     {/* Bilingual Executive Narrative (English + Arabic side-by-side) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] p-3 space-y-1.5">
-                        <div className="text-[10px] font-mono font-bold uppercase text-purple-600 dark:text-purple-400">
+                        <div className="text-[10px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400">
                           ENGLISH FORENSIC & REGULATORY BRIEF
                         </div>
                         <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
@@ -1193,9 +1578,9 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     </div>
 
                     {/* Ready-to-File Officer Disposition Memo & CBI Law Citations */}
-                    <div className="rounded-lg border border-purple-500/30 bg-purple-950/20 p-3 space-y-1.5 text-[11px]">
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 space-y-1.5 text-[11px]">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300">
+                        <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
                           {lang === 'ar'
                             ? 'مذكرة قرار الامتثال الجاهزة للأرشفة (CBI Law 39/2015 & Law 78/2012)'
                             : 'READY-TO-FILE OFFICER DISPOSITION MEMO (CBI Law 39/2015 & Law 78/2012)'}
@@ -1205,7 +1590,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                           onClick={() =>
                             setDecisionNote(lang === 'ar' ? brief.officerMemoAr : brief.officerMemoEn)
                           }
-                          className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-[10px] font-mono font-semibold text-purple-700 dark:text-purple-200 border border-purple-500/30 cursor-pointer"
+                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[10px] font-mono font-semibold text-emerald-700 dark:text-emerald-200 border border-emerald-500/30 cursor-pointer"
                         >
                           {lang === 'ar' ? 'إدراج في حقل القرار ↓' : 'Insert into Decision Note ↓'}
                         </button>
@@ -1219,122 +1604,43 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                 );
               })()}
 
-              {/* FEATURE 2: Multi-Document Full Iraqi Account Packet (National ID + Residence Card بطاقة السكن) */}
+              {/* FEATURE 2: Multi-Document Full Iraqi Account Packet (Only shown when an Iraqi Residence Card is part of the dossier) */}
               {(() => {
+                const resCardDoc = applicant.documents.find(
+                  (d) => d.type === 'IRQ_RESIDENCE_CARD'
+                );
+                if (!resCardDoc) return null;
+
                 const natIdDoc =
                   applicant.documents.find(
                     (d) => d.type === 'IRQ_NATIONAL_ID' || d.type === 'IRQ_CIVIL_STATUS_ID'
                   ) || applicant.documents[0];
-                const resCardDoc = applicant.documents.find(
-                  (d) => d.type === 'IRQ_RESIDENCE_CARD'
-                );
                 const packet = verifyIraqiAccountPacket(natIdDoc, resCardDoc);
-
-                const handleResidenceFileChange = async (
-                  e: React.ChangeEvent<HTMLInputElement>
-                ) => {
-                  const file = e.target.files?.[0];
-                  if (!file || !onAttachOrUpdatePacketResidenceCard) return;
-                  setIsUploadingResidence(true);
-                  try {
-                    const reader = new FileReader();
-                    const dataUrl = await new Promise<string>((resolve, reject) => {
-                      reader.onload = () =>
-                        typeof reader.result === 'string'
-                          ? resolve(reader.result)
-                          : reject(new Error('Failed'));
-                      reader.onerror = () => reject(new Error('Failed'));
-                      reader.readAsDataURL(file);
-                    });
-                    const resp = await fetch('/api/kyc/extract', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        imageBase64: dataUrl,
-                        uploadedSideHint: 'BOTH',
-                        fileName: file.name,
-                        overrides: { documentType: 'IRQ_RESIDENCE_CARD' },
-                      }),
-                    });
-                    if (resp.ok) {
-                      const ext = await resp.json();
-                      const customResidenceDoc: KYCDocument = {
-                        id: `doc-res-${Date.now()}`,
-                        type: 'IRQ_RESIDENCE_CARD',
-                        categoryCode: 'B_RESIDENCE_ADDRESS',
-                        supportStatus: 'TESTED',
-                        side: 'BOTH',
-                        detectedLanguages: ['ar', 'en'],
-                        titleEn: 'Iraqi Residence Information Card',
-                        titleAr: 'بطاقة السكن العراقية',
-                        docNumber: ext.docNumber || `RES-IRQ-${Date.now().toString().slice(-5)}`,
-                        issueDate: ext.issueDate || '2023-05-10',
-                        expiryDate: 'N/A',
-                        issuingAuthorityEn:
-                          ext.issuingAuthorityEn || 'Directorate of Residence Affairs — MOI',
-                        issuingAuthorityAr:
-                          ext.issuingAuthorityAr || 'مديرية شؤون السكن — وزارة الداخلية',
-                        issuingCountryEn: 'Republic of Iraq',
-                        issuingCountryAr: 'جمهورية العراق',
-                        ocrConfidence: ext.ocrConfidence || 96,
-                        fileSizeKb: Math.max(120, Math.round(file.size / 1024)),
-                        sha256Hash: ext.sha256Hash || 'res-sha256',
-                        status: applicant.status,
-                        customPreviewUrl: dataUrl,
-                        extractedFields: {
-                          fullName: ext.fullNameEn || ext.fullNameAr || applicant.fullNameEn,
-                          fullNameArabic: ext.fullNameAr || applicant.fullNameAr,
-                          normalizedName: ext.normalizedName || ext.fullNameAr,
-                          firstName: ext.slot1Summary?.firstName,
-                          fatherName: ext.slot1Summary?.fatherName,
-                          grandfatherName: ext.slot1Summary?.grandfatherName,
-                          surname: ext.slot1Summary?.surname,
-                          dob: ext.dob || 'N/A',
-                          nationality: 'IRQ · Iraq',
-                          governorate: ext.governorateAr || ext.governorateEn || applicant.governorateAr,
-                          address:
-                            ext.address && !ext.address.includes('MISSING')
-                              ? ext.address
-                              : 'Mahalla 609, Zukak 14, Dar 22, Baghdad',
-                        },
-                      };
-                      onAttachOrUpdatePacketResidenceCard(
-                        applicant.id,
-                        'CUSTOM',
-                        customResidenceDoc
-                      );
-                    }
-                  } catch {
-                    // Fallback handled gracefully
-                  } finally {
-                    setIsUploadingResidence(false);
-                  }
-                };
 
                 const statusBorder =
                   packet.packetStatus === 'REJECTED_HOUSEHOLD_MISMATCH'
-                    ? 'border-red-500/40 bg-red-500/5 dark:bg-red-950/20'
+                    ? 'border-rose-500/40 bg-rose-500/5 dark:bg-rose-950/20'
                     : packet.isLineageVerified
-                      ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15'
+                      ? 'border-[#10b981]/35 bg-white dark:bg-[#1f2128]'
                       : 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/15';
 
                 return (
                   <div
-                    className={`rounded-xl border p-4 space-y-3.5 text-start ${statusBorder}`}
+                    className={`rounded-[20px] border p-4 space-y-3.5 text-start shadow-xs ${statusBorder}`}
                     data-testid="iraqi-account-packet-panel"
                   >
-                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-zinc-800 pb-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200/80 dark:border-white/[0.06] pb-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-xl bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] flex items-center justify-center shrink-0">
                           <Users className="w-4 h-4" />
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                          <div className="text-xs font-bold text-zinc-900 dark:text-white">
                             {lang === 'ar'
                               ? 'حقيبة الحساب العراقي الكامل (البطاقة الوطنية + بطاقة السكن ومطابقة النسب)'
                               : 'Full Iraqi Account Packet (National ID + Residence Card Lineage Linker)'}
                           </div>
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <div className="text-[11px] text-zinc-500 dark:text-[#8a8d98]">
                             {lang === 'ar'
                               ? packet.relationshipLabelAr
                               : packet.relationshipLabelEn}
@@ -1342,7 +1648,7 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                         </div>
                       </div>
 
-                      <span className="font-mono text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                      <span className="font-mono text-xs font-bold tabular-nums px-2.5 py-0.5 rounded-lg bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]">
                         {lang === 'ar'
                           ? `ثقة مطابقة النسب: ${packet.lineageConfidence}%`
                           : `Lineage Match: ${packet.lineageConfidence}%`}
@@ -1353,89 +1659,10 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                       {lang === 'ar' ? packet.summaryAr : packet.summaryEn}
                     </p>
 
-                    {/* Interactive Iraqi Lineage Scenarios & Live Residence Card Upload */}
-                    {onAttachOrUpdatePacketResidenceCard && (
-                      <div className="space-y-1.5">
-                        <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                          {lang === 'ar'
-                            ? 'اختبر حالات بطاقة السكن العراقية (أو ارفع صورة بطاقة سكن حقيقية):'
-                            : 'Test Iraqi Residence Card Household Scenarios (or Upload Residence Card):'}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'FATHER')
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-                              packet.relationshipType === 'FATHER'
-                                ? 'bg-emerald-600 text-white border-emerald-500'
-                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                            }`}
-                          >
-                            {lang === 'ar'
-                              ? 'بطاقة سكن باسم الأب (رب الأسرة هو الأب)'
-                              : "Father's Residence Card (Paternal Lineage)"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'SELF')
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-                              packet.relationshipType === 'SELF'
-                                ? 'bg-emerald-600 text-white border-emerald-500'
-                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                            }`}
-                          >
-                            {lang === 'ar'
-                              ? 'بطاقة سكن باسم صاحب الطلب نفسه'
-                              : "Applicant's Own Residence Card"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onAttachOrUpdatePacketResidenceCard(applicant.id, 'MISMATCH')
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-                              packet.relationshipType === 'UNLINKED_MISMATCH'
-                                ? 'bg-red-600 text-white border-red-500'
-                                : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                            }`}
-                          >
-                            {lang === 'ar'
-                              ? 'بطاقة سكن لشخص غريب (كشف التضارب)'
-                              : 'Unrelated Person Residence Card (Fraud)'}
-                          </button>
-
-                          <label className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
-                            <Upload className="w-3 h-3" />
-                            <span>
-                              {isUploadingResidence
-                                ? lang === 'ar'
-                                  ? 'جاري قراءة بطاقة السكن...'
-                                  : 'Extracting Residence Card...'
-                                : lang === 'ar'
-                                  ? 'رفع صورة بطاقة سكن'
-                                  : 'Upload Residence Card'}
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => void handleResidenceFileChange(e)}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Lineage Comparison Chain */}
                     {packet.matchedLineageChain.length > 0 && (
-                      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113] divide-y divide-zinc-200 dark:divide-zinc-800 text-xs">
-                        <div className="grid grid-cols-3 px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 font-semibold text-[11px] text-zinc-500">
+                      <div className="rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b] divide-y divide-zinc-200 dark:divide-white/[0.06] text-xs overflow-hidden">
+                        <div className="grid grid-cols-3 px-3 py-2 bg-zinc-100/80 dark:bg-[#181a20] font-semibold text-[11px] text-zinc-500 dark:text-[#8a8d98]">
                           <span>
                             {lang === 'ar' ? 'حلقة النسب العائلي' : 'Lineage Segment'}
                           </span>
@@ -1455,17 +1682,17 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                             key={idx}
                             className="grid grid-cols-3 px-3 py-2 items-center text-[11px]"
                           >
-                            <span className="text-zinc-600 dark:text-zinc-400 font-medium">
+                            <span className="text-zinc-600 dark:text-[#8a8d98] font-medium">
                               {lang === 'ar' ? link.roleAr : link.roleEn}
                             </span>
-                            <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">
+                            <span className="font-mono font-semibold text-zinc-900 dark:text-white">
                               {formatBilingualName(link.nationalIdSegment)}
                             </span>
                             <span
                               className={`font-mono font-semibold flex items-center justify-between gap-1 ${
                                 link.matched
-                                  ? 'text-emerald-600 dark:text-emerald-400'
-                                  : 'text-red-600 dark:text-red-400'
+                                  ? 'text-[#10b981] dark:text-[#6ee7b7]'
+                                  : 'text-rose-600 dark:text-rose-400'
                               }`}
                             >
                               <span>{formatBilingualName(link.residenceCardSegment)}</span>
@@ -1478,191 +1705,46 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
 
                     {/* Structured Iraqi Address Breakdown (Mahalla / Zukak / Dar / Info Office) */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
-                        <div className="text-[10px] text-zinc-500">
+                      <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b]">
+                        <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
                           {lang === 'ar' ? 'مكتب المعلومات' : 'Information Office'}
                         </div>
-                        <div className="font-semibold text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
+                        <div className="font-semibold text-zinc-900 dark:text-white truncate mt-0.5">
                           {packet.structuredAddress.infoOffice}
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
-                        <div className="text-[10px] text-zinc-500">
+                      <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b]">
+                        <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
                           {lang === 'ar' ? 'المحلة (Sector)' : 'Mahalla (Sector)'}
                         </div>
-                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        <div className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7] mt-0.5">
                           {packet.structuredAddress.mahalla}
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
-                        <div className="text-[10px] text-zinc-500">
+                      <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b]">
+                        <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
                           {lang === 'ar' ? 'الزقاق (Alley)' : 'Zukak (Alley)'}
                         </div>
-                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        <div className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7] mt-0.5">
                           {packet.structuredAddress.zukak}
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
-                        <div className="text-[10px] text-zinc-500">
+                      <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b]">
+                        <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
                           {lang === 'ar' ? 'الدار (House)' : 'Dar (House No.)'}
                         </div>
-                        <div className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        <div className="font-mono font-bold tabular-nums text-[#10b981] dark:text-[#6ee7b7] mt-0.5">
                           {packet.structuredAddress.dar}
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111113]">
-                        <div className="text-[10px] text-zinc-500">
+                      <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#14151b]">
+                        <div className="text-[10px] text-zinc-500 dark:text-[#8a8d98]">
                           {lang === 'ar' ? 'رقم بطاقة السكن' : 'Residence Form No.'}
                         </div>
-                        <div className="font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
+                        <div className="font-mono font-semibold tabular-nums text-zinc-900 dark:text-white truncate mt-0.5">
                           {packet.structuredAddress.formNumber}
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* FEATURE 3: Deep Anti-Spoofing & Forgery Forensics Panel */}
-              {(() => {
-                const spoofReport = analyzeDocumentAntiSpoofing(activeDoc);
-                const isRejected =
-                  spoofReport.overallVerdict === 'SPOOF_OR_FORGERY_REJECTED';
-                const currentPreset = activeDoc.antiSpoofPreset || 'AUTHENTIC_PHYSICAL';
-
-                return (
-                  <div
-                    className={`rounded-xl border p-4 space-y-3.5 text-start ${
-                      isRejected
-                        ? 'border-red-500/40 bg-red-500/5 dark:bg-red-950/20'
-                        : 'border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#111113]'
-                    }`}
-                    data-testid="deep-antispoofing-panel"
-                  >
-                    <div className="flex items-start justify-between gap-3 flex-wrap border-b border-zinc-200 dark:border-[#222225] pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            isRejected
-                              ? 'bg-red-500/15 text-red-600 dark:text-red-400'
-                              : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                          }`}
-                        >
-                          <Fingerprint className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                            {lang === 'ar'
-                              ? 'الفحص الجنائي المعمق وكشف التزوير وتصوير الشاشات (Deep Anti-Spoofing)'
-                              : 'Deep Anti-Spoofing & Forgery Forensics (5-Vector PAD Gate)'}
-                          </div>
-                          <div className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
-                            {spoofReport.padStandard}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-end">
-                        <span
-                          className={`font-mono text-xs font-bold tabular-nums ${
-                            isRejected
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-emerald-600 dark:text-emerald-400'
-                          }`}
-                        >
-                          {lang === 'ar'
-                            ? `درجة الأصالة الفيزيائية: ${spoofReport.authenticityScore}/100`
-                            : `Physical Authenticity: ${spoofReport.authenticityScore}/100`}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {lang === 'ar' ? spoofReport.summaryAr : spoofReport.summaryEn}
-                    </p>
-
-                    {/* Interactive Anti-Spoofing Attack Simulator Controls */}
-                    {onApplyAntiSpoofPreset && (
-                      <div className="space-y-1.5">
-                        <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                          {lang === 'ar'
-                            ? 'محاكاة هجمات التزوير والتصوير من الشاشات على هذه الوثيقة:'
-                            : 'Simulate Spoof & Forgery Attacks on This Document:'}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {(
-                            [
-                              {
-                                id: 'AUTHENTIC_PHYSICAL',
-                                labelEn: 'Authentic Physical Card',
-                                labelAr: 'بطاقة فيزيائية أصلية',
-                              },
-                              {
-                                id: 'SCREEN_REPLAY_MOIRE',
-                                labelEn: 'Screen-Replay (Moiré)',
-                                labelAr: 'هجوم تصوير شاشة (Moiré)',
-                              },
-                              {
-                                id: 'PAPER_PHOTOCOPY',
-                                labelEn: 'Paper Photocopy',
-                                labelAr: 'نسخة ورقية مستنسخة',
-                              },
-                              {
-                                id: 'DIGITAL_FONT_AND_PHOTO_TAMPER',
-                                labelEn: 'Digital Font & Photo Splice',
-                                labelAr: 'تزوير رقمي للخط والصورة',
-                              },
-                            ] as const
-                          ).map((btn) => (
-                            <button
-                              key={btn.id}
-                              type="button"
-                              onClick={() =>
-                                onApplyAntiSpoofPreset(applicant.id, activeDoc.id, btn.id)
-                              }
-                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-                                currentPreset === btn.id
-                                  ? btn.id === 'AUTHENTIC_PHYSICAL'
-                                    ? 'bg-emerald-600 text-white border-emerald-500'
-                                    : 'bg-red-600 text-white border-red-500'
-                                  : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                              }`}
-                            >
-                              {lang === 'ar' ? btn.labelAr : btn.labelEn}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 5 Forensic Vectors Breakdown */}
-                    <div className="space-y-2 pt-1">
-                      {spoofReport.vectors.map((vec) => (
-                        <div
-                          key={vec.id}
-                          className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-[#0c0c0e] space-y-1"
-                        >
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                              {lang === 'ar' ? vec.titleAr : vec.titleEn}
-                            </span>
-                            <span
-                              className={`font-mono text-[11px] font-bold tabular-nums ${
-                                vec.status === 'PASS'
-                                  ? 'text-emerald-600 dark:text-emerald-400'
-                                  : vec.status === 'WARN'
-                                    ? 'text-amber-600 dark:text-amber-400'
-                                    : 'text-red-600 dark:text-red-400'
-                              }`}
-                            >
-                              {vec.metricLabel} · {vec.status}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
-                            {lang === 'ar' ? vec.detailAr : vec.detailEn}
-                          </p>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 );
@@ -1673,18 +1755,18 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
           {activeTab === 'screening' && (
             <div className="space-y-4">
               {/* Honest External Verification Separation Banner */}
-              <div className="p-3 rounded-lg border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113] text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[#10b981] shrink-0" />
+              <div className="p-3.5 rounded-2xl border border-[#10b981]/30 bg-[#10b981]/10 dark:bg-[#1f2128] text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-2.5">
+                <Lock className="w-4 h-4 text-[#10b981] dark:text-[#34d399] shrink-0" />
                 <span className="font-mono text-[11px]">{t(lang, 'externalVerifBanner')}</span>
               </div>
 
               {/* The 9 Separated Verification Signals */}
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl p-4 bg-white dark:bg-[#111113] space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-[#222225] pb-2">
-                  <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+              <div className="border border-zinc-200/80 dark:border-white/[0.07] rounded-[20px] p-4 bg-white dark:bg-[#1f2128] space-y-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-white/[0.06] pb-2.5">
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
                     {t(lang, 'nineSignalsTitle')}
                   </span>
-                  <span className="text-[11px] font-mono text-zinc-500">
+                  <span className="text-[11px] font-mono font-semibold text-[#10b981] dark:text-[#34d399]">
                     {lang === 'ar' ? 'متجه المرحلة الثامنة المعاير' : 'STAGE 8 CALIBRATED VECTOR'}
                   </span>
                 </div>
@@ -1694,21 +1776,21 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     const pct = Math.round(sig.value * 100);
                     const barColor =
                       sig.value >= 0.85
-                        ? 'bg-[#10b981]'
+                        ? 'bg-gradient-to-r from-[#10b981] to-[#a855f7]'
                         : sig.value >= 0.6
                         ? 'bg-amber-500'
-                        : 'bg-red-600';
+                        : 'bg-rose-600';
                     return (
                       <div key={sig.key} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-zinc-700 dark:text-zinc-300">
                             {lang === 'ar' ? sig.labelAr : sig.labelEn}
                           </span>
-                          <span className="font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                          <span className="font-mono font-semibold tabular-nums text-zinc-900 dark:text-white">
                             {sig.value.toFixed(2)} ({pct}%)
                           </span>
                         </div>
-                        <div className="w-full h-1.5 bg-zinc-100 dark:bg-[#1f1f23] rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-zinc-100 dark:bg-[#14151b] rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${barColor}`}
                             style={{ width: `${pct}%` }}
@@ -1718,13 +1800,13 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
                     );
                   })}
 
-                  <div className="pt-2 border-t border-zinc-200 dark:border-[#222225] flex items-center justify-between text-xs">
-                    <span className="text-zinc-600 dark:text-zinc-400">
+                  <div className="pt-2 border-t border-zinc-200 dark:border-white/[0.06] flex items-center justify-between text-xs">
+                    <span className="text-zinc-600 dark:text-[#8a8d98]">
                       {lang === 'ar'
                         ? '09. حالة الربط مع قواعد البيانات الحكومية الخارجية'
                         : '09. External Government Database Status'}
                     </span>
-                    <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-zinc-100 dark:bg-[#18181b] border border-zinc-200 dark:border-[#27272a] text-zinc-700 dark:text-zinc-300">
+                    <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-lg bg-[#10b981]/10 dark:bg-[#14151b] border border-[#10b981]/30 text-[#10b981] dark:text-[#6ee7b7]">
                       {lang === 'ar'
                         ? 'التحقق الخارجي غير متصل'
                         : applicant.nineSignals.external_verification_status}
@@ -1735,29 +1817,29 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
 
               {/* Risk & Biometric Summary Cards */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113]">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="p-4 rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#1f2128]">
+                  <div className="text-xs text-zinc-500 dark:text-[#8a8d98]">
                     {t(lang, 'colRiskScore')}
                   </div>
                   <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-2xl font-bold font-mono tabular-nums text-zinc-900 dark:text-zinc-100">
+                    <span className="text-2xl font-bold font-mono tabular-nums text-zinc-900 dark:text-white">
                       {applicant.riskScore}/100
                     </span>
-                    <span className="text-xs font-semibold uppercase text-zinc-500">
+                    <span className="text-xs font-semibold uppercase text-[#10b981] dark:text-[#34d399]">
                       ({formatRiskTier(applicant.riskTier, lang)})
                     </span>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113]">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="p-4 rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#1f2128]">
+                  <div className="text-xs text-zinc-500 dark:text-[#8a8d98]">
                     {t(lang, 'biometricMatchLabel')}
                   </div>
                   <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-2xl font-bold font-mono tabular-nums text-emerald-600 dark:text-[#10b981]">
+                    <span className="text-2xl font-bold font-mono tabular-nums text-[#10b981] dark:text-[#6ee7b7]">
                       {applicant.biometricMatchScore}%
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-zinc-500 dark:text-[#8a8d98]">
                       {lang === 'ar' ? 'فحص الحيوية البيومتري' : 'ISO/IEC 30107-3 PAD'}
                     </span>
                   </div>
@@ -1765,27 +1847,27 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               </div>
 
               {/* Watchlist Checks */}
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl bg-white dark:bg-[#111113] divide-y divide-zinc-200 dark:divide-[#222225] text-xs">
-                <div className="p-3.5 flex items-center justify-between">
+              <div className="border border-zinc-200/80 dark:border-white/[0.07] rounded-[20px] bg-white dark:bg-[#1f2128] divide-y divide-zinc-200 dark:divide-white/[0.06] text-xs">
+                <div className="p-4 flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    <div className="font-bold text-zinc-900 dark:text-white">
                       {lang === 'ar'
                         ? 'فحص قوائم العقوبات (البنك المركزي العراقي / الأمم المتحدة / العقوبات الدولية)'
                         : 'Central Bank of Iraq (CBI) / OFAC / UN / EU Sanctions'}
                     </div>
-                    <div className="text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <div className="text-zinc-500 dark:text-[#8a8d98] mt-0.5">
                       {lang === 'ar'
                         ? 'فحص الكيانات الموحد للنصوص العربية والكردية واللاتينية'
                         : 'Normalized Arabic/Kurdish/Latin multi-script entity screening'}
                     </div>
                   </div>
                   {applicant.sanctionsMatch ? (
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-red-600 dark:text-red-400">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
                       <ShieldAlert className="w-4 h-4" />
                       {t(lang, 'sanctionsHit')}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-[#10b981]">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#10b981] dark:text-[#6ee7b7]">
                       <ShieldCheck className="w-4 h-4" />
                       {t(lang, 'sanctionsClean')}
                     </span>
@@ -1800,26 +1882,26 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
               {applicant.auditTrail.map((evt) => (
                 <div
                   key={evt.id}
-                  className="p-3.5 rounded-xl border border-zinc-200 dark:border-[#222225] bg-zinc-50/70 dark:bg-[#111113] text-xs space-y-1.5"
+                  className="p-4 rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#1f2128] text-xs space-y-1.5 shadow-xs"
                 >
-                  <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  <div className="flex items-center justify-between text-zinc-500 dark:text-[#8a8d98]">
+                    <span className="font-bold text-zinc-900 dark:text-white">
                       {lang === 'ar' ? evt.actorAr : evt.actorEn}
                     </span>
                     <span className="font-mono tabular-nums">
                       {formatTimestamp(evt.timestamp, lang)}
                     </span>
                   </div>
-                  <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">
                     {lang === 'ar' ? evt.actionAr : evt.actionEn}
                   </div>
                   {(evt.noteEn || evt.noteAr) && (
-                    <div className="text-zinc-600 dark:text-zinc-400">
+                    <div className="text-zinc-600 dark:text-[#8a8d98]">
                       {lang === 'ar' ? evt.noteAr : evt.noteEn}
                     </div>
                   )}
                   {evt.cbiLaw78HmacReceipt && (
-                    <div className="pt-1 flex items-center gap-1.5 text-[10px] font-mono text-emerald-700 dark:text-[#10b981]">
+                    <div className="pt-1 flex items-center gap-1.5 text-[10px] font-mono font-semibold text-[#10b981] dark:text-[#6ee7b7]">
                       <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                       <span>
                         {lang === 'ar'
@@ -1835,74 +1917,96 @@ export const ApplicantInspectorDrawer: React.FC<ApplicantInspectorDrawerProps> =
         </div>
 
         {/* Sticky Adjudication Footer */}
-        <div className="p-4 border-t border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113] space-y-3">
-          <input
-            type="text"
-            value={decisionNote}
-            onChange={(e) => setDecisionNote(e.target.value)}
-            placeholder={t(lang, 'decisionNotePlaceholder')}
-            aria-label={t(lang, 'decisionNotePlaceholder')}
-            className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 dark:border-[#222225] bg-white dark:bg-[#0c0c0e] text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
+        <div className="p-4 border-t border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] space-y-3">
+          {(() => {
+            const isAlreadyApproved =
+              applicant.status === 'approved' || applicant.stage9Outcome === 'AUTO_APPROVED';
 
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-zinc-500 dark:text-zinc-400">{t(lang, 'colStatus')}:</span>
-              {applicant.status === 'approved' && (
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {t(lang, 'statusApproved')}
-                </span>
-              )}
-              {applicant.status === 'pending' && (
-                <span className="inline-flex items-center gap-1 font-semibold text-zinc-700 dark:text-zinc-300">
-                  <Clock className="w-3.5 h-3.5" />
-                  {t(lang, 'statusPending')}
-                </span>
-              )}
-              {applicant.status === 'flagged' && (
-                <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  {t(lang, 'statusFlagged')}
-                </span>
-              )}
-              {applicant.status === 'rejected' && (
-                <span className="inline-flex items-center gap-1 font-semibold text-red-600 dark:text-red-400">
-                  <XCircle className="w-3.5 h-3.5" />
-                  {t(lang, 'statusRejected')}
-                </span>
-              )}
-            </div>
+            if (isAlreadyApproved) {
+              return (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-zinc-500 dark:text-[#8a8d98]">{t(lang, 'colStatus')}:</span>
+                    <span className="inline-flex items-center gap-1.5 font-bold text-[#10b981] dark:text-[#6ee7b7]">
+                      <span className="w-2 h-2 rounded-full bg-[#10b981]" />
+                      {t(lang, 'statusApproved')}
+                    </span>
+                  </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleDecision('rejected')}
-                className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-colors whitespace-nowrap"
-              >
-                {t(lang, 'rejectDossierBtn')}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDecision('flagged')}
-                className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors whitespace-nowrap"
-              >
-                {t(lang, 'flagDossierBtn')}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDecision('approved')}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#10b981] hover:bg-[#059669] text-zinc-950 font-semibold transition-colors whitespace-nowrap"
-              >
-                {t(lang, 'approveDossierBtn')}
-              </button>
-            </div>
-          </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      data-testid="auto-approved-status-badge"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-[#10b981] to-[#047857] text-white shadow-md shadow-[#10b981]/30"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{t(lang, 'statusApproved')}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            }
 
-          <div className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 text-center pt-0.5">
+            return (
+              <>
+                <input
+                  type="text"
+                  value={decisionNote}
+                  onChange={(e) => setDecisionNote(e.target.value)}
+                  placeholder={t(lang, 'decisionNotePlaceholder')}
+                  aria-label={t(lang, 'decisionNotePlaceholder')}
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-zinc-300 dark:border-white/[0.08] bg-[#f4fbf7] dark:bg-[#14151b] text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-[#8a8d98] focus:outline-none focus:ring-2 focus:ring-[#10b981]"
+                />
+
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-zinc-500 dark:text-[#8a8d98]">{t(lang, 'colStatus')}:</span>
+                    {applicant.status === 'pending' && (
+                      <span className="inline-flex items-center gap-1.5 font-bold text-[#38bdf8]">
+                        <span className="w-2 h-2 rounded-full bg-[#38bdf8]" />
+                        {t(lang, 'statusPending')}
+                      </span>
+                    )}
+                    {applicant.status === 'flagged' && (
+                      <span className="inline-flex items-center gap-1.5 font-bold text-amber-500 dark:text-amber-400">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        {t(lang, 'statusFlagged')}
+                      </span>
+                    )}
+                    {applicant.status === 'rejected' && (
+                      <span className="inline-flex items-center gap-1.5 font-bold text-rose-500 dark:text-rose-400">
+                        <span className="w-2 h-2 rounded-full bg-rose-500" />
+                        {t(lang, 'statusRejected')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      type="button"
+                      data-testid="reject-dossier-btn"
+                      onClick={() => handleDecision('rejected')}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-rose-500 to-rose-700 hover:brightness-110 text-white shadow-md shadow-rose-500/30 transition-all whitespace-nowrap cursor-pointer"
+                    >
+                      {t(lang, 'rejectDossierBtn')}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="approve-dossier-btn"
+                      onClick={() => handleDecision('approved')}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-[#10b981] to-[#047857] hover:brightness-110 text-white shadow-md shadow-[#10b981]/30 transition-all whitespace-nowrap cursor-pointer"
+                    >
+                      {t(lang, 'approveDossierBtn')}
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
+          <div className="text-[11px] font-mono text-zinc-400 dark:text-[#8a8d98] text-center pt-0.5">
             {lang === 'ar'
-              ? 'اختصارات لوحة المفاتيح: [J/K] التنقل · [A] موافقة · [F] مراجعة · [R] رفض · [M] عدسة 4x · [C] شهادة البنك المركزي · [E] شرح الذكاء الاصطناعي'
-              : 'Shortcuts: [J/K] Next/Prev · [A] Approve · [F] Flag · [R] Reject · [M] 4x Loupe · [C] CBI Certificate · [E] AI Case Brief'}
+              ? 'اختصارات لوحة المفاتيح: [J/K] التنقل · [A] موافقة · [R] رفض · [M] عدسة 4x · [C] شهادة البنك المركزي · [E] شرح الذكاء الاصطناعي'
+              : 'Shortcuts: [J/K] Next/Prev · [A] Approve · [R] Reject · [M] 4x Loupe · [C] CBI Certificate · [E] AI Case Brief'}
           </div>
         </div>
       </div>

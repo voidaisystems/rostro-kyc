@@ -192,12 +192,12 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
   const getFieldBoxClass = (fieldKey: OcrHighlightField) => {
     const isTargeted = highlightedField === fieldKey;
     if (isTargeted) {
-      return 'ring-2 ring-blue-600 dark:ring-blue-400 bg-blue-50/90 dark:bg-blue-950/70 rounded px-1.5 py-0.5 -mx-1.5 transition-all';
+      return 'ring-2 ring-[#10b981] bg-[#10b981]/15 dark:bg-[#10b981]/25 rounded-xl px-2 py-1 -mx-1 transition-all';
     }
     if (showOcrBoxes) {
-      return 'ring-1 ring-emerald-500/50 dark:ring-emerald-400/40 bg-emerald-50/30 dark:bg-emerald-950/20 rounded px-1.5 py-0.5 -mx-1.5 transition-all';
+      return 'ring-1 ring-[#10b981]/35 dark:ring-[#10b981]/45 bg-[#10b981]/[0.06] dark:bg-[#10b981]/12 rounded-xl px-2 py-1 -mx-1 transition-all';
     }
-    return 'px-1.5 py-0.5 -mx-1.5 transition-all';
+    return 'px-2 py-1 -mx-1 transition-all';
   };
 
   const activeBoxes =
@@ -206,23 +206,23 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
       : document.boundingBoxes;
 
   return (
-    <div className="border border-zinc-200 dark:border-[#222225] rounded-xl bg-zinc-50 dark:bg-[#111113] overflow-hidden">
+    <div className="border border-zinc-200/80 dark:border-white/[0.07] rounded-[20px] bg-[#f6f5fc] dark:bg-[#1f2128] overflow-hidden shadow-sm">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-zinc-200 dark:border-[#222225] bg-white dark:bg-[#141417] flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 flex-wrap">
-          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-[#1f1f23] text-zinc-700 dark:text-zinc-300">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-zinc-200/80 dark:border-white/[0.06] bg-white dark:bg-[#181a20] flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-[#8a8d98] flex-wrap">
+          <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg bg-[#10b981]/10 dark:bg-[#282b34] text-[#10b981] dark:text-[#6ee7b7] border border-[#10b981]/20 dark:border-white/[0.06]">
             {formatSupportStatus(document.supportStatus, lang)}
           </span>
           {/* Physical Side Completeness Badge */}
           <span
-            className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+            className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
               hasCardPairConflict
-                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                ? 'bg-rose-500/15 text-rose-500 dark:text-rose-400 border-rose-500/30'
                 : !sidePolicy.requiresBothSides
-                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  ? 'bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] border-[#10b981]/35'
                   : document.side === 'BOTH'
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    ? 'bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7] border-[#10b981]/35'
+                    : 'bg-rose-500/15 text-rose-500 dark:text-rose-400 border-rose-500/30'
             }`}
           >
             {hasCardPairConflict
@@ -242,28 +242,28 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                     : `SIDE: ${document.side} ONLY · BACK MISSING`}
           </span>
           {document.engineMode === 'gemini-vlm-live' && (
-            <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-[#059669]/15 text-[#9333ea] dark:text-[#d1fae5] border border-[#059669]/35">
               {lang === 'ar' ? 'استخراج ذكي مباشر' : 'GEMINI VLM LIVE OCR'}
             </span>
           )}
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+          <span className="font-bold text-zinc-900 dark:text-white">
             {lang === 'ar' ? document.titleAr : document.titleEn}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono tabular-nums">
+          <span className="font-mono tabular-nums text-[#10b981] dark:text-[#34d399]">
             {formatReferenceCode(document.docNumber, lang)}
           </span>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           {(sidePolicy.requiresBothSides || document.customBackPreviewUrl) && (
-            <div className="inline-flex items-center rounded bg-zinc-100 dark:bg-[#18181b] p-0.5 border border-zinc-200 dark:border-[#222225]">
+            <div className="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-[#14151b] p-0.5 border border-zinc-200/80 dark:border-white/[0.06]">
               <button
                 type="button"
                 onClick={() => setActiveFace('FRONT')}
-                className={`px-2 py-0.5 text-[10px] font-mono font-semibold rounded transition-colors ${
+                className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg transition-all cursor-pointer ${
                   activeFace === 'FRONT'
-                    ? 'bg-white dark:bg-[#0c0c0e] text-emerald-600 dark:text-emerald-400 shadow-2xs'
-                    : 'text-zinc-600 dark:text-zinc-400'
+                    ? 'bg-[#10b981] text-white shadow-xs shadow-[#10b981]/30'
+                    : 'text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                 }`}
               >
                 {lang === 'ar' ? 'الأمام' : 'FRONT'}
@@ -271,12 +271,12 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveFace('BACK')}
-                className={`px-2 py-0.5 text-[10px] font-mono font-semibold rounded transition-colors ${
+                className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg transition-all cursor-pointer ${
                   activeFace === 'BACK'
-                    ? 'bg-white dark:bg-[#0c0c0e] text-emerald-600 dark:text-emerald-400 shadow-2xs'
+                    ? 'bg-[#10b981] text-white shadow-xs shadow-[#10b981]/30'
                     : hasCardPairConflict || isMissingRequiredBack
                       ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-zinc-600 dark:text-zinc-400'
+                      : 'text-zinc-600 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                 }`}
               >
                 {isMissingRequiredBack
@@ -292,10 +292,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
           <button
             type="button"
             onClick={() => setShowOcrBoxes((prev) => !prev)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               showOcrBoxes
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                : 'text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#18181b] hover:bg-zinc-200 dark:hover:bg-zinc-800'
+                ? 'bg-[#10b981] text-white border border-[#10b981] shadow-xs shadow-[#10b981]/25'
+                : 'text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#14151b] border border-zinc-200/80 dark:border-white/[0.06] hover:bg-zinc-200 dark:hover:bg-[#282b34]'
             }`}
           >
             <ScanLine className="w-3.5 h-3.5" />
@@ -303,7 +303,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
           </button>
 
           {/* Upgrade 2.1: Interactive Optical Magnifier Loupe Toggle (4x Lens) */}
-          <div className="inline-flex items-center rounded bg-zinc-100 dark:bg-[#18181b] p-0.5 border border-zinc-200 dark:border-[#222225]">
+          <div className="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-[#14151b] p-0.5 border border-zinc-200/80 dark:border-white/[0.06]">
             <button
               type="button"
               onClick={() => setLoupeEnabled((prev) => !prev)}
@@ -312,10 +312,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                   ? 'عدسة التكبير الجنائية لفحص الأختام والطباعة الدقيقة (مفتاح M)'
                   : 'Optical Magnifier Loupe for Micro-Print & Seal Inspection (Shortcut: M)'
               }
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                 loupeEnabled
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-semibold'
-                  : 'text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#0c0c0e]'
+                  ? 'bg-[#059669] text-white font-semibold shadow-xs'
+                  : 'text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#1f2128]'
               }`}
             >
               <Search className="w-3.5 h-3.5" />
@@ -330,10 +330,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                     key={factor}
                     type="button"
                     onClick={() => setLoupeScale(factor)}
-                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
+                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded-md transition-colors cursor-pointer ${
                       loupeScale === factor
-                        ? 'bg-cyan-500 text-zinc-950 font-bold'
-                        : 'text-zinc-400 hover:text-zinc-200'
+                        ? 'bg-[#10b981] text-white font-bold'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                     }`}
                   >
                     {factor}x
@@ -352,10 +352,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                 ? 'القص التلقائي وتصحيح الميل وتحسين التباين والأختام (CLAHE)'
                 : 'Auto-Crop, Deskew & CLAHE Adaptive Contrast Pre-Processor'
             }
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               autoEnhanceEnabled
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
-                : 'text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#18181b] hover:bg-zinc-200 dark:hover:bg-zinc-800'
+                ? 'bg-gradient-to-r from-[#10b981] to-[#22c55e] text-white font-semibold shadow-xs'
+                : 'text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#14151b] border border-zinc-200/80 dark:border-white/[0.06] hover:bg-zinc-200 dark:hover:bg-[#282b34]'
             }`}
           >
             <Crop className="w-3.5 h-3.5" />
@@ -374,18 +374,18 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             type="button"
             onClick={onToggleZoom}
             aria-label={t(lang, 'zoomInLabel')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#18181b] hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-[#14151b] border border-zinc-200/80 dark:border-white/[0.06] hover:bg-zinc-200 dark:hover:bg-[#282b34] rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <ZoomIn className="w-3.5 h-3.5" />
             <span className="font-mono tabular-nums">{zoomed ? '100%' : '125%'}</span>
           </button>
-          <div className="inline-flex items-center rounded bg-zinc-100 dark:bg-[#18181b] p-0.5 border border-zinc-200 dark:border-[#222225]">
+          <div className="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-[#14151b] p-0.5 border border-zinc-200/80 dark:border-white/[0.06]">
             <button
               type="button"
               onClick={onRotateCcw || (() => onRotate())}
               title={lang === 'ar' ? 'تدوير 90° يسار' : 'Rotate 90° Counter-Clockwise'}
               aria-label={lang === 'ar' ? 'تدوير 90° يسار' : 'Rotate 90° Counter-Clockwise'}
-              className="p-1 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#0c0c0e] rounded transition-colors"
+              className="p-1 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#1f2128] rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -394,7 +394,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
               onClick={onRotate}
               title={lang === 'ar' ? 'تدوير 90° يمين' : 'Rotate 90° Clockwise'}
               aria-label={t(lang, 'rotateDocLabel')}
-              className="inline-flex items-center gap-1 px-1.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#0c0c0e] rounded transition-colors"
+              className="inline-flex items-center gap-1 px-1.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#1f2128] rounded-lg transition-colors cursor-pointer"
             >
               <RotateCw className="w-3.5 h-3.5" />
               <span className="font-mono text-[10px] tabular-nums">{rotation}°</span>
@@ -404,7 +404,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
               onClick={onRotate180 || (() => { onRotate(); onRotate(); })}
               title={lang === 'ar' ? 'عكس الاتجاه 180°' : 'Reverse Direction 180°'}
               aria-label={lang === 'ar' ? 'عكس الاتجاه 180°' : 'Reverse Direction 180°'}
-              className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[10px] font-mono text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#0c0c0e] rounded transition-colors"
+              className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[10px] font-mono text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#1f2128] rounded-lg transition-colors cursor-pointer"
             >
               <FlipHorizontal className="w-3.5 h-3.5" />
               <span>180°</span>
@@ -415,7 +415,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                 onClick={onResetRotation || (() => {})}
                 title={lang === 'ar' ? 'إعادة ضبط الاتجاه' : 'Reset Direction to 0°'}
                 aria-label={lang === 'ar' ? 'إعادة ضبط الاتجاه' : 'Reset rotation to 0'}
-                className="px-1 text-[10px] font-mono text-emerald-500 hover:bg-white dark:hover:bg-[#0c0c0e] rounded transition-colors"
+                className="px-1.5 text-[10px] font-mono text-[#10b981] dark:text-[#34d399] hover:bg-white dark:hover:bg-[#1f2128] rounded-lg transition-colors cursor-pointer"
               >
                 0°
               </button>
@@ -425,7 +425,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
       </div>
 
       {/* Specimen Canvas */}
-      <div className="p-5 flex flex-col items-center justify-center min-h-[290px] overflow-auto bg-zinc-100/80 dark:bg-[#09090b] gap-3">
+      <div className="p-5 flex flex-col items-center justify-center min-h-[260px] overflow-auto bg-[#f1effa] dark:bg-[#14151b] gap-3">
         {/* Cross-Image Card Pair Conflict Banner */}
         {document.cardPairValidation && document.cardPairValidation.issues.length > 0 && (
           <div className="w-full max-w-lg rounded-lg border-2 border-rose-400 dark:border-rose-700 bg-rose-50/95 dark:bg-rose-950/60 p-3.5 text-start space-y-2">
@@ -723,9 +723,9 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                       {/* Republic Emblem Box */}
                       <div
                         style={{ top: '3%', left: '44%', width: '12%', height: '10%' }}
-                        className="absolute border-2 rounded transition-colors border-purple-500 bg-purple-500/20"
+                        className="absolute border-2 rounded transition-colors border-emerald-500 bg-emerald-500/20"
                       >
-                        <span className="bg-purple-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
+                        <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
                           {lang === 'ar' ? 'الشعار الرسمي' : 'EMBLEM'}
                         </span>
                       </div>
@@ -773,7 +773,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                               : 'border-emerald-400/80 bg-emerald-400/10'
                           }`}
                         >
-                          <span className="bg-purple-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
+                          <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
                             {lang === 'ar'
                               ? `الأم: ${sanitizeTextForLanguage(document.extractedFields.motherName, 'ar')}`
                               : `MOTHER: ${sanitizeTextForLanguage(document.extractedFields.motherName, 'en')}`}
@@ -901,39 +901,65 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                     </div>
                   </div>
 
-                  {/* 3. National ID */}
+                  {/* 3. National ID / Passport No. */}
                   <div
                     onMouseEnter={() => onHoverField?.('docNumber')}
                     onMouseLeave={() => onHoverField?.(null)}
                     className={getFieldBoxClass('docNumber')}
                   >
                     <div className="text-[9px] font-mono text-slate-400">
-                      {lang === 'ar' ? 'الرقم الوطني / المتسلسل' : 'ID / SERIAL NO.'}
+                      {document.type === 'IRQ_PASSPORT' || document.type === 'FOREIGN_PASSPORT'
+                        ? lang === 'ar'
+                          ? 'رقم الجواز'
+                          : 'PASSPORT NO.'
+                        : lang === 'ar'
+                          ? 'الرقم الوطني / المتسلسل'
+                          : 'ID / SERIAL NO.'}
                     </div>
                     <div className="font-mono font-semibold truncate text-blue-700 dark:text-blue-400">
                       {sanitizeTextForLanguage(document.docNumber, lang)}
                     </div>
                   </div>
 
-                  {/* 4. Family Number / Bottom-Left Corner Code */}
-                  <div
-                    onMouseEnter={() => onHoverField?.('familyNumber')}
-                    onMouseLeave={() => onHoverField?.(null)}
-                    className={getFieldBoxClass('familyNumber')}
-                  >
-                    <div className="text-[9px] font-mono text-slate-400">
-                      {lang === 'ar' ? 'رقم البطاقة (أسفل اليسار)' : 'FAMILY / CARD NO.'}
-                    </div>
+                  {/* 4. Family Number (National ID) OR Mother / Issuing Authority (Passport) */}
+                  {document.type === 'IRQ_PASSPORT' || document.type === 'FOREIGN_PASSPORT' ? (
                     <div
-                      className={`font-mono font-bold truncate ${
-                        !cleanFamilyNum || cleanFamilyNum.includes('MISSING')
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-amber-700 dark:text-amber-400'
-                      }`}
+                      onMouseEnter={() => onHoverField?.('motherName')}
+                      onMouseLeave={() => onHoverField?.(null)}
+                      className={getFieldBoxClass('motherName')}
                     >
-                      {cleanFamilyNum || (lang === 'ar' ? '[غير موجود]' : '[MISSING]')}
+                      <div className="text-[9px] font-mono text-slate-400">
+                        {lang === 'ar' ? 'اسم الأم · جهة الإصدار' : 'MOTHER · AUTHORITY'}
+                      </div>
+                      <div className="font-mono font-bold truncate text-emerald-700 dark:text-emerald-400">
+                        {document.extractedFields.motherName
+                          ? sanitizeTextForLanguage(document.extractedFields.motherName, lang)
+                          : sanitizeTextForLanguage(
+                              lang === 'ar' ? document.issuingAuthorityAr : document.issuingAuthorityEn,
+                              lang
+                            )}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div
+                      onMouseEnter={() => onHoverField?.('familyNumber')}
+                      onMouseLeave={() => onHoverField?.(null)}
+                      className={getFieldBoxClass('familyNumber')}
+                    >
+                      <div className="text-[9px] font-mono text-slate-400">
+                        {lang === 'ar' ? 'رقم البطاقة (أسفل اليسار)' : 'FAMILY / CARD NO.'}
+                      </div>
+                      <div
+                        className={`font-mono font-bold truncate ${
+                          !cleanFamilyNum || cleanFamilyNum.includes('MISSING')
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                        }`}
+                      >
+                        {cleanFamilyNum || (lang === 'ar' ? '[غير موجود]' : '[MISSING]')}
+                      </div>
+                    </div>
+                  )}
 
                   {/* 5. Date of Birth & Expiry */}
                   <div
@@ -1013,9 +1039,9 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             style={{
               transform: `scale(${zoomed ? 1.08 : 1}) rotate(${rotation}deg)`,
             }}
-            className={`relative w-full max-w-lg rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xs transition-all duration-150 select-none ${
+            className={`relative w-full max-w-lg rounded-[18px] border border-zinc-200/90 dark:border-white/[0.08] bg-white dark:bg-[#1f2128] p-4 shadow-md transition-all duration-150 select-none ${
               loupeEnabled ? 'cursor-crosshair' : ''
-            } ${autoEnhanceEnabled ? 'contrast-125 saturate-115 ring-1 ring-amber-500/40' : ''}`}
+            } ${autoEnhanceEnabled ? 'contrast-125 saturate-115 ring-2 ring-[#22c55e]/50' : ''}`}
           >
             {/* Interactive Optical Magnifier Loupe Reticle for Synthetic Card Specimen */}
             {loupeEnabled && loupePos && (
@@ -1024,22 +1050,22 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                   left: `${loupePos.xPct}%`,
                   top: `${loupePos.yPct}%`,
                 }}
-                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full border-2 border-cyan-400 bg-slate-950/90 backdrop-blur-xs shadow-2xl ring-4 ring-cyan-950/70 z-30 flex flex-col items-center justify-between p-2.5 text-center"
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full border-2 border-[#059669] bg-[#14151b]/95 backdrop-blur-xs shadow-2xl ring-4 ring-[#10b981]/40 z-30 flex flex-col items-center justify-between p-2.5 text-center"
               >
-                <div className="text-[8px] font-mono font-bold text-cyan-300 tracking-wider uppercase">
+                <div className="text-[8px] font-mono font-bold text-[#6ee7b7] tracking-wider uppercase">
                   OPTICAL LOUPE {loupeScale}.0×
                 </div>
-                <div className="relative w-full flex-1 flex flex-col items-center justify-center border border-cyan-500/30 rounded-full px-2">
-                  <div className="absolute top-1/2 left-0 right-0 h-px bg-cyan-400/40" />
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-400/40" />
+                <div className="relative w-full flex-1 flex flex-col items-center justify-center border border-[#10b981]/40 rounded-full px-2">
+                  <div className="absolute top-1/2 left-0 right-0 h-px bg-[#059669]/40" />
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#059669]/40" />
                   <div className="text-[9px] font-mono font-semibold text-white leading-tight z-10">
                     {getMicroPrintZoneLabel(loupePos.xPct, loupePos.yPct)}
                   </div>
-                  <div className="text-[8px] font-mono text-emerald-400 mt-1 z-10">
+                  <div className="text-[8px] font-mono text-[#6ee7b7] mt-1 z-10">
                     600-DPI GUILLOCHÉ · OK
                   </div>
                 </div>
-                <div className="text-[8px] font-mono text-slate-300">
+                <div className="text-[8px] font-mono text-zinc-300">
                   X:{Math.round(loupePos.xPct)}% Y:{Math.round(loupePos.yPct)}%
                 </div>
               </div>
@@ -1047,16 +1073,16 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             {/* 1. IRAQI IDENTITY / PASSPORT / DRIVING SPECIMEN */}
             {isIdentityOrPassport && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-white/[0.06] pb-2">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-[11px] font-mono tracking-wider uppercase text-slate-600 dark:text-slate-400 font-semibold">
+                    <ShieldCheck className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
+                    <span className="text-[11px] font-mono tracking-wider uppercase text-zinc-600 dark:text-[#8a8d98] font-semibold">
                       {lang === 'ar'
                         ? `${document.issuingCountryAr} · ${formatDocumentTypeCode(document.type, 'ar')}`
                         : `${document.issuingCountryEn} · ${document.type}`}
                     </span>
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
                     <span>{lang === 'ar' ? document.titleAr : document.titleEn}</span>
                   </span>
                 </div>
@@ -1064,22 +1090,22 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                 <div className="grid grid-cols-12 gap-4 items-center">
                   {/* Biometric Portrait */}
                   <div
-                    className={`col-span-4 aspect-3/4 rounded border flex flex-col items-center justify-center p-2 relative overflow-hidden transition-colors ${
+                    className={`col-span-4 aspect-3/4 rounded-xl border flex flex-col items-center justify-center p-2 relative overflow-hidden transition-colors ${
                       showOcrBoxes
-                        ? 'border-emerald-500/60 bg-emerald-50/20 dark:bg-slate-800'
-                        : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800'
+                        ? 'border-[#10b981]/60 bg-[#10b981]/10 dark:bg-[#14151b]'
+                        : 'border-zinc-300 dark:border-white/10 bg-zinc-100 dark:bg-[#14151b]'
                     }`}
                   >
                     <svg
                       viewBox="0 0 100 120"
-                      className="w-16 h-20 text-slate-400 dark:text-slate-500"
+                      className="w-16 h-20 text-[#10b981]/70 dark:text-[#34d399]/70"
                       fill="currentColor"
                       aria-hidden="true"
                     >
                       <circle cx="50" cy="38" r="20" />
                       <path d="M18 112 C18 78, 82 78, 82 112 Z" />
                     </svg>
-                    <div className="mt-1 text-[9px] font-mono text-emerald-700 dark:text-emerald-400">
+                    <div className="mt-1 text-[9px] font-mono font-bold text-[#10b981] dark:text-[#6ee7b7]">
                       {lang === 'ar'
                         ? `التطابق ${document.livenessScore ?? 97}%`
                         : `BIO-MATCH ${document.livenessScore ?? 97}%`}
@@ -1093,19 +1119,19 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                       onMouseLeave={() => onHoverField?.(null)}
                       className={`col-span-2 ${getFieldBoxClass('fullName')}`}
                     >
-                      <div className="flex items-center justify-between text-[9px] text-slate-400">
+                      <div className="flex items-center justify-between text-[9px] text-zinc-400 dark:text-[#8a8d98]">
                         <span className="font-mono">
                           {lang === 'ar' ? '01. الاسم المستخرج' : '01. EXTRACTED NAME'}
                         </span>
                         {showOcrBoxes && (
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                          <span className="font-mono font-bold text-[#10b981] dark:text-[#6ee7b7]">
                             {lang === 'ar'
                               ? `الدقة ${document.ocrConfidence}%`
                               : `OCR ${document.ocrConfidence}%`}
                           </span>
                         )}
                       </div>
-                      <div className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      <div className="text-xs font-mono font-semibold text-zinc-900 dark:text-white truncate">
                         {sanitizeTextForLanguage(
                           lang === 'ar'
                             ? document.extractedFields.fullNameArabic ||
@@ -1123,10 +1149,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                         onMouseLeave={() => onHoverField?.(null)}
                         className={`col-span-2 ${getFieldBoxClass('normalizedName')}`}
                       >
-                        <div className="text-[9px] font-mono text-slate-400">
+                        <div className="text-[9px] font-mono text-zinc-400 dark:text-[#8a8d98]">
                           {lang === 'ar' ? '02. الاسم القياسي الموحد' : '02. CANONICAL MULTI-SCRIPT'}
                         </div>
-                        <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                        <div className="text-xs font-semibold text-[#10b981] dark:text-[#6ee7b7]">
                           {sanitizeTextForLanguage(
                             lang === 'ar'
                               ? document.extractedFields.normalizedName ||
@@ -1144,10 +1170,10 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                       onMouseLeave={() => onHoverField?.(null)}
                       className={getFieldBoxClass('docNumber')}
                     >
-                      <div className="text-[9px] font-mono text-slate-400">
+                      <div className="text-[9px] font-mono text-zinc-400 dark:text-[#8a8d98]">
                         {lang === 'ar' ? '03. الرقم الوطني / الوثيقة' : '03. 12-DIGIT ID / NO.'}
                       </div>
-                      <div className="text-xs font-mono font-semibold text-blue-700 dark:text-blue-400">
+                      <div className="text-xs font-mono font-semibold text-[#10b981] dark:text-[#34d399]">
                         {formatReferenceCode(document.docNumber, lang)}
                       </div>
                     </div>
@@ -1236,14 +1262,14 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             {/* 2. IRAQI RESIDENCE CARD OR RATION CARD */}
             {isResidenceOrHousehold && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-white/[0.06] pb-2">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    <FileText className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
+                    <span className="text-xs font-bold text-zinc-900 dark:text-white">
                       {lang === 'ar' ? document.issuingAuthorityAr : document.issuingAuthorityEn}
                     </span>
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                  <span className="text-[11px] font-semibold text-[#10b981] dark:text-[#6ee7b7]">
                     {lang === 'ar' ? document.titleAr : document.titleEn}
                   </span>
                 </div>
@@ -1459,22 +1485,22 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
       </div>
 
       {/* Cryptographic SHA-256 Digest Footer with One-Click Copy */}
-      <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+      <div className="px-4 py-2.5 border-t border-zinc-200/80 dark:border-white/[0.06] bg-white dark:bg-[#181a20] flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-[#8a8d98]">
         <span className="truncate">
           {t(lang, 'fieldSha256')}:{' '}
-          <span className="font-mono text-slate-700 dark:text-slate-300">
+          <span className="font-mono text-zinc-700 dark:text-zinc-300">
             {formatCryptoDigest(document.sha256Hash.slice(0, 24), lang)}...
           </span>
         </span>
         <button
           type="button"
           onClick={handleCopyHash}
-          className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-xl border border-[#10b981]/30 bg-[#10b981]/10 text-[#10b981] dark:text-[#6ee7b7] hover:bg-[#10b981]/20 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           {copiedHash ? (
             <>
-              <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+              <Check className="w-3 h-3 text-[#10b981] dark:text-[#6ee7b7]" />
+              <span className="text-[#10b981] dark:text-[#6ee7b7] font-bold">
                 {t(lang, 'copiedLabel')}
               </span>
             </>

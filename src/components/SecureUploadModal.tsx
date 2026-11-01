@@ -1198,61 +1198,69 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
   const processBothSelectedFiles = async (file1: File, file2: File) => {
     setValidationError('');
+    setLastExtraction(null);
+    setIsExtractingOcr(true);
     setSelectedFileName(file1.name);
     setSelectedFileSizeKb(Math.max(80, Math.round(file1.size / 1024)));
-    setSelectedMimeType(file1.type || 'image/png');
+    setSelectedMimeType(file1.type || 'image/jpeg');
     frontNameRef.current = file1.name;
-    frontMimeRef.current = file1.type || 'image/png';
+    frontMimeRef.current = file1.type || 'image/jpeg';
 
     setSelectedBackFileName(file2.name);
     setSelectedBackFileSizeKb(Math.max(80, Math.round(file2.size / 1024)));
-    setSelectedBackMimeType(file2.type || 'image/png');
+    setSelectedBackMimeType(file2.type || 'image/jpeg');
     backNameRef.current = file2.name;
-    backMimeRef.current = file2.type || 'image/png';
+    backMimeRef.current = file2.type || 'image/jpeg';
 
-    const [rawUrl1, rawUrl2] = await Promise.all([
-      file1.type.startsWith('image/') ? readFileAsDataUrl(file1) : Promise.resolve(undefined),
-      file2.type.startsWith('image/') ? readFileAsDataUrl(file2) : Promise.resolve(undefined),
-    ]);
+    const fullTask = (async () => {
+      const isImg1 = !file1.type || file1.type.startsWith('image/');
+      const isImg2 = !file2.type || file2.type.startsWith('image/');
+      const [rawUrl1, rawUrl2] = await Promise.all([
+        isImg1 ? readFileAsDataUrl(file1) : Promise.resolve(undefined),
+        isImg2 ? readFileAsDataUrl(file2) : Promise.resolve(undefined),
+      ]);
 
-    if (rawUrl1) rawFrontUrlRef.current = rawUrl1;
-    if (rawUrl2) rawBackUrlRef.current = rawUrl2;
+      if (rawUrl1) rawFrontUrlRef.current = rawUrl1;
+      if (rawUrl2) rawBackUrlRef.current = rawUrl2;
 
-    let url1 = rawUrl1;
-    let url2 = rawUrl2;
-    if (rawUrl1) {
-      const norm1 = await autoNormalizeImageDataUrl(rawUrl1, activeDocType);
-      url1 = norm1.normalizedDataUrl;
-      setSlot1AutoRotated(norm1.wasSideways);
-      setSlot1RotatedDeg(norm1.rotatedDeg);
-      origFrontDimsRef.current = {
-        width: norm1.originalWidth,
-        height: norm1.originalHeight,
-        wasSideways: norm1.wasSideways,
-      };
-      computeImageEdgeTelemetry(url1, origFrontDimsRef.current);
-    }
-    if (rawUrl2) {
-      const norm2 = await autoNormalizeImageDataUrl(rawUrl2, activeDocType);
-      url2 = norm2.normalizedDataUrl;
-      setSlot2AutoRotated(norm2.wasSideways);
-      setSlot2RotatedDeg(norm2.rotatedDeg);
-    }
+      let url1 = rawUrl1;
+      let url2 = rawUrl2;
+      if (rawUrl1) {
+        const norm1 = await autoNormalizeImageDataUrl(rawUrl1, activeDocType);
+        url1 = norm1.normalizedDataUrl;
+        setSlot1AutoRotated(norm1.wasSideways);
+        setSlot1RotatedDeg(norm1.rotatedDeg);
+        origFrontDimsRef.current = {
+          width: norm1.originalWidth,
+          height: norm1.originalHeight,
+          wasSideways: norm1.wasSideways,
+        };
+        computeImageEdgeTelemetry(url1, origFrontDimsRef.current);
+      }
+      if (rawUrl2) {
+        const norm2 = await autoNormalizeImageDataUrl(rawUrl2, activeDocType);
+        url2 = norm2.normalizedDataUrl;
+        setSlot2AutoRotated(norm2.wasSideways);
+        setSlot2RotatedDeg(norm2.rotatedDeg);
+      }
 
-    frontPreviewRef.current = url1;
-    backPreviewRef.current = url2;
-    setCustomPreviewUrl(url1);
-    setCustomBackPreviewUrl(url2);
+      frontPreviewRef.current = url1;
+      backPreviewRef.current = url2;
+      setCustomPreviewUrl(url1);
+      setCustomBackPreviewUrl(url2);
 
-    void runServerGeminiExtraction(
-      url1,
-      frontMimeRef.current,
-      frontNameRef.current,
-      true,
-      url2,
-      backMimeRef.current,
-      'BOTH'
-    );
+      return await runServerGeminiExtraction(
+        url1,
+        frontMimeRef.current,
+        frontNameRef.current,
+        true,
+        url2,
+        backMimeRef.current,
+        'BOTH'
+      );
+    })();
+    extractionPromiseRef.current = fullTask;
+    await fullTask;
   };
 
   const processSelectedFile = async (file: File, forceSlot1 = false) => {
@@ -1263,73 +1271,87 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
     setSelectedFileName(file.name);
     setSelectedFileSizeKb(Math.max(80, Math.round(file.size / 1024)));
-    setSelectedMimeType(file.type || 'image/png');
+    setSelectedMimeType(file.type || 'image/jpeg');
     frontNameRef.current = file.name;
-    frontMimeRef.current = file.type || 'image/png';
+    frontMimeRef.current = file.type || 'image/jpeg';
     setValidationError('');
+    setLastExtraction(null);
+    setIsExtractingOcr(true);
 
-    const rawUrl = file.type.startsWith('image/') ? await readFileAsDataUrl(file) : undefined;
-    if (rawUrl) rawFrontUrlRef.current = rawUrl;
-    let url = rawUrl;
-    if (rawUrl) {
-      const norm = await autoNormalizeImageDataUrl(rawUrl, activeDocType);
-      url = norm.normalizedDataUrl;
-      setSlot1AutoRotated(norm.wasSideways);
-      setSlot1RotatedDeg(norm.rotatedDeg);
-      origFrontDimsRef.current = {
-        width: norm.originalWidth,
-        height: norm.originalHeight,
-        wasSideways: norm.wasSideways,
-      };
-      // Run suitability gate immediately (<15ms) before waiting for server OCR!
-      computeImageEdgeTelemetry(url, origFrontDimsRef.current);
-    }
+    const fullTask = (async () => {
+      const isImg = !file.type || file.type.startsWith('image/');
+      const rawUrl = isImg ? await readFileAsDataUrl(file) : undefined;
+      if (rawUrl) rawFrontUrlRef.current = rawUrl;
+      let url = rawUrl;
+      if (rawUrl) {
+        const norm = await autoNormalizeImageDataUrl(rawUrl, activeDocType);
+        url = norm.normalizedDataUrl;
+        setSlot1AutoRotated(norm.wasSideways);
+        setSlot1RotatedDeg(norm.rotatedDeg);
+        origFrontDimsRef.current = {
+          width: norm.originalWidth,
+          height: norm.originalHeight,
+          wasSideways: norm.wasSideways,
+        };
+        // Run suitability gate immediately (<15ms) before waiting for server OCR!
+        computeImageEdgeTelemetry(url, origFrontDimsRef.current);
+      }
 
-    frontPreviewRef.current = url;
-    setCustomPreviewUrl(url);
+      frontPreviewRef.current = url;
+      setCustomPreviewUrl(url);
 
-    const sideHint: 'FRONT' | 'BOTH' = backNameRef.current ? 'BOTH' : 'FRONT';
-    void runServerGeminiExtraction(
-      url,
-      frontMimeRef.current,
-      file.name,
-      true,
-      backPreviewRef.current,
-      backMimeRef.current,
-      sideHint
-    );
+      const sideHint: 'FRONT' | 'BOTH' = backNameRef.current ? 'BOTH' : 'FRONT';
+      return await runServerGeminiExtraction(
+        url,
+        frontMimeRef.current,
+        file.name,
+        true,
+        backPreviewRef.current,
+        backMimeRef.current,
+        sideHint
+      );
+    })();
+    extractionPromiseRef.current = fullTask;
+    await fullTask;
   };
 
   const processSelectedBackFile = async (file: File) => {
     setSelectedBackFileName(file.name);
     setSelectedBackFileSizeKb(Math.max(80, Math.round(file.size / 1024)));
-    setSelectedBackMimeType(file.type || 'image/png');
+    setSelectedBackMimeType(file.type || 'image/jpeg');
     backNameRef.current = file.name;
-    backMimeRef.current = file.type || 'image/png';
+    backMimeRef.current = file.type || 'image/jpeg';
     setValidationError('');
+    setLastExtraction(null);
+    setIsExtractingOcr(true);
 
-    const rawUrl = file.type.startsWith('image/') ? await readFileAsDataUrl(file) : undefined;
-    if (rawUrl) rawBackUrlRef.current = rawUrl;
-    let url = rawUrl;
-    if (rawUrl) {
-      const norm = await autoNormalizeImageDataUrl(rawUrl, activeDocType);
-      url = norm.normalizedDataUrl;
-      setSlot2AutoRotated(norm.wasSideways);
-      setSlot2RotatedDeg(norm.rotatedDeg);
-    }
+    const fullTask = (async () => {
+      const isImg = !file.type || file.type.startsWith('image/');
+      const rawUrl = isImg ? await readFileAsDataUrl(file) : undefined;
+      if (rawUrl) rawBackUrlRef.current = rawUrl;
+      let url = rawUrl;
+      if (rawUrl) {
+        const norm = await autoNormalizeImageDataUrl(rawUrl, activeDocType);
+        url = norm.normalizedDataUrl;
+        setSlot2AutoRotated(norm.wasSideways);
+        setSlot2RotatedDeg(norm.rotatedDeg);
+      }
 
-    backPreviewRef.current = url;
-    setCustomBackPreviewUrl(url);
+      backPreviewRef.current = url;
+      setCustomBackPreviewUrl(url);
 
-    void runServerGeminiExtraction(
-      frontPreviewRef.current,
-      frontMimeRef.current,
-      frontNameRef.current || file.name,
-      true,
-      url,
-      backMimeRef.current,
-      'BOTH'
-    );
+      return await runServerGeminiExtraction(
+        frontPreviewRef.current,
+        frontMimeRef.current,
+        frontNameRef.current || file.name,
+        true,
+        url,
+        backMimeRef.current,
+        'BOTH'
+      );
+    })();
+    extractionPromiseRef.current = fullTask;
+    await fullTask;
   };
 
   const handleCameraCaptureDataUrl = async (
@@ -1364,7 +1386,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     if (files.length >= 2) {
       void processBothSelectedFiles(files[0], files[1]);
     } else {
-      void processSelectedFile(files[0], false);
+      void processSelectedFile(files[0], true);
     }
   };
 
@@ -1386,7 +1408,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     if (files.length >= 2) {
       void processBothSelectedFiles(files[0], files[1]);
     } else {
-      void processSelectedFile(files[0], false);
+      void processSelectedFile(files[0], true);
     }
   };
 
@@ -1804,21 +1826,27 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
       resolvedExpiryDate = '[غير موجود / MISSING]';
     }
 
-    // Extract exact Family/Card number from bottom left corner or 18-digit back family number
-    let resolvedFamilyNum = familyNumber.trim() || extracted?.familyNumber || '';
+    // Extract exact Family/Card number from bottom left corner or 18-digit back family number (Passports do not have a Family Number!)
+    const isPassportFinal = finalDocType === 'IRQ_PASSPORT' || finalDocType === 'FOREIGN_PASSPORT';
+    let resolvedFamilyNum = isPassportFinal
+      ? 'N/A'
+      : familyNumber.trim() || extracted?.familyNumber || '';
     if (
+      !isPassportFinal &&
       (!resolvedFamilyNum || resolvedFamilyNum === '[غير موجود / MISSING]' || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
       (extracted as { cardSerialNumber?: string })?.cardSerialNumber
     ) {
       resolvedFamilyNum = (extracted as { cardSerialNumber?: string }).cardSerialNumber || '';
     }
     if (
+      !isPassportFinal &&
       (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
       extracted?.slot1Summary?.cardSerialNumber
     ) {
       resolvedFamilyNum = extracted.slot1Summary.cardSerialNumber;
     }
     if (
+      !isPassportFinal &&
       (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
       extracted?.slot2Summary?.familyNumber &&
       !isMissingOrUnclearValue(extracted.slot2Summary.familyNumber)
@@ -1826,20 +1854,22 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
       resolvedFamilyNum = extracted.slot2Summary.familyNumber;
     }
     if (
+      !isPassportFinal &&
       (!resolvedFamilyNum || resolvedFamilyNum.startsWith('FAM-IRQ')) &&
       Array.isArray(extracted?.boundingBoxes)
     ) {
       for (const b of extracted.boundingBoxes) {
+        if (b?.field === 'docNumber') continue;
         const val = String(b.value || b.label || '').toUpperCase();
         const m = val.match(/[A-Z]{1,3}\d{6,10}/);
-        if (m) {
+        if (m && m[0] !== normalizedDocNum) {
           resolvedFamilyNum = m[0];
           break;
         }
       }
     }
     if (!resolvedFamilyNum) {
-      resolvedFamilyNum = '[غير موجود / MISSING]';
+      resolvedFamilyNum = isPassportFinal ? 'N/A' : '[غير موجود / MISSING]';
     }
 
     const finalSidePolicy = getDocumentSideRequirement(finalDocType);
@@ -1903,7 +1933,9 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
         ? 'rejected'
         : stage9Outcome === 'INSUFFICIENT_DATA' || stage9Outcome === 'HUMAN_REVIEW'
           ? 'flagged'
-          : 'pending';
+          : stage9Outcome === 'AUTO_APPROVED'
+            ? 'approved'
+            : 'pending';
 
     const riskScore =
       hasCrossCardConflict || isForgedDetected
@@ -2000,14 +2032,18 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               extracted?.titleEn ||
                 (isForeignDoc
                   ? `Foreign National ID (${resolvedIssuingCountryEn})`
-                  : 'Unified Iraqi National Card'),
+                  : finalDocType === 'IRQ_PASSPORT'
+                    ? 'Republic of Iraq e-Passport'
+                    : 'Unified Iraqi National Card'),
               'en'
             ),
           titleAr:
             extracted?.titleAr ||
             (isForeignDoc
               ? `بطاقة هوية أجنبية (${resolvedIssuingCountryAr})`
-              : 'البطاقة الوطنية الموحدة'),
+              : finalDocType === 'IRQ_PASSPORT'
+                ? 'جواز السفر العراقي الإلكتروني'
+                : 'البطاقة الوطنية الموحدة'),
           docNumber: normalizedDocNum,
           issueDate: resolvedIssueDate,
           expiryDate: resolvedExpiryDate,
@@ -2015,12 +2051,16 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
             extracted?.issuingAuthorityEn ||
             (isForeignDoc
               ? 'Federal Authority for Identity & Citizenship (ICP)'
-              : 'Directorate of National Card — Ministry of Interior'),
+              : finalDocType === 'IRQ_PASSPORT'
+                ? 'Passport Directorate — Baghdad'
+                : 'Directorate of National Card — Ministry of Interior'),
           issuingAuthorityAr:
             extracted?.issuingAuthorityAr ||
             (isForeignDoc
               ? 'الهيئة الاتحادية للهوية والجنسية والجمارك وأمن المنافذ'
-              : 'مديرية البطاقة الوطنية — وزارة الداخلية'),
+              : finalDocType === 'IRQ_PASSPORT'
+                ? 'مديرية الجوازات العامة — بغداد'
+                : 'مديرية البطاقة الوطنية — وزارة الداخلية'),
           issuingCountryCode: extracted?.issuingCountryCode || (isForeignDoc ? 'ARE' : 'IRQ'),
           issuingCountryEn: resolvedIssuingCountryEn,
           issuingCountryAr: resolvedIssuingCountryAr,
@@ -2134,18 +2174,18 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-modal-title"
     >
-      <div className="w-full max-w-2xl bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-[#222225] rounded-xl overflow-hidden shadow-2xl max-h-[92vh] overflow-y-auto text-zinc-900 dark:text-zinc-100">
+      <div className="w-full max-w-2xl bg-[#f4fbf7] dark:bg-[#14151b] border border-zinc-200/80 dark:border-white/[0.08] rounded-[24px] overflow-hidden shadow-2xl max-h-[92vh] overflow-y-auto text-zinc-900 dark:text-zinc-100">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-200 dark:border-[#1f1f23] bg-zinc-50/50 dark:bg-[#111113] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-zinc-200/80 dark:border-white/[0.06] bg-white dark:bg-[#181a20] flex items-center justify-between">
           <div>
             <h2
               id="upload-modal-title"
-              className="text-base font-semibold tracking-tight text-zinc-900 dark:text-zinc-100"
+              className="text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-100"
             >
               {t(lang, 'uploadModalTitle')}
             </h2>
@@ -2157,7 +2197,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={t(lang, 'cancelBtn')}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181b] border border-transparent hover:border-zinc-200 dark:hover:border-[#27272a] transition-colors"
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 bg-zinc-100/70 dark:bg-[#1f2128] hover:bg-zinc-200/70 dark:hover:bg-[#282b34] border border-zinc-200/80 dark:border-white/[0.06] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -2168,7 +2208,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           {validationError && (
             <div
               role="alert"
-              className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400 font-medium"
+              className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400 font-medium"
             >
               {validationError}
             </div>
@@ -2176,21 +2216,21 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
           {/* Card Front+Back vs. Passport Single-Page Policy Banner */}
           <div
-            className={`rounded-xl border px-3.5 py-3 flex items-center justify-between gap-2 flex-wrap text-xs ${
+            className={`rounded-2xl border px-3.5 py-3 flex items-center justify-between gap-2 flex-wrap text-xs ${
               hasPairConflict
                 ? 'border-red-500/40 bg-red-500/10 text-red-900 dark:text-red-200'
                 : !sidePolicy.requiresBothSides || hasBothSidesVerified
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200'
+                  ? 'border-[#10b981]/35 bg-[#10b981]/10 text-[#4c2fe0] dark:text-[#6ee7b7]'
                   : selectedFileName || selectedBackFileName
                     ? 'border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200'
-                    : 'border-zinc-200 dark:border-[#222225] bg-zinc-50 dark:bg-[#111113] text-zinc-800 dark:text-zinc-200'
+                    : 'border-zinc-200/80 dark:border-white/[0.06] bg-white dark:bg-[#1f2128] text-zinc-800 dark:text-zinc-200'
             }`}
           >
             <div className="flex items-center gap-2.5">
               {hasPairConflict ? (
                 <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
               ) : (
-                <FlipHorizontal className="w-4 h-4 text-[#10b981] shrink-0" />
+                <FlipHorizontal className="w-4 h-4 text-[#10b981] dark:text-[#34d399] shrink-0" />
               )}
               <div>
                 <div className="font-mono font-semibold text-[11px] text-zinc-900 dark:text-zinc-100">
@@ -2266,7 +2306,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
-              className="border border-dashed border-zinc-300 dark:border-[#27272a] rounded-xl p-3.5 text-center bg-zinc-50/70 dark:bg-[#111113] flex flex-col justify-between space-y-2.5"
+              className="border border-dashed border-zinc-300 dark:border-white/[0.1] rounded-2xl p-3.5 text-center bg-white dark:bg-[#1f2128] flex flex-col justify-between space-y-2.5"
             >
               <input
                 ref={fileInputRef}
@@ -2278,7 +2318,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 id="kyc-file-upload-input"
               />
 
-              <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300 border-b border-zinc-200 dark:border-[#222225] pb-1.5">
+              <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-zinc-600 dark:text-zinc-300 border-b border-zinc-200/80 dark:border-white/[0.06] pb-1.5">
                 <span>
                   {sidePolicy.requiresBothSides
                     ? lang === 'ar'
@@ -2288,7 +2328,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                       ? '01. صفحة البيانات الشخصية'
                       : '01. BIO-DATA PAGE'}
                 </span>
-                <span className="text-[#10b981]">
+                <span className="text-[#10b981] dark:text-[#6ee7b7]">
                   {lastExtraction?.slot1Summary
                     ? lang === 'ar'
                       ? `المكتشف: ${formatSideLabel(lastExtraction.slot1Summary.detectedSide, 'ar')}`
@@ -2425,7 +2465,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 </div>
               ) : (
                 <div className="py-2 space-y-1.5">
-                  <div className="mx-auto w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-[#10b981] flex items-center justify-center">
+                  <div className="mx-auto w-8 h-8 rounded-xl bg-[#10b981]/10 border border-[#10b981]/30 text-[#10b981] dark:text-[#34d399] flex items-center justify-center">
                     <UploadCloud className="w-4 h-4" />
                   </div>
                   <div className="text-[11px] font-medium text-zinc-800 dark:text-zinc-200">
@@ -2443,7 +2483,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setCameraTargetSlot(1)}
-                  className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-emerald-500/50 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                  className="px-2.5 py-1 text-[11px] font-semibold rounded-xl border border-[#10b981]/40 bg-gradient-to-r from-[#10b981] to-[#047857] text-white hover:from-[#5b36eb] hover:to-[#8b22d1] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                 >
                   <Camera className="w-3.5 h-3.5" />
                   <span>
@@ -2453,7 +2493,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-zinc-200 dark:border-[#27272a] bg-white dark:bg-[#18181b] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="px-2.5 py-1 text-[11px] font-medium rounded-xl border border-zinc-200/80 dark:border-white/[0.08] bg-zinc-50 dark:bg-[#282b34] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-[#323642] transition-colors"
                 >
                   {selectedFileName && !selectedBackFileName
                     ? lang === 'ar'
@@ -2466,14 +2506,14 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 <button
                   type="button"
                   onClick={handleLoadSampleSpecimen}
-                  className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-[#10b981] hover:bg-emerald-500/20 transition-colors"
+                  className="px-2.5 py-1 text-[11px] font-medium rounded-xl border border-[#10b981]/35 bg-[#10b981]/10 text-[#10b981] dark:text-[#6ee7b7] hover:bg-[#10b981]/20 transition-colors"
                 >
                   {t(lang, 'chooseDemoFileBtn')}
                 </button>
                 <button
                   type="button"
                   onClick={handleLoadUaeGoldenCardSpecimen}
-                  className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors flex items-center gap-1"
+                  className="px-2.5 py-1 text-[11px] font-medium rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition-colors flex items-center gap-1"
                 >
                   <span>🇦🇪</span>
                   <span>{lang === 'ar' ? 'هوية إماراتية (إقامة ذهبية)' : 'UAE Emirates ID (Golden Card)'}</span>
@@ -2486,14 +2526,14 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleBackDrop}
-                className={`border border-dashed rounded-xl p-3.5 text-center flex flex-col justify-between space-y-2.5 ${
+                className={`border border-dashed rounded-2xl p-3.5 text-center flex flex-col justify-between space-y-2.5 ${
                   hasPairConflict
                     ? 'border-red-500/50 bg-red-500/5'
                     : hasBothSidesVerified
-                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      ? 'border-[#10b981]/45 bg-[#10b981]/5'
                       : selectedFileName
                         ? 'border-amber-500/40 bg-amber-500/5'
-                        : 'border-zinc-300 dark:border-[#27272a] bg-zinc-50/70 dark:bg-[#111113]'
+                        : 'border-zinc-300 dark:border-white/[0.1] bg-white dark:bg-[#1f2128]'
                 }`}
               >
                 <input
@@ -2693,7 +2733,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCameraTargetSlot(2)}
-                    className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-emerald-500/50 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-xl border border-[#10b981]/40 bg-gradient-to-r from-[#10b981] to-[#047857] text-white hover:from-[#5b36eb] hover:to-[#8b22d1] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                   >
                     <Camera className="w-3.5 h-3.5" />
                     <span>
@@ -2703,22 +2743,22 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                   <button
                     type="button"
                     onClick={() => backFileInputRef.current?.click()}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-zinc-200 dark:border-[#27272a] bg-white dark:bg-[#18181b] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded-xl border border-zinc-200/80 dark:border-white/[0.08] bg-zinc-50 dark:bg-[#282b34] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-[#323642] transition-colors"
                   >
                     {lang === 'ar' ? 'اختيار الوجه الخلفي' : 'Browse Back Side'}
                   </button>
                   <button
                     type="button"
                     onClick={handleAttachSampleBackSide}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-[#10b981] hover:bg-emerald-500/20 transition-colors"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded-xl border border-[#10b981]/35 bg-[#10b981]/10 text-[#10b981] dark:text-[#6ee7b7] hover:bg-[#10b981]/20 transition-colors"
                   >
                     {lang === 'ar' ? '+ إرفاق نموذج الوجه الخلفي' : '+ Attach Back Side'}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="border border-zinc-200 dark:border-[#222225] rounded-xl p-3.5 text-center bg-emerald-500/5 flex flex-col justify-between space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-[#10b981] border-b border-emerald-500/20 pb-1.5">
+              <div className="border border-zinc-200/80 dark:border-white/[0.06] rounded-2xl p-3.5 text-center bg-[#10b981]/5 flex flex-col justify-between space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-[#10b981] dark:text-[#6ee7b7] border-b border-[#10b981]/20 pb-1.5">
                   <span>{lang === 'ar' ? '02. الوجه الخلفي' : '02. REVERSE SIDE'}</span>
                   <span>{lang === 'ar' ? 'معفى · جواز سفر' : 'EXEMPT · PASSPORT'}</span>
                 </div>
@@ -4612,9 +4652,9 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-[#222225]">
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-200/80 dark:border-white/[0.06]">
             <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-              <ShieldCheck className="w-4 h-4 text-[#10b981]" />
+              <ShieldCheck className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
               <span>
                 {lang === 'ar'
                   ? 'محرك التحقق الذكي · متوافق مع قانون البنك المركزي العراقي رقم 78'
@@ -4625,7 +4665,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3.5 py-2 text-xs font-medium rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#18181b] border border-transparent hover:border-zinc-200 dark:hover:border-[#27272a] transition-colors"
+                className="px-3.5 py-2 text-xs font-medium rounded-xl text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-[#1f2128] border border-transparent hover:border-zinc-200/80 dark:hover:border-white/[0.08] transition-colors"
               >
                 {t(lang, 'cancelBtn')}
               </button>
@@ -4640,10 +4680,10 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                   <button
                     type="submit"
                     disabled={uploadStage > 0}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg border disabled:opacity-60 text-white transition-colors whitespace-nowrap shrink-0 shadow-xs ${
+                    className={`px-4 py-2 text-xs font-semibold rounded-xl border disabled:opacity-60 text-white transition-all whitespace-nowrap shrink-0 shadow-sm ${
                       isForeignActive
                         ? 'bg-amber-600 hover:bg-amber-700 border-amber-500/40'
-                        : 'bg-[#059669] hover:bg-[#10b981] border-emerald-500/30'
+                        : 'bg-gradient-to-r from-[#10b981] to-[#047857] hover:from-[#5b36eb] hover:to-[#8b22d1] border-[#10b981]/40 shadow-[#10b981]/25'
                     }`}
                   >
                     {isExtractingOcr

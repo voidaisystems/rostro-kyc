@@ -1204,10 +1204,10 @@ export function getSpatialEntityColors(spatialType?: string): {
       };
     case 'OFFICIAL_SEAL_STAMP':
       return {
-        border: 'border-purple-500',
-        bg: 'bg-purple-500/25',
-        point: 'bg-purple-500 ring-purple-400',
-        text: 'text-purple-300',
+        border: 'border-emerald-500',
+        bg: 'bg-emerald-500/25',
+        point: 'bg-emerald-500 ring-emerald-400',
+        text: 'text-emerald-300',
       };
     case 'SECURITY_HOLOGRAM':
       return {

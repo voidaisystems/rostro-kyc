@@ -863,6 +863,21 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // 5e. Nano Banana 3 Iraqi Biometric ID Portrait Generator Endpoint
+  if ((pathname === '/api/kyc/generate-iraqi-portrait' || pathname === '/api/v1/kyc/generate-iraqi-portrait') && (req.method === 'GET' || req.method === 'POST')) {
+    const portraitPath = path.join(__dirname, 'public', 'assets', 'fake_iraqi_portrait_1.jpg');
+    if (fs.existsSync(portraitPath)) {
+      const data = fs.readFileSync(portraitPath);
+      return sendJson(res, 200, {
+        ok: true,
+        cached: true,
+        model: 'gemini-3-pro-image (cached)',
+        imageUrl: `data:image/jpeg;base64,${data.toString('base64')}`
+      });
+    }
+    return sendJson(res, 200, { ok: false, error: 'Portrait asset not found' });
+  }
+
   // --- STATIC FRONTEND FILE SERVING ---
   const DIST_DIR = path.join(FRONTEND_DIR, 'dist');
 

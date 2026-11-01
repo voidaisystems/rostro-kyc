@@ -19,8 +19,6 @@ import {
   Lock,
 } from 'lucide-react';
 import type { KYCApplicant, Language } from '../utils/kycEngine';
-import { ChallengeEvaluationLab } from './ChallengeEvaluationLab';
-import { ZainCashEdgeForensicsLab } from './ZainCashEdgeForensicsLab';
 
 interface CompetitionShowcaseTabProps {
   lang: Language;
@@ -174,11 +172,9 @@ export const CompetitionShowcaseTab: React.FC<CompetitionShowcaseTabProps> = ({
   lang,
   onOpenUploadModal,
   onNavigateToQueue,
-  onIngestTestedScenario,
 }) => {
   const isAr = lang === 'ar';
   const [activeScenarioId, setActiveScenarioId] = useState<string>('valid_national_id');
-  const [showAdvancedLabs, setShowAdvancedLabs] = useState<boolean>(false);
 
   const activeScenario =
     SHOWCASE_SCENARIOS.find((s) => s.id === activeScenarioId) || SHOWCASE_SCENARIOS[0];
@@ -716,39 +712,6 @@ export const CompetitionShowcaseTab: React.FC<CompetitionShowcaseTabProps> = ({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* 5. OPTIONAL COLLAPSIBLE DRAWER FOR DEEP TECHNICAL BENCHMARKS (HIDDEN BY DEFAULT SO PAGE STAYS CLEAN) */}
-      <div className="pt-2">
-        <button
-          type="button"
-          onClick={() => setShowAdvancedLabs((prev) => !prev)}
-          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-white dark:bg-[#111113] hover:bg-zinc-50 dark:hover:bg-zinc-900 text-xs font-medium text-zinc-600 dark:text-zinc-400 transition-colors"
-        >
-          <span>
-            {isAr
-              ? 'عرض التفاصيل الهندسية المتقدمة واختبارات الحالات الحدية (للمحكمين التقنيين فقط)'
-              : 'Show Advanced Engineering Benchmarks & Edge Forensics Lab (Optional Technical Deep-Dive)'}
-          </span>
-          {showAdvancedLabs ? (
-            <ChevronUp className="w-4 h-4 shrink-0" />
-          ) : (
-            <ChevronDown className="w-4 h-4 shrink-0" />
-          )}
-        </button>
-
-        {showAdvancedLabs && (
-          <div className="mt-6 space-y-8">
-            <ChallengeEvaluationLab lang={lang} onOpenUploadModal={onOpenUploadModal} />
-            <ZainCashEdgeForensicsLab
-              lang={lang}
-              onOpenUploadModal={onOpenUploadModal}
-              onIngestTestedScenario={(newApp) => {
-                if (onIngestTestedScenario) onIngestTestedScenario(newApp);
-              }}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

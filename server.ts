@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
@@ -78,20 +79,17 @@ async function callVisionModelWithRetryAndCache(
     return vlmResponseCache.get(imageSha256)!;
   }
 
-  // Verified active multimodal Vision & Spatial Understanding models with independent Free-Tier quotas
+  // Verified active multimodal Vision & Spatial Understanding models
   const candidateModels = [
-    'gemini-3.1-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
     'gemini-2.5-flash',
     'gemini-flash-latest',
-    'gemini-3.8-flash',
-    'gemini-3.7-flash',
-    'gemini-3.6-flash',
-    'gemini-3.5-flash',
     'gemini-2.5-pro',
   ];
 
   const now = Date.now();
-  // Filter out models currently in 429/503 cooldown first (if all are in cooldown, try all anyway)
+  // Filter out models currently in 429/503/404 cooldown first (if all are in cooldown, try all anyway)
   const availableModels = candidateModels.filter((m) => {
     const cd = modelCooldownUntil.get(m);
     return !cd || cd.until <= now;
@@ -110,11 +108,15 @@ async function callVisionModelWithRetryAndCache(
           config: requestConfig as never,
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout after 10000ms on ${modelName}`)), 10000)
+          setTimeout(() => reject(new Error(`Timeout after 25000ms on ${modelName}`)), 25000)
         ),
       ]);
       const rawText = (response.text || '{}').trim();
-      const cleanedJson = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const strippedFence = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const jsonMatch = strippedFence.match(/\{[\s\S]*\}/);
+      const cleanedJson = jsonMatch ? jsonMatch[0] : strippedFence;
+      // Validate JSON before caching or returning so a malformed response retries on the next model
+      JSON.parse(cleanedJson);
       const elapsed = Date.now() - tStart;
       console.log(`[VLM Speed] Model ${modelName} processed card in ${elapsed}ms`);
       activeModelTier = modelName;
@@ -126,16 +128,19 @@ async function callVisionModelWithRetryAndCache(
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
         telemetryStats.rateLimit429Retries++;
-        // Put exhausted model on 15-minute cooldown so future uploads skip it in 0ms
         modelCooldownUntil.set(modelName, {
           until: Date.now() + 15 * 60 * 1000,
           reason: '429_QUOTA_EXHAUSTED',
         });
       } else if (msg.includes('503') || msg.includes('UNAVAILABLE')) {
-        // Put high-demand 503 model on 2-minute cooldown
         modelCooldownUntil.set(modelName, {
           until: Date.now() + 2 * 60 * 1000,
           reason: '503_HIGH_DEMAND',
+        });
+      } else if (msg.includes('404') || msg.includes('NOT_FOUND')) {
+        modelCooldownUntil.set(modelName, {
+          until: Date.now() + 60 * 60 * 1000,
+          reason: '404_MODEL_NOT_FOUND',
         });
       }
       if (i === modelsToTry.length - 1) {
@@ -446,6 +451,113 @@ async function startServer() {
   app.get('/api/kyc/registry', handleRegistryHealth);
   app.get('/api/kyc/health', handleRegistryHealth);
 
+  // 1B. Nano Banana 3 Iraqi Biometric ID Portrait Generator Endpoint
+  let cachedNanoBananaPortraitDataUrl: string | null = null;
+  let cachedNanoBananaModelUsed: string | null = null;
+  const cachedPortraitDiskPath = path.join(
+    process.cwd(),
+    'public',
+    'assets',
+    'aistudio',
+    'nano_banana_iraqi_portrait.png'
+  );
+
+  try {
+    if (fs.existsSync(cachedPortraitDiskPath)) {
+      const existingBuf = fs.readFileSync(cachedPortraitDiskPath);
+      if (existingBuf.length > 512) {
+        cachedNanoBananaPortraitDataUrl = `data:image/png;base64,${existingBuf.toString('base64')}`;
+        cachedNanoBananaModelUsed = 'gemini-3-pro-image (cached)';
+      }
+    }
+  } catch {
+    // Ignore disk read error
+  }
+
+  const handleGenerateIraqiPortrait = async (req: express.Request, res: express.Response) => {
+    const forceRegenerate = Boolean(req.body?.forceRegenerate || req.query?.force === '1');
+    if (cachedNanoBananaPortraitDataUrl && !forceRegenerate) {
+      res.json({
+        ok: true,
+        cached: true,
+        model: cachedNanoBananaModelUsed || 'gemini-3-pro-image',
+        imageUrl: cachedNanoBananaPortraitDataUrl,
+      });
+      return;
+    }
+
+    const ai = getGeminiClient();
+    if (!ai) {
+      res.status(503).json({
+        ok: false,
+        error: 'GEMINI_API_KEY is not configured on the server.',
+      });
+      return;
+    }
+
+    const nanoBananaModels = [
+      'gemini-3-pro-image',
+      'gemini-nano-banana-2.1',
+      'gemini-3.1-flash-lite-image',
+    ];
+
+    const portraitPrompt =
+      'Photorealistic official government national ID card biometric headshot portrait of a fictional 34-year-old Iraqi man from Baghdad, warm olive complexion, neatly groomed dark hair, full trimmed Iraqi beard and mustache, wearing a formal charcoal suit jacket, white collared dress shirt and dark navy tie, neutral expression looking directly into the camera lens, plain light grey-blue ID studio background, balanced flat studio lighting, sharp focus, official passport photo style.';
+
+    let lastError = 'Image generation failed';
+    for (const modelName of nanoBananaModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: {
+            parts: [{ text: portraitPrompt }],
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: '3:4',
+            },
+          },
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inlineData?.data) {
+            const mimeType = part.inlineData.mimeType || 'image/png';
+            const dataUrl = `data:${mimeType};base64,${part.inlineData.data}`;
+            cachedNanoBananaPortraitDataUrl = dataUrl;
+            cachedNanoBananaModelUsed = modelName;
+            try {
+              fs.writeFileSync(
+                cachedPortraitDiskPath,
+                Buffer.from(part.inlineData.data, 'base64')
+              );
+            } catch {
+              // Ignore write error in read-only environments
+            }
+            res.json({
+              ok: true,
+              cached: false,
+              model: modelName,
+              imageUrl: dataUrl,
+            });
+            return;
+          }
+        }
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    res.status(200).json({
+      ok: false,
+      requiresPaidApiKey: true,
+      error: lastError,
+    });
+  };
+
+  app.get('/api/kyc/generate-iraqi-portrait', handleGenerateIraqiPortrait);
+  app.post('/api/kyc/generate-iraqi-portrait', handleGenerateIraqiPortrait);
+
   // Helper: Extract a single card image via Gemini VLM with strict Zero-Hallucination, Side Detection & Foreign ID Recognition
   const extractSingleCardImage = async (
     ai: GoogleGenAI,
@@ -472,43 +584,54 @@ IRAQI vs. FOREIGN / GCC DOCUMENT CLASSIFICATION (CRITICAL — DO NOT CONFUSE):
      * Set "issuingCountryEn" and "issuingCountryAr" to the issuing country (e.g. "United Arab Emirates" / "الإمارات العربية المتحدة").
      * Set "holderNationalityEn" and "holderNationalityAr" to the holder's Nationality printed on the card (e.g. if the UAE card says "الجنسية: فلسطين / Nationality: Palestine", set holderNationalityEn="Palestine" and holderNationalityAr="فلسطين").
      * Do NOT set governorateEn to "Baghdad" for a foreign card! Set governorateEn/governorateAr to the issuing country/city (e.g. "United Arab Emirates" / "الإمارات العربية المتحدة").
-  2. If the card is issued by the **Republic of Iraq (جمهورية العراق / البطاقة الوطنية الموحدة / بطاقة السكن / هوية الأحوال المدنية)**:
-     * Set "documentType" to the exact Iraqi type ("IRQ_NATIONAL_ID", "IRQ_RESIDENCE_CARD", "IRQ_CIVIL_STATUS_ID", "IRQ_PASSPORT", etc.).
+  2. If the card is issued by the **Republic of Iraq (جمهورية العراق / كۆماری عێراق — البطاقة الوطنية الموحدة / جواز سفر / بطاقة السكن / هوية الأحوال المدنية)**:
+     * Set "documentType" to the exact Iraqi type ("IRQ_NATIONAL_ID", "IRQ_PASSPORT", "IRQ_RESIDENCE_CARD", "IRQ_CIVIL_STATUS_ID", etc.).
      * Set "isForeignDocument": false, "issuingCountryCode": "IRQ", "issuingCountryEn": "Iraq", "issuingCountryAr": "العراق".
+  3. **REPUBLIC OF IRAQ PASSPORT (جواز سفر / پاسپۆرت — IRQ_PASSPORT) SPECIAL RULES**:
+     * If the document header says "REPUBLIC OF IRAQ / جمهورية العراق / كۆماری عێراق" and "Passport / جواز سفر / پاسپۆرت" (or has a 2-line 44-character TD3 MRZ starting with "P<IRQ"):
+       - Set "documentType": "IRQ_PASSPORT" and "side": "BOTH" (a passport bio-data page is complete on a single page).
+       - Set "docNumber" to the Passport No. (رقم الجواز / ژمارەی پاسپۆرت, e.g. "A18083401").
+       - Combine BOTH "Full Name (الاسم الثلاثي / ناوى سيانى, e.g. MOHAMMED AHMED SHAMKHI / محمد احمد شمخي)" AND "Surname (اللقب / نازناو, e.g. AL-SAWAEDI / السواعدي)" into "fullNameEn" ("Mohammed Ahmed Shamkhi Al-Sawaedi") and "fullNameAr" ("محمد احمد شمخي السواعدي"). Also populate "firstName", "fatherName", "grandfatherName", and "surname" in both Arabic & English.
+       - Extract "Mother Name (اسم الأم / ناوى دايك, e.g. WIDAD JABBAR / وداد جبار)" into "motherName" in BOTH English and Arabic ("Widad Jabbar · وداد جبار").
+       - Extract "Date of Birth (تاريخ الميلاد / ڕۆژی لە دایک بوون, e.g. 2006-11-07)" into "dob", "Date of Issue (تاريخ الاصدار / ڕۆژی دەرچوون, e.g. 2020-10-14)" into "issueDate", and "Date of Expiry (تاريخ النفاذ / ڕۆژی بەسەرچوون, e.g. 2024-10-13)" into "expiryDate".
+       - Extract "Place of Birth (محل الميلاد / شوێنی لە دایک بوون, e.g. IRQ العراق - بغداد)" into "governorateEn" ("Baghdad"), "governorateAr" ("بغداد"), and "address" ("العراق - بغداد").
+       - Extract "Issuing Authority (جهة الاصدار / شوێنی دەرچوون, e.g. BAGHDAD/بغداد)" into "issuingAuthorityEn" ("Passport Directorate — Baghdad") and "issuingAuthorityAr" ("مديرية الجوازات العامة — بغداد").
+       - Extract the 2-line 44-character TD3 MRZ at the bottom into "mrzLine1" (e.g. "P<IRQAL<SAWAEDI<<MOHAMMED<AHMED<SHAMKHI<<<<<") and "mrzLine2" (e.g. "A180834017IRQ0611073M2410133<<<<<<<<<<<<<<02").
+       - Set "familyNumber": "N/A" and "bloodType": "[غير موجود / MISSING]" (Passports do NOT have a Family Number or Blood Type).
 
 PHYSICAL CARD SIDE CLASSIFICATION (CRITICAL):
 - Determine which physical side of the card is shown in THIS image:
-  1. "FRONT": If the image shows the primary front face (الوجه الأمامي) of a card — e.g. Portrait photo, Eagle/Falcon crest, holder's Given Name (الاسم / ناو / Name), National ID / Card Number (الرقم الوطني / رقم الهوية / ID Number e.g. 784-XXXX-XXXXXXX-X), Date of Birth (تاريخ الولادة / تاريخ الميلاد), or Nationality (الجنسية). Even if Issue Date (تاريخ الإصدار) and Expiry Date (تاريخ الانتهاء / النفاذ) are printed on the front face (as on UAE Golden Resident Identity Cards), if there is NO 3-line ICAO TD1 Machine Readable Zone (IDIRQ...<<< or IDARE...<<<) and NO reverse barcode/occupation block, it MUST be classified as "FRONT".
-  2. "BACK": If the image shows the reverse face (الوجه الخلفي / الظهر) — e.g. 3-line ICAO TD1 MRZ (I<IRQ... or IDIRQ...<<< or IDARE...<<<), QR/2D barcode block, Issuing Authority (جهة الاصدار), Issue Date (تاريخ الاصدار), Expiry Date (تاريخ النفاذ), Place of Birth (محل الولادة), full Date of Birth (تاريخ الولادة YYYY/MM/DD), 18-digit Family Number (الرقم العائلي), Employer/Occupation (المهنة / صاحب العمل), or Residence Card reverse stamp/endorsement without the front portrait/header.
-  3. "BOTH": ONLY if this single image contains TWO separate card rectangles showing both the front face AND the reverse face together in one composite scan.
+  1. "FRONT": If the image shows the primary front face (الوجه الأمامي) of a two-sided card — e.g. Portrait photo, Eagle/Falcon crest, holder's Given Name (الاسم / ناو / Name), National ID / Card Number (الرقم الوطني / رقم الهوية / ID Number e.g. 784-XXXX-XXXXXXX-X), Date of Birth (تاريخ الولادة / تاريخ الميلاد), or Nationality (الجنسية). Even if Issue Date (تاريخ الإصدار) and Expiry Date (تاريخ الانتهاء / النفاذ) are printed on the front face (as on UAE Golden Resident Identity Cards), if there is NO 3-line ICAO TD1 Machine Readable Zone (IDIRQ...<<< or IDARE...<<<) and NO reverse barcode/occupation block, it MUST be classified as "FRONT".
+  2. "BACK": If the image shows the reverse face (الوجه الخلفي / الظهر) of a two-sided card — e.g. 3-line ICAO TD1 MRZ (I<IRQ... or IDIRQ...<<< or IDARE...<<<), QR/2D barcode block, Issuing Authority (جهة الاصدار), Issue Date (تاريخ الاصدار), Expiry Date (تاريخ النفاذ), Place of Birth (محل الولادة), full Date of Birth (تاريخ الولادة YYYY/MM/DD), 18-digit Family Number (الرقم العائلي), Employer/Occupation (المهنة / صاحب العمل), or Residence Card reverse stamp/endorsement without the front portrait/header.
+  3. "BOTH": If this is a single-page complete document like a Passport bio-data page ("IRQ_PASSPORT" / "FOREIGN_PASSPORT"), OR if a single image contains TWO separate card rectangles showing both the front face AND the reverse face together in one composite scan.
 
 FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA IN BOTH ARABIC AND ENGLISH):
 1. fullNameAr, fullNameEn & Component Names (BILINGUAL ARABIC + ENGLISH REQUIRED):
-   - For Iraqi Unified National Card (البطاقة الوطنية الموحدة), the front face has separate lines:
-     * الاسم / ناو (First/Given name, e.g. "أيهم / Ayham") -> populate "firstName" with BOTH Arabic and English
-     * الأب / باوك (Father's name, e.g. "شامل / Shamil") -> populate "fatherName" with BOTH Arabic and English
-     * الجد / باپير (Grandfather's name, e.g. "يونس / Younis") -> populate "grandfatherName" with BOTH Arabic and English (NEVER output English-only for grandfatherName!)
-     * اللقب / نازناو (Surname / Tribe / Family name, e.g. "آل قره غولي / Al-Qaragholi") -> populate "surname" with BOTH Arabic and English
-   - You MUST combine all 4 Arabic parts into "fullNameAr": "الاسم الأب الجد اللقب" (e.g. "أيهم شامل يونس آل قره غولي").
-     DO NOT return only the first name!
-   - Provide the accurate English Latin transliteration of the full legal quad name in "fullNameEn" (e.g. "Ayham Shamil Younis Al-Qaragholi").
+   - For Iraqi Unified National Card (البطاقة الوطنية الموحدة) or Iraqi Passport (جواز السفر العراقي):
+     * الاسم / ناو (First/Given name, e.g. "أيهم / Ayham" or "محمد / Mohammed") -> populate "firstName" with BOTH Arabic and English
+     * الأب / باوك (Father's name, e.g. "شامل / Shamil" or "احمد / Ahmed") -> populate "fatherName" with BOTH Arabic and English
+     * الجد / باپير (Grandfather's name, e.g. "يونس / Younis" or "شمخي / Shamkhi") -> populate "grandfatherName" with BOTH Arabic and English (NEVER output English-only for grandfatherName!)
+     * اللقب / نازناو (Surname / Tribe / Family name, e.g. "آل قره غولي / Al-Qaragholi" or "السواعدي / Al-Sawaedi") -> populate "surname" with BOTH Arabic and English
+   - You MUST combine all 4 Arabic parts (including Surname/اللقب!) into "fullNameAr": "الاسم الأب الجد اللقب" (e.g. "محمد احمد شمخي السواعدي").
+     DO NOT omit the Surname!
+   - Provide the accurate English Latin transliteration of the full legal quad name (including Surname!) in "fullNameEn" (e.g. "Mohammed Ahmed Shamkhi Al-Sawaedi").
 2. motherName & Maternal Grandfather (BILINGUAL ARABIC + ENGLISH REQUIRED):
-   - On Iraqi National Card:
-     * الأم / دايك (Mother's name, e.g. "إسراء")
-     * الجد / باپير (Maternal grandfather, e.g. "محمد")
-   - Combine BOTH into "motherName" in BOTH Arabic AND English: e.g. "إسراء محمد / Israa Muhammad" (NEVER return motherName in English only — always include the exact Arabic script!).
-   - Populate "maternalGrandfatherName" in BOTH Arabic AND English: e.g. "محمد / Muhammad".
-3. docNumber: Exact National ID / Identity Number (e.g. "200646431589" 12-digit Iraqi National ID under eagle, or "784-0000-0000000-0" for UAE ID) in ASCII digits.
-4. familyNumber & cardSerialNumber (FRONT BOTTOM-LEFT CODE OR BACK 18-DIGIT FAMILY NO.):
-   - On the FRONT side, look at the BOTTOM LEFT CORNER of the Iraqi card for the alphanumeric Card Tracking Code, e.g. "AA9792984" (or letters followed by digits).
-   - On the BACK side, look at the right-aligned Arabic line "الرقم العائلي" for the 18-digit Family Number (e.g. "200105382001251149").
+   - On Iraqi National Card or Iraqi Passport:
+     * الأم / دايك / اسم الأم (Mother's name, e.g. "إسراء محمد" or "WIDAD JABBAR / وداد جبار")
+     * الجد / باپير (Maternal grandfather, e.g. "محمد" or "جبار")
+   - Combine BOTH into "motherName" in BOTH Arabic AND English: e.g. "وداد جبار / Widad Jabbar" (NEVER return motherName in English only — always include the exact Arabic script!).
+   - Populate "maternalGrandfatherName" in BOTH Arabic AND English: e.g. "جبار / Jabbar".
+3. docNumber: Exact National ID / Passport Number / Identity Number (e.g. "A18083401" for Iraqi Passport, "200646431589" 12-digit Iraqi National ID under eagle, or "784-0000-0000000-0" for UAE ID) in ASCII characters.
+4. familyNumber & cardSerialNumber (FRONT BOTTOM-LEFT CODE OR BACK 18-DIGIT FAMILY NO. ON NATIONAL ID ONLY):
+   - For Passports ("IRQ_PASSPORT" / "FOREIGN_PASSPORT"), set "familyNumber": "N/A" and "cardSerialNumber": "N/A".
+   - For Iraqi National ID FRONT side, look at the BOTTOM LEFT CORNER of the card for the alphanumeric Card Tracking Code, e.g. "AA9792984".
+   - For Iraqi National ID BACK side, look at the right-aligned Arabic line "الرقم العائلي" for the 18-digit Family Number (e.g. "200105382001251149").
    - Extract this exact code into "familyNumber" AND "cardSerialNumber".
-   - You MUST generate a boundingBox for this code with field "familyNumber".
 5. verticalSerialNumber:
    - Check the right vertical edge/margin of the card for any vertical serial number (e.g. "565023") and set "verticalSerialNumber".
 6. gender & bloodType:
-   - gender: "الجنس / ره‌گه‌ز" (e.g. "ذكر" -> "Male / ذكر", "أنثى" -> "Female / أنثى").
-   - bloodType: "فصيلة الدم / گروپی خوێن" (e.g. "O+", "A+", "B+", "AB+", "O-", etc.).
+   - gender: "الجنس / ره‌گه‌ز / Sex" (e.g. "M / ذكر" -> "Male / ذكر", "F / أنثى" -> "Female / أنثى").
+   - bloodType: "فصيلة الدم / گروپی خوێن" (e.g. "O+", "A+", "B+", "AB+", "O-", or "[غير موجود / MISSING]" if not on document such as Passports).
 7. IRAQI UNIFIED NATIONAL CARD BACK SIDE (الوجه الخلفي) — READ ALL 6 RIGHT-ALIGNED LINES CAREFULLY:
    - On the BACK side of an Iraqi Unified National Card, read every line on the right side from top to bottom:
      1) جهة الاصدار (Issuing Authority) -> "issuingAuthorityAr" & "issuingAuthorityEn"
@@ -518,27 +641,32 @@ FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA IN BOTH ARABIC AND ENGLISH
      5) تاريخ الولادة (Date of Birth, e.g. "2006/06/21") -> "dob": "2006-06-21" (CRITICAL: Always extract this full YYYY-MM-DD Date of Birth from the back side!)
      6) الرقم العائلي (Family Number, e.g. "200105382001251149") -> "familyNumber": "200105382001251149"
 8. dob:
-   - If printed on card (such as "تاريخ الولادة 2006/06/21" on the BACK side of the Iraqi National ID, or in the MRZ line 2), format strictly as YYYY-MM-DD (e.g. "2006-06-21").
+   - If printed on the document (such as "2006-11-07" on an Iraqi Passport, "تاريخ الولادة 2006/06/21" on the BACK side of the Iraqi National ID, or in the MRZ line 2), format strictly as YYYY-MM-DD (e.g. "2006-11-07").
    - Only if this is the FRONT side of an Iraqi Unified National Card where no full date of birth is printed, derive the 4-digit birth year from the first 4 digits of the 12-digit National ID (e.g. "2006 (مستنتج من الرقم الوطني / Derived from National ID)").
-9. issueDate & expiryDate: Dates in YYYY-MM-DD if printed (e.g. "2023-10-25" and "2033-10-24"), otherwise "[غير موجود / MISSING]".
-10. governorateAr & governorateEn: Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, البصرة / Basra, نينوى / Nineveh).
+9. issueDate & expiryDate: Dates in YYYY-MM-DD if printed (e.g. "2020-10-14" and "2024-10-13"), otherwise "[غير موجود / MISSING]".
+10. governorateAr & governorateEn: Place of birth / Governorate (e.g. بغداد / Baghdad, السليمانية / Sulaymaniyah, أربيل / Erbil, دهوك / Duhok, البصرة / Basra, نينوى / Nineveh).
 11. issuingCountryCode, issuingCountryEn, issuingCountryAr: Issuing country ISO-3 code and names (e.g. "IRQ", "Iraq", "العراق" or "ARE", "United Arab Emirates", "الإمارات العربية المتحدة").
 12. holderNationalityEn & holderNationalityAr: Holder's nationality (e.g. "Iraqi" / "عراقي").
-13. address: Residential address, Mahalla / Zuqaq / Dar if printed.
-14. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on reverse side.
-15. boundingBoxes (ACCURATE COORDINATES FOR ALL FIELDS):
-    Return bounding boxes for ALL visible entities:
-    - docNumber (under eagle)
-    - fullName (or firstName, fatherName, grandfatherName, surname)
-    - motherName
-    - gender
-    - bloodType
-    - dob (especially تاريخ الولادة on the back side)
-    - issueDate (تاريخ الاصدار on the back side)
-    - expiryDate (تاريخ النفاذ on the back side)
-    - familyNumber (bottom left corner code AA9792984 on front, or الرقم العائلي on back)
-    - portraitPhoto
-    - officialSeal (eagle emblem)
+13. address: Residential address, Mahalla / Zuqaq / Dar, or Place of Birth (e.g. "العراق - بغداد").
+13b. KURDISH MULTI-DIALECT OCR & MANDATORY ARABIC TRANSLATION (SULAYMANIYAH SORANI, ERBIL HEWLÊRÎ, DUHOK BADINI/KURMANJI):
+   - If the document is issued in the Kurdistan Region of Iraq (KRG) — such as KRG Residence Info Card (فۆرمی زانیاری نیشتەجێبوون in Sulaymaniyah/Erbil or فۆرما پێزانینێن ئاکنجیبوونێ in Duhok/Zakho) or KRG Chamber of Commerce (ژووری بازرگانی و پیشەسازی سلێمانی / هەولێر / دهۆک):
+     * Translate Kurdish place names to their canonical Official Iraqi Arabic equivalents: "هەولێر" -> "أربيل" (NEVER literal هولير), "سلێمانی" -> "السليمانية", "دهۆک" -> "دهوك", "هەڵەبجە" -> "حلبجة", "زاخۆ" -> "زاخو", "ئامێدی" -> "العمادية", "ئاکرێ" -> "عقرة", "عەنکاوە" -> "عنكاوا", "شەقڵاوە" -> "شقلاوة".
+     * Translate Kurdish address components into official CBI Arabic: Sorani "گەڕەک" or Badini "تاخ" -> "محلة"; Sorani "کۆڵان" or Badini "جادە" -> "زقاق / شارع"; Sorani "خانوو" or Badini "خانی" -> "دار".
+     * Translate Kurdish directorate headers: Sorani "بەڕێوەبەرایەتی" or Badini "ڕێڤەبەریا" -> "مديرية"; "نوسینگەی زانیاری" or "نڤیسینگەها پێزانینان" -> "مكتب معلومات".
+     * Normalize Kurdish letters in names (پ->ب, چ->ج, ژ->ج, ڤ->ف, گ->ك, ڵ->ل, ڕ->ر, ۆ->و, ێ->ي, ە) into standard Arabic in "fullNameAr" and English in "fullNameEn".
+14. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on the document (e.g. 2-line 44-char TD3 MRZ on Passports starting with P<IRQ..., or 3-line 30-char TD1 MRZ on National IDs).
+15. boundingBoxes (ACCURATE COORDINATES FOR ALL VISIBLE FIELDS IN 0..1000 SCALE [ymin, xmin, ymax, xmax]):
+    Return accurate bounding boxes tightly wrapping the actual text/photo positions on THIS image for:
+    - portraitPhoto (holder face photo on the left)
+    - officialSeal (Republic of Iraq eagle emblem at top center)
+    - docNumber (Passport No. e.g. A18083401 at top right, or 12-digit National ID under eagle)
+    - fullName (holder full name & surname lines)
+    - motherName (Mother Name / اسم الأم line)
+    - dob (Date of Birth / تاريخ الميلاد)
+    - issueDate (Date of Issue / تاريخ الاصدار)
+    - expiryDate (Date of Expiry / تاريخ النفاذ)
+    - governorate (Place of Birth / محل الميلاد or Issuing Authority / جهة الاصدار)
+    - mrzLine1 & mrzLine2 (the machine readable zone lines at the bottom if visible)
 
 RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 {
@@ -550,23 +678,23 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
   "holderNationalityEn": "Iraqi",
   "holderNationalityAr": "عراقي",
   "side": "FRONT" | "BACK" | "BOTH",
-  "firstName": "Given name in Arabic & English (e.g. أيهم / Ayham) or [غير موجود / MISSING]",
-  "fatherName": "Father name in Arabic & English (e.g. شامل / Shamil) or [غير موجود / MISSING]",
-  "grandfatherName": "Grandfather name in Arabic & English (e.g. يونس / Younis) or [غير موجود / MISSING]",
-  "surname": "Surname in Arabic & English (e.g. آل قره غولي / Al-Qaragholi) or [غير موجود / MISSING]",
-  "fullNameAr": "Complete Arabic legal name combining all parts or [غير موجود / MISSING]",
-  "fullNameEn": "Complete English Latin transliteration or [غير موجود / MISSING]",
-  "motherName": "Mother and maternal grandfather name in BOTH Arabic & English (e.g. إسراء محمد / Israa Muhammad) or [غير موجود / MISSING]",
-  "maternalGrandfatherName": "Maternal grandfather in BOTH Arabic & English (e.g. محمد / Muhammad) or [غير موجود / MISSING]",
-  "docNumber": "Exact ID/Card number in ASCII digits (e.g. 200646431589)",
-  "familyNumber": "Bottom-left corner code e.g. AA9792984 or 18-digit back family number or [غير موجود / MISSING]",
-  "cardSerialNumber": "Bottom-left corner code e.g. AA9792984 or [غير موجود / MISSING]",
+  "firstName": "Given name in Arabic & English (e.g. محمد / Mohammed) or [غير موجود / MISSING]",
+  "fatherName": "Father name in Arabic & English (e.g. احمد / Ahmed) or [غير موجود / MISSING]",
+  "grandfatherName": "Grandfather name in Arabic & English (e.g. شمخي / Shamkhi) or [غير موجود / MISSING]",
+  "surname": "Surname in Arabic & English (e.g. السواعدي / Al-Sawaedi) or [غير موجود / MISSING]",
+  "fullNameAr": "Complete Arabic legal name combining all parts including Surname (e.g. محمد احمد شمخي السواعدي) or [غير موجود / MISSING]",
+  "fullNameEn": "Complete English Latin name combining all parts including Surname (e.g. Mohammed Ahmed Shamkhi Al-Sawaedi) or [غير موجود / MISSING]",
+  "motherName": "Mother name in BOTH Arabic & English (e.g. وداد جبار / Widad Jabbar) or [غير موجود / MISSING]",
+  "maternalGrandfatherName": "Maternal grandfather in BOTH Arabic & English (e.g. جبار / Jabbar) or [غير موجود / MISSING]",
+  "docNumber": "Exact Passport No. or National ID number in ASCII characters (e.g. A18083401 or 200646431589)",
+  "familyNumber": "Bottom-left corner code e.g. AA9792984 or 18-digit back family number on National ID, or N/A for Passports",
+  "cardSerialNumber": "Bottom-left corner code e.g. AA9792984 or N/A for Passports",
   "verticalSerialNumber": "Right-edge vertical serial or [غير موجود / MISSING]",
   "gender": "Male / ذكر or Female / أنثى or [غير موجود / MISSING]",
   "bloodType": "Blood type e.g. O+ or [غير موجود / MISSING]",
-  "dob": "YYYY-MM-DD (e.g. 2006-06-21 on back side) or 2006 (Derived from National ID) or [غير موجود / MISSING]",
-  "issueDate": "YYYY-MM-DD (e.g. 2023-10-25) or [غير موجود / MISSING]",
-  "expiryDate": "YYYY-MM-DD (e.g. 2033-10-24) or [غير موجود / MISSING]",
+  "dob": "YYYY-MM-DD (e.g. 2006-11-07) or 2006 (Derived from National ID) or [غير موجود / MISSING]",
+  "issueDate": "YYYY-MM-DD (e.g. 2020-10-14) or [غير موجود / MISSING]",
+  "expiryDate": "YYYY-MM-DD (e.g. 2024-10-13) or [غير موجود / MISSING]",
   "governorateKey": "BGD" | "EBL" | "BSR" | "SUL" | "MOS",
   "governorateEn": "Place of birth/Governorate in English",
   "governorateAr": "Place of birth/Governorate in Arabic",
@@ -586,8 +714,8 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       "field": "fullName",
       "label": "Name: ...",
       "value": "...",
-      "box_2d": [150, 220, 255, 880],
-      "point": [200, 550],
+      "box_2d": [245, 285, 345, 855],
+      "point": [295, 570],
       "spatialType": "FIELD_TEXT",
       "confidence": 0.99
     }
@@ -609,7 +737,7 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
           },
         },
         {
-          text: `Inspect Slot ${slotIndex} image. Identify whether this is an Iraqi document or a Foreign/GCC document, determine whether THIS image is the FRONT side or BACK side of the card (if it shows تاريخ الاصدار, تاريخ النفاذ, تاريخ الولادة YYYY/MM/DD, الرقم العائلي, QR/barcode, or MRZ lines without a portrait photo, it is strictly BACK), extract all visible fields (including full YYYY-MM-DD dob, issueDate, expiryDate on the back side, and BOTH Arabic and English for firstName, fatherName, grandfatherName, surname, motherName, and maternalGrandfatherName), and set rotationNeededClockwiseDeg to 0 if upright, 180 if upside-down, 270 if vertical with header on the right, or 90 if vertical with header on the left.`,
+          text: `Inspect Slot ${slotIndex} image. First identify the exact documentType (e.g. IRQ_PASSPORT if it says REPUBLIC OF IRAQ Passport / جواز سفر / پاسپۆرت with P<IRQ MRZ; IRQ_NATIONAL_ID if it is a Unified National Card; IRQ_RESIDENCE_CARD; FOREIGN_NATIONAL_ID; etc.). If it is a Passport (IRQ_PASSPORT or FOREIGN_PASSPORT), set side to "BOTH", combine Full Name + Surname into fullNameEn and fullNameAr, extract Passport No into docNumber, Mother Name into motherName, DOB, Issue Date, Expiry Date, Place of Birth, Issuing Authority, and both 44-char TD3 MRZ lines (mrzLine1, mrzLine2), and set familyNumber to "N/A". Return tight 0..1000 boundingBoxes for every visible field on THIS image.`,
         },
       ],
     };
@@ -690,6 +818,14 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       return transliterateLatinToArabic(val);
     };
 
+    const isPassportDoc =
+      docType === 'IRQ_PASSPORT' ||
+      docType === 'FOREIGN_PASSPORT' ||
+      (parsed.mrzLine1 && String(parsed.mrzLine1).trim().toUpperCase().startsWith('P<'));
+    if (isPassportDoc && docType === 'IRQ_NATIONAL_ID') {
+      docType = 'IRQ_PASSPORT';
+    }
+
     const quadPartsAr = [rawFirstName, rawFatherName, rawGrandfatherName, rawSurname]
       .map((p) => extractArabicOnly(p))
       .filter(Boolean);
@@ -704,6 +840,15 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
     if (quadPartsAr.length >= 2 && quadPartsAr.join(' ').length > fullNameAr.length) {
       fullNameAr = quadPartsAr.join(' ');
     }
+    // On Iraqi Passports, "الاسم الثلاثي" (Full Name) and "اللقب" (Surname) are printed on separate lines; ensure Surname is appended if missing from fullNameAr
+    const surnameArOnly = extractArabicOnly(rawSurname);
+    if (
+      fullNameAr &&
+      surnameArOnly &&
+      !fullNameAr.includes(surnameArOnly)
+    ) {
+      fullNameAr = `${fullNameAr} ${surnameArOnly}`.trim();
+    }
     if (!fullNameAr) fullNameAr = '[غير موجود / MISSING]';
 
     let fullNameEn =
@@ -712,6 +857,17 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       parsed.fullNameEn !== 'Verified Record'
         ? String(parsed.fullNameEn).trim()
         : '';
+    // On Iraqi Passports, "Full Name" (Given+Father+Grandfather) and "Surname" are printed on separate lines; ensure Surname is appended if missing from fullNameEn
+    if (fullNameEn && rawSurname && !isMissingOrUnclearValue(rawSurname)) {
+      const surnameEnMatch = String(rawSurname).match(/[A-Za-z][A-Za-z\s'-]+/);
+      const cleanSurnameEn = surnameEnMatch ? surnameEnMatch[0].trim() : '';
+      if (
+        cleanSurnameEn &&
+        !fullNameEn.toLowerCase().includes(cleanSurnameEn.toLowerCase())
+      ) {
+        fullNameEn = `${fullNameEn} ${cleanSurnameEn}`.trim();
+      }
+    }
     if (!fullNameEn && fullNameAr !== '[غير موجود / MISSING]') {
       fullNameEn = transliterateArabicToLatin(fullNameAr);
     }
@@ -725,10 +881,18 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
     if (
       combinedMotherRaw &&
       rawMaternalGrandfather &&
-      !isMissingOrUnclearValue(rawMaternalGrandfather) &&
-      !combinedMotherRaw.toLowerCase().includes(String(rawMaternalGrandfather).trim().toLowerCase())
+      !isMissingOrUnclearValue(rawMaternalGrandfather)
     ) {
-      combinedMotherRaw = `${combinedMotherRaw} ${String(rawMaternalGrandfather).trim()}`;
+      const mgfTokens = String(rawMaternalGrandfather)
+        .split(/[\s/·|-]+/)
+        .map((t) => t.trim().toLowerCase())
+        .filter((t) => t.length >= 2);
+      const alreadyHasMgf = mgfTokens.some((t) =>
+        combinedMotherRaw.toLowerCase().includes(t)
+      );
+      if (!alreadyHasMgf) {
+        combinedMotherRaw = `${combinedMotherRaw} ${String(rawMaternalGrandfather).trim()}`;
+      }
     }
     const motherName = combinedMotherRaw ? formatBilingualName(combinedMotherRaw) : undefined;
     const formattedMaternalGrandfather =
@@ -742,34 +906,41 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         : undefined;
 
     const bloodType =
-      parsed.bloodType && !isMissingOrUnclearValue(parsed.bloodType)
+      !isPassportDoc && parsed.bloodType && !isMissingOrUnclearValue(parsed.bloodType)
         ? String(parsed.bloodType).trim().toUpperCase()
         : undefined;
 
     // Extract Family Number / Card Tracking Number from bottom left corner of Iraqi card or 18-digit back family number
-    let familyNumber =
-      parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
+    // Note: Passports (IRQ_PASSPORT / FOREIGN_PASSPORT) do NOT have a Family Number or bottom-left card tracking code!
+    let familyNumber = isPassportDoc
+      ? 'N/A'
+      : parsed.familyNumber && !isMissingOrUnclearValue(parsed.familyNumber)
         ? normalizeMultiScriptText(String(parsed.familyNumber)).toUpperCase()
         : parsed.cardSerialNumber && !isMissingOrUnclearValue(parsed.cardSerialNumber)
           ? normalizeMultiScriptText(String(parsed.cardSerialNumber)).toUpperCase()
           : '';
 
-    // If Gemini missed familyNumber in direct field, scan bounding boxes for alphanumeric code e.g. AA9792984 or 18-digit family number
-    if ((!familyNumber || familyNumber.startsWith('FAM-IRQ')) && Array.isArray(parsed.boundingBoxes)) {
+    // If Gemini missed familyNumber on a National ID / Residence Card, scan bounding boxes for alphanumeric code e.g. AA9792984 or 18-digit family number (excluding docNumber!)
+    if (
+      !isPassportDoc &&
+      (!familyNumber || familyNumber.startsWith('FAM-IRQ')) &&
+      Array.isArray(parsed.boundingBoxes)
+    ) {
       for (const b of parsed.boundingBoxes) {
+        if (b?.field === 'docNumber') continue;
         const val = normalizeMultiScriptText(String(b.value || b.label || '')).toUpperCase();
         const matchAlpha = val.match(/[A-Z]{1,3}\d{6,10}/);
         const match18 = val.match(/\b\d{15,20}\b/);
-        if (matchAlpha) {
+        if (matchAlpha && matchAlpha[0] !== rawDocNum) {
           familyNumber = matchAlpha[0];
           break;
-        } else if (match18) {
+        } else if (match18 && match18[0] !== rawDocNum) {
           familyNumber = match18[0];
           break;
         }
       }
     }
-    if (!familyNumber) familyNumber = '[غير موجود / MISSING]';
+    if (!familyNumber) familyNumber = isPassportDoc ? 'N/A' : '[غير موجود / MISSING]';
 
     const mrzLine1 =
       parsed.mrzLine1 &&
@@ -834,17 +1005,17 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
           const yr = Number(dStr.slice(0, 4));
           if (
             (!dob || !/\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/.test(dob)) &&
-            (bField.includes('dob') || bField.includes('birth') || bText.includes('الولادة') || (yr >= 1935 && yr <= 2016))
+            (bField.includes('dob') || bField.includes('birth') || bText.includes('الولادة') || bText.includes('الميلاد') || (yr >= 1935 && yr <= 2016))
           ) {
             dob = dStr;
           } else if (
             !issueDate &&
-            (bField.includes('issue') || bText.includes('الاصدار') || bText.includes('الإصدار') || (yr >= 2016 && yr <= 2026))
+            (bField.includes('issue') || bText.includes('الاصدار') || bText.includes('الإصدار') || (yr >= 2016 && yr <= 2026 && !bField.includes('expir')))
           ) {
             issueDate = dStr;
           } else if (
             !expiryDate &&
-            (bField.includes('expir') || bText.includes('النفاذ') || bText.includes('الانتهاء') || yr >= 2027)
+            (bField.includes('expir') || bText.includes('النفاذ') || bText.includes('الانتهاء') || yr >= 2024)
           ) {
             expiryDate = dStr;
           }
@@ -852,12 +1023,13 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       }
     }
 
-    // Parse TD1 MRZ line 2 (format: YYMMDD<check><sex>YYMMDD<check>IRQ...) if dob or expiryDate is still missing
+    // Parse TD1 (30-char National ID) or TD3 (44-char Passport) MRZ line 2 if dob or expiryDate is still missing
     if (!isMissingOrUnclearValue(mrzLine2) && !mrzLine2.includes('NO MRZ')) {
       const cleanMrz2 = mrzLine2.replace(/\s+/g, '').toUpperCase();
-      const mrzMatch = cleanMrz2.match(/^(\d{2})(\d{2})(\d{2})\d[MF<](\d{2})(\d{2})(\d{2})/);
-      if (mrzMatch) {
-        const [, bYY, bMM, bDD, eYY, eMM, eDD] = mrzMatch;
+      // 1. Check TD3 44-character Passport MRZ Line 2 (e.g. A180834017IRQ0611073M2410133<<<<<<<<<<<<<<02)
+      const td3Match = cleanMrz2.match(/^([A-Z0-9<]{9})\d[A-Z<]{3}(\d{2})(\d{2})(\d{2})\d[MF<](\d{2})(\d{2})(\d{2})\d/);
+      if (td3Match) {
+        const [, rawMrzDoc, bYY, bMM, bDD, eYY, eMM, eDD] = td3Match;
         const birthCentury = Number(bYY) <= 26 ? '20' : '19';
         const mrzDob = `${birthCentury}${bYY}-${bMM}-${bDD}`;
         const mrzExp = `20${eYY}-${eMM}-${eDD}`;
@@ -866,6 +1038,21 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         }
         if (!expiryDate) {
           expiryDate = mrzExp;
+        }
+      } else {
+        // 2. Check TD1 30-character National ID MRZ Line 2 (format: YYMMDD<check><sex>YYMMDD<check>IRQ...)
+        const mrzMatch = cleanMrz2.match(/^(\d{2})(\d{2})(\d{2})\d[MF<](\d{2})(\d{2})(\d{2})/);
+        if (mrzMatch) {
+          const [, bYY, bMM, bDD, eYY, eMM, eDD] = mrzMatch;
+          const birthCentury = Number(bYY) <= 26 ? '20' : '19';
+          const mrzDob = `${birthCentury}${bYY}-${bMM}-${bDD}`;
+          const mrzExp = `20${eYY}-${eMM}-${eDD}`;
+          if (!dob || !/\b(19\d{2}|20\d{2})-\d{2}-\d{2}\b/.test(dob)) {
+            dob = mrzDob;
+          }
+          if (!expiryDate) {
+            expiryDate = mrzExp;
+          }
         }
       }
     }
@@ -934,11 +1121,18 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       : rawGovAr;
 
     // Deterministic physical side safeguard:
+    // - Passports (IRQ_PASSPORT / FOREIGN_PASSPORT) are single bio-data page documents -> side is 'BOTH' (complete).
     // - On Iraqi Unified National Card (IRQ_NATIONAL_ID), the BACK side has issueDate (تاريخ الاصدار), expiryDate (تاريخ النفاذ),
     //   full YYYY-MM-DD dob (تاريخ الولادة), 18-digit familyNumber (الرقم العائلي), or MRZ, and NO motherName/bloodType.
     // - On Foreign National ID (e.g. UAE Emirates ID), issueDate & expiryDate are on the FRONT side, while MRZ is on the BACK side.
     let detectedSide: 'FRONT' | 'BACK' | 'BOTH' =
-      parsed.side === 'BACK' ? 'BACK' : parsed.side === 'BOTH' ? 'BOTH' : 'FRONT';
+      docType === 'IRQ_PASSPORT' || docType === 'FOREIGN_PASSPORT'
+        ? 'BOTH'
+        : parsed.side === 'BACK'
+          ? 'BACK'
+          : parsed.side === 'BOTH'
+            ? 'BOTH'
+            : 'FRONT';
 
     if (docType === 'IRQ_NATIONAL_ID') {
       const hasBackDatesOrMrz =
@@ -1007,7 +1201,8 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
                 Boolean(b) &&
                 typeof b === 'object' &&
                 Array.isArray((b as OcrBoundingBox).box_2d) &&
-                (b as OcrBoundingBox).box_2d.length === 4
+                (b as OcrBoundingBox).box_2d.length === 4 &&
+                !(isPassportDoc && (b as OcrBoundingBox).field === 'familyNumber')
             )
             .map((b: OcrBoundingBox) => {
               const coords = normalizeBoundingBoxCoords(b.box_2d);
@@ -1045,7 +1240,73 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 
     // If Gemini returned fewer than 2 boxes for a card that has extracted values, synthesize clean spatial layout boxes
     if (validBoxes.length < 2) {
-      if (detectedSide === 'FRONT' || detectedSide === 'BOTH') {
+      if (isPassportDoc) {
+        validBoxes = [
+          {
+            field: 'portraitPhoto',
+            label: 'Holder Portrait Photo (الصورة الشخصية)',
+            value: 'Holder Photo',
+            box_2d: [220, 70, 620, 260],
+            point: [420, 165],
+            spatialType: 'BIOMETRIC_PORTRAIT',
+            confidence: 0.99,
+          },
+          {
+            field: 'docNumber',
+            label: `PASSPORT NO. / رقم الجواز: ${rawDocNum}`,
+            value: rawDocNum,
+            box_2d: [195, 675, 245, 835],
+            point: [220, 755],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'fullName',
+            label: `FULL NAME / الاسم: ${fullNameEn}`,
+            value: fullNameEn,
+            box_2d: [255, 280, 355, 855],
+            point: [305, 565],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'dob',
+            label: `DOB / تاريخ الميلاد: ${dob}`,
+            value: dob,
+            box_2d: [365, 465, 420, 610],
+            point: [392, 537],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'motherName',
+            label: `MOTHER / اسم الأم: ${motherName || ''}`,
+            value: motherName || '',
+            box_2d: [445, 280, 505, 860],
+            point: [475, 570],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.98,
+          },
+          {
+            field: 'expiryDate',
+            label: `EXPIRY / تاريخ النفاذ: ${expiryDate}`,
+            value: expiryDate,
+            box_2d: [515, 275, 585, 425],
+            point: [550, 350],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+          {
+            field: 'issueDate',
+            label: `ISSUE / تاريخ الإصدار: ${issueDate}`,
+            value: issueDate,
+            box_2d: [515, 465, 585, 610],
+            point: [550, 537],
+            spatialType: 'FIELD_TEXT',
+            confidence: 0.99,
+          },
+        ];
+      } else if (detectedSide === 'FRONT' || detectedSide === 'BOTH') {
         validBoxes = [
           {
             field: 'portraitPhoto',
@@ -1183,41 +1444,80 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         ];
       }
     }
-    // Ensure familyNumber (bottom left corner code AA9792984) always has a dedicated bounding box
-    if (familyNumber !== '[غير موجود / MISSING]' && !validBoxes.some((b) => b.field === 'familyNumber')) {
-      validBoxes.push({
-        field: 'familyNumber',
-        label: `CARD / FAMILY NO. (أسفل اليسار): ${familyNumber}`,
-        value: familyNumber,
-        box_2d: [780, 180, 870, 460],
-        point: [825, 320],
-        spatialType: 'FIELD_TEXT',
-        confidence: 0.99,
-      });
-    }
 
-    if (gender && !validBoxes.some((b) => b.field === 'gender')) {
-      validBoxes.push({
-        field: 'gender',
-        label: `SEX / الجنس: ${gender}`,
-        value: gender,
-        box_2d: [550, 520, 600, 780],
-        point: [575, 650],
-        spatialType: 'FIELD_TEXT',
-        confidence: 0.98,
-      });
-    }
+    if (isPassportDoc) {
+      // On Passports, ensure TD3 MRZ lines have dedicated bounding boxes at the bottom of the bio-page if present
+      if (
+        !isMissingOrUnclearValue(mrzLine1) &&
+        !mrzLine1.includes('NO MRZ') &&
+        !validBoxes.some((b) => b.field === 'mrzLine1' || b.field === 'mrzZone')
+      ) {
+        validBoxes.push({
+          field: 'mrzLine1',
+          label: `TD3 MRZ 1: ${mrzLine1}`,
+          value: mrzLine1,
+          box_2d: [705, 75, 748, 868],
+          point: [726, 471],
+          spatialType: 'MACHINE_READABLE_ZONE',
+          confidence: 0.99,
+        });
+      }
+      if (
+        !isMissingOrUnclearValue(mrzLine2) &&
+        !mrzLine2.includes('NO MRZ') &&
+        !validBoxes.some((b) => b.field === 'mrzLine2')
+      ) {
+        validBoxes.push({
+          field: 'mrzLine2',
+          label: `TD3 MRZ 2: ${mrzLine2}`,
+          value: mrzLine2,
+          box_2d: [748, 75, 792, 868],
+          point: [770, 471],
+          spatialType: 'MACHINE_READABLE_ZONE',
+          confidence: 0.99,
+        });
+      }
+    } else {
+      // Ensure familyNumber (bottom left corner code AA9792984 on National IDs) has a dedicated bounding box
+      if (
+        familyNumber !== '[غير موجود / MISSING]' &&
+        familyNumber !== 'N/A' &&
+        !validBoxes.some((b) => b.field === 'familyNumber')
+      ) {
+        validBoxes.push({
+          field: 'familyNumber',
+          label: `CARD / FAMILY NO. (أسفل اليسار): ${familyNumber}`,
+          value: familyNumber,
+          box_2d: [780, 180, 870, 460],
+          point: [825, 320],
+          spatialType: 'FIELD_TEXT',
+          confidence: 0.99,
+        });
+      }
 
-    if (bloodType && !validBoxes.some((b) => b.field === 'bloodType')) {
-      validBoxes.push({
-        field: 'bloodType',
-        label: `BLOOD / فصيلة الدم: ${bloodType}`,
-        value: bloodType,
-        box_2d: [605, 520, 655, 780],
-        point: [630, 650],
-        spatialType: 'FIELD_TEXT',
-        confidence: 0.98,
-      });
+      if (gender && !validBoxes.some((b) => b.field === 'gender')) {
+        validBoxes.push({
+          field: 'gender',
+          label: `SEX / الجنس: ${gender}`,
+          value: gender,
+          box_2d: [550, 520, 600, 780],
+          point: [575, 650],
+          spatialType: 'FIELD_TEXT',
+          confidence: 0.98,
+        });
+      }
+
+      if (bloodType && !validBoxes.some((b) => b.field === 'bloodType')) {
+        validBoxes.push({
+          field: 'bloodType',
+          label: `BLOOD / فصيلة الدم: ${bloodType}`,
+          value: bloodType,
+          box_2d: [605, 520, 655, 780],
+          point: [630, 650],
+          spatialType: 'FIELD_TEXT',
+          confidence: 0.98,
+        });
+      }
     }
 
     const govKey = inferGovKey(
@@ -2080,7 +2380,7 @@ Return ONLY valid JSON with keys:
     app.use(vite.middlewares);
   } else {
     const defaultDist = path.resolve(import.meta.dirname, 'frontend', 'kyc_cockpit', 'dist');
-    const distPath = (await import('node:fs')).existsSync(defaultDist)
+    const distPath = fs.existsSync(defaultDist)
       ? defaultDist
       : path.resolve(import.meta.dirname, 'dist');
     app.use(express.static(distPath));

@@ -2005,7 +2005,7 @@ export default function App() {
               {/* VIEW 1B: ZAINCASH MOBILE EDGE & DOCUMENT FORENSICS LAB */}
               {activeSection === 'forensics' && (
                 <section
-                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03]"
+                  className="space-y-4"
                   aria-label={t(lang, 'navForensics')}
                 >
                   <ZainCashEdgeForensicsLab

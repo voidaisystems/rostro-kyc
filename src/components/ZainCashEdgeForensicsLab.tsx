@@ -1783,12 +1783,12 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Top Architecture & Specimen Selector Card — Matching Dark Emerald/Forest Green Theme */}
-      <div className="rounded-[22px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] p-3.5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-zinc-200/80 dark:border-white/[0.06] pb-2.5">
+      <div className="rounded-[20px] border border-zinc-200/60 dark:border-white/[0.04] bg-zinc-100/90 dark:bg-[#1f2128] p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-zinc-200/60 dark:border-white/[0.04] pb-3">
           <div>
-            <div className="flex items-center gap-1.5 text-[11px] text-[#10b981] dark:text-[#6ee7b7] font-semibold">
+            <div className="flex items-center gap-2 text-xs text-[#10b981] dark:text-[#34d399] font-medium">
               <Smartphone className="w-3.5 h-3.5 shrink-0" />
               <span>
                 {lang === 'ar'
@@ -1796,7 +1796,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                   : 'Zain Iraq / ZainCash Mobile Edge SDK (60 FPS WASM) + Pre-Flight + Document Forensics Lab'}
               </span>
             </div>
-            <h2 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-white mt-0.5">
+            <h2 className="text-base sm:text-lg font-bold tracking-tight text-zinc-900 dark:text-white mt-1">
               {lang === 'ar'
                 ? 'مختبر الفحص المباشر: 12 أداة ذكاء بصري ورياضي لكشف عيوب الالتقاط والوثائق المنتهية والمزورة'
                 : 'Live 12-Tool Mobile Edge & Anti-Forgery Verification Pipeline'}
@@ -1807,7 +1807,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-[#1f2128] hover:bg-zinc-200 dark:hover:bg-white/[0.08] rounded-xl border border-zinc-300 dark:border-white/[0.08] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#14151b] hover:bg-zinc-100 dark:hover:bg-[#181a20] rounded-xl border border-zinc-200 dark:border-white/10 hover:border-[#10b981] transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-[#10b981]" />
               <span>{lang === 'ar' ? 'اختبار صورة من جهازك' : 'Test Custom ID Photo'}</span>
@@ -1822,7 +1822,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             <button
               type="button"
               onClick={handleToggleWebcam}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#10b981] dark:text-[#6ee7b7] bg-[#10b981]/10 hover:bg-[#10b981]/20 rounded-xl border border-[#10b981]/35 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 hover:bg-[#10b981]/20 rounded-xl border border-[#10b981]/30 transition-colors cursor-pointer"
             >
               <Camera className="w-3.5 h-3.5" />
               <span>
@@ -1839,9 +1839,9 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
               <button
                 type="button"
                 onClick={handlePushScenarioToQueue}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#10b981] to-[#047857] hover:brightness-110 rounded-xl shadow-md shadow-[#10b981]/25 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#10b981] hover:bg-[#059669] border border-[#34d399]/40 rounded-xl shadow-md shadow-[#10b981]/20 transition-all cursor-pointer"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                 <span>
                   {lang === 'ar' ? 'إرسال للطابور وفحص الملف' : 'Push Packet to Queue & Inspect'}
                 </span>
@@ -1851,9 +1851,9 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
               <button
                 type="button"
                 onClick={onOpenUploadModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#059669] to-[#065f46] hover:brightness-110 rounded-xl border border-[#10b981]/30 shadow-sm transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-[#14151b] hover:bg-zinc-100 dark:hover:bg-[#181a20] rounded-xl border border-zinc-200 dark:border-white/10 hover:border-[#10b981] transition-colors cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 text-[#10b981]" />
                 <span>
                   {lang === 'ar' ? 'فتح نافذة الرفع الكاملة' : 'Open Full Gemini VLM Upload'}
                 </span>
@@ -1863,8 +1863,8 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
         </div>
 
         {/* 6 Realistic Iraqi ID Specimen Selector Cards */}
-        <div className="pt-2.5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {DEMO_SCENARIOS.map((sc) => {
               const isSelected = activeScenarioKey === sc.key && !customFileName;
               const isPassScenario = sc.key === 'AUTHENTIC_ID';
@@ -1878,18 +1878,18 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                     setActiveScenarioKey(sc.key);
                     setClaheEnabled(false);
                   }}
-                  className={`text-start p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                  className={`text-start p-3 rounded-2xl border transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-[#10b981] bg-[#10b981]/12 dark:bg-[#10b981]/15 ring-1 ring-[#10b981] shadow-sm shadow-[#10b981]/15'
-                      : 'border-zinc-200/80 dark:border-white/[0.06] bg-zinc-50/70 dark:bg-[#1f2128] hover:border-[#10b981]/40 dark:hover:bg-white/[0.04]'
+                      ? 'border-[#10b981] bg-[#10b981]/[0.08] dark:bg-[#10b981]/[0.12] ring-1 ring-[#10b981]/50 shadow-md shadow-[#10b981]/10'
+                      : 'border-zinc-200/80 dark:border-white/[0.04] bg-white dark:bg-[#14151b] hover:border-zinc-300 dark:hover:border-white/10 hover:bg-zinc-50 dark:hover:bg-[#181a20]'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <div className="flex items-center justify-between gap-2 mb-1">
                     <span
-                      className={`font-mono text-[9.5px] font-bold ${
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full font-mono text-[9px] font-bold ${
                         isPassScenario
-                          ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                          : 'text-rose-600 dark:text-rose-400'
+                          ? 'bg-[#10b981]/20 text-[#34d399] border border-[#10b981]/30'
+                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
                       }`}
                     >
                       {lang === 'ar' ? sc.badgeAr : sc.badgeEn}
@@ -1898,10 +1898,10 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       {sc.dpiLabel}
                     </span>
                   </div>
-                  <div className="text-[11.5px] font-bold text-zinc-900 dark:text-white truncate">
+                  <div className="text-xs font-bold text-zinc-900 dark:text-white truncate mt-1.5">
                     {lang === 'ar' ? sc.titleAr : sc.titleEn}
                   </div>
-                  <p className="text-[10.5px] text-zinc-500 dark:text-[#8a8d98] mt-0.5 line-clamp-1">
+                  <p className="text-[11px] text-zinc-500 dark:text-[#8a8d98] mt-0.5 line-clamp-1">
                     {lang === 'ar' ? sc.subtitleAr : sc.subtitleEn}
                   </p>
                 </button>
@@ -1927,20 +1927,20 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
       {/* Main 12-Column Split: Left = ZainCash Mobile Viewfinder & Pre-Flight Controls, Right = 3-Layer Telemetry & Forensics */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* LEFT 5 COLUMNS: ZainCash Mobile App Viewfinder Simulator */}
-        <div className="lg:col-span-5 rounded-[22px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] overflow-hidden shadow-xs">
+        <div className="lg:col-span-5 rounded-[20px] border border-zinc-200/60 dark:border-white/[0.04] bg-zinc-100/90 dark:bg-[#1f2128] overflow-hidden shadow-xs flex flex-col">
           {/* ZainCash Mobile Header Bar */}
-          <div className="bg-[#14151b] text-white px-3.5 py-2.5 flex items-center justify-between border-b border-white/[0.07]">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-[#10b981]/15 border border-[#10b981]/35 flex items-center justify-center text-[#10b981]">
-                <Smartphone className="w-3.5 h-3.5" />
+          <div className="bg-white dark:bg-[#14151b] text-zinc-900 dark:text-white px-4 py-3 flex items-center justify-between border-b border-zinc-200/60 dark:border-white/[0.04]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-[#10b981]/15 border border-[#10b981]/30 flex items-center justify-center text-[#10b981]">
+                <Smartphone className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-bold tracking-tight">
+                <div className="text-xs font-bold tracking-tight text-zinc-900 dark:text-white">
                   {lang === 'ar'
                     ? 'زين كاش العراق · حزمة كاميرا التحقق على الهاتف'
                     : 'ZainCash Iraq · On-Device KYC Camera SDK'}
                 </div>
-                <div className="text-[9.5px] font-mono text-[#8a8d98]">
+                <div className="text-[10px] font-mono text-zinc-500 dark:text-[#8a8d98]">
                   {lang === 'ar'
                     ? 'فحص فوري (60 إطار/ثانية) · تصنيف (11 مللي ثانية) · كشف العيوب'
                     : 'OpenCV.js WASM (60 FPS) · MobileNetV3 (11ms) · 2D FFT Anti-Spoof'}
@@ -1952,7 +1952,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 type="button"
                 onClick={handleGenerateNanoBananaPortrait}
                 disabled={isGeneratingPortrait}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-[#10b981] dark:text-[#6ee7b7] bg-[#10b981]/10 hover:bg-[#10b981]/20 rounded-lg border border-[#10b981]/35 transition-colors cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 hover:bg-[#10b981]/20 rounded-lg border border-[#10b981]/30 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Fingerprint className="w-3 h-3 text-[#10b981]" />
                 <span>
@@ -1965,14 +1965,14 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       : 'Nano Banana 3 Portrait'}
                 </span>
               </button>
-              <span className="font-mono text-[10px] font-semibold text-[#10b981] dark:text-[#6ee7b7]">
+              <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
                 {activeScenario.dpiLabel}
               </span>
             </div>
           </div>
 
           {/* Live Viewfinder Canvas Surface */}
-          <div className="p-3 bg-[#101217] flex flex-col items-center justify-center relative">
+          <div className="p-3.5 bg-zinc-50/50 dark:bg-[#16171d] flex flex-col items-center justify-center relative">
             {isWebcamActive && (
               <div className="w-full mb-3 space-y-2">
                 <video
@@ -1994,7 +1994,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             )}
 
             {/* Document Type Switcher (Unified Iraqi ID / Residence Card / Passport) & Front/Back Side Switcher */}
-            <div className="mb-2.5 w-full flex flex-wrap items-center justify-between gap-1.5 bg-[#181a20] p-1.5 rounded-xl border border-white/[0.07]">
+            <div className="mb-3 w-full flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-[#14151b] p-1.5 rounded-xl border border-zinc-200/60 dark:border-white/[0.04]">
               <div className="flex items-center gap-1 flex-wrap">
                 {(
                   [
@@ -2026,10 +2026,10 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                         setActiveDocType(docTab.key);
                         setActiveDocSide('FRONT');
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         isDocActive
-                          ? 'bg-gradient-to-r from-[#10b981] to-[#047857] text-white shadow-xs'
-                          : 'text-[#8a8d98] hover:text-white hover:bg-white/[0.05]'
+                          ? 'bg-[#10b981] text-zinc-950 shadow-xs'
+                          : 'text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/[0.04]'
                       }`}
                     >
                       {lang === 'ar' ? docTab.labelAr : docTab.labelEn}
@@ -2039,7 +2039,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
               </div>
 
               {activeDocType !== 'IRQ_PASSPORT' ? (
-                <div className="flex items-center gap-1 bg-[#101217] p-0.5 rounded-lg border border-white/[0.06]">
+                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#1f2128] p-0.5 rounded-lg border border-zinc-200/60 dark:border-white/[0.04]">
                   <button
                     type="button"
                     data-testid="side-switch-FRONT"
@@ -2047,10 +2047,10 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       setCustomFileName(null);
                       setActiveDocSide('FRONT');
                     }}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                    className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                       activeDocSide === 'FRONT'
-                        ? 'bg-[#10b981]/20 text-[#6ee7b7] border border-[#10b981]/40'
-                        : 'text-[#8a8d98] hover:text-white'
+                        ? 'bg-[#10b981]/20 text-[#10b981] dark:text-[#34d399] border border-[#10b981]/30'
+                        : 'text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                     }`}
                   >
                     {lang === 'ar' ? 'الوجه الأمامي' : 'Front Side'}
@@ -2062,23 +2062,23 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       setCustomFileName(null);
                       setActiveDocSide('BACK');
                     }}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                    className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                       activeDocSide === 'BACK'
-                        ? 'bg-[#10b981]/20 text-[#6ee7b7] border border-[#10b981]/40'
-                        : 'text-[#8a8d98] hover:text-white'
+                        ? 'bg-[#10b981]/20 text-[#10b981] dark:text-[#34d399] border border-[#10b981]/30'
+                        : 'text-zinc-500 dark:text-[#8a8d98] hover:text-zinc-900 dark:hover:text-white'
                     }`}
                   >
                     {lang === 'ar' ? 'الوجه الخلفي' : 'Back Side'}
                   </button>
                 </div>
               ) : (
-                <span className="px-2 py-0.5 rounded-md text-[9.5px] font-mono font-bold bg-[#10b981]/15 text-[#6ee7b7] border border-[#10b981]/30">
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
                   {lang === 'ar' ? 'صفحة البيانات · BIO-DATA' : 'BIO-DATA PAGE'}
                 </span>
               )}
             </div>
 
-            <div className="relative rounded-2xl overflow-hidden border-2 border-white/[0.1] bg-[#0d1117] shadow-lg w-full flex items-center justify-center">
+            <div className="relative rounded-2xl overflow-hidden border border-zinc-300 dark:border-white/[0.08] bg-[#0c0d12] shadow-xl w-full flex items-center justify-center p-1">
               <canvas
                 ref={canvasRef}
                 data-testid="forensics-specimen-canvas"
@@ -2118,9 +2118,9 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             </div>
 
             {/* Fictional Specimen Summary Strip Below Canvas */}
-            <div className="mt-2.5 w-full grid grid-cols-3 gap-2 text-[10.5px]">
-              <div className="p-2 rounded-xl bg-[#181a20] border border-white/[0.06]">
-                <div className="text-[9px] font-mono uppercase text-[#8a8d98]">
+            <div className="mt-3 w-full grid grid-cols-3 gap-2 text-[10.5px]">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#14151b] border border-zinc-200/60 dark:border-white/[0.04]">
+                <div className="text-[9.5px] font-mono uppercase text-zinc-400 dark:text-[#8a8d98]">
                   {activeDocType === 'IRQ_RESIDENCE_CARD'
                     ? lang === 'ar'
                       ? 'رب الأسرة الافتراضي'
@@ -2129,12 +2129,12 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       ? 'الاسم الافتراضي'
                       : 'Fictional Holder'}
                 </div>
-                <div className="font-bold text-white truncate mt-0.5">
+                <div className="font-bold text-zinc-900 dark:text-white truncate mt-0.5 text-xs">
                   {lang === 'ar' ? activeScenario.holderNameAr : activeScenario.holderNameEn}
                 </div>
               </div>
-              <div className="p-2 rounded-xl bg-[#181a20] border border-white/[0.06]">
-                <div className="text-[9px] font-mono uppercase text-[#8a8d98]">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#14151b] border border-zinc-200/60 dark:border-white/[0.04]">
+                <div className="text-[9.5px] font-mono uppercase text-zinc-400 dark:text-[#8a8d98]">
                   {activeDocType === 'IRQ_PASSPORT'
                     ? lang === 'ar'
                       ? 'رقم الجواز الافتراضي'
@@ -2151,7 +2151,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                           ? 'الرقم الوطني · السيريال'
                           : 'ID · Serial No.'}
                 </div>
-                <div className="font-mono font-bold text-[#6ee7b7] truncate mt-0.5">
+                <div className="font-mono font-bold text-[#10b981] dark:text-[#34d399] truncate mt-0.5 text-xs">
                   {activeDocType === 'IRQ_PASSPORT'
                     ? `A${activeScenario.docNumber.slice(-8)}`
                     : activeDocType === 'IRQ_RESIDENCE_CARD'
@@ -2163,8 +2163,8 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                         : activeScenario.docNumber}
                 </div>
               </div>
-              <div className="p-2 rounded-xl bg-[#181a20] border border-white/[0.06]">
-                <div className="text-[9px] font-mono uppercase text-[#8a8d98]">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#14151b] border border-zinc-200/60 dark:border-white/[0.04]">
+                <div className="text-[9.5px] font-mono uppercase text-zinc-400 dark:text-[#8a8d98]">
                   {activeDocType === 'IRQ_RESIDENCE_CARD' && activeDocSide === 'BACK'
                     ? lang === 'ar'
                       ? 'أفراد الأسرة · التصديق'
@@ -2174,8 +2174,8 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                       : 'DOB · Expiry'}
                 </div>
                 <div
-                  className={`font-mono font-bold truncate mt-0.5 ${
-                    activeScenario.isExpiredSpecimen ? 'text-rose-400' : 'text-white'
+                  className={`font-mono font-bold truncate mt-0.5 text-xs ${
+                    activeScenario.isExpiredSpecimen ? 'text-rose-500' : 'text-zinc-900 dark:text-white'
                   }`}
                 >
                   {activeDocType === 'IRQ_RESIDENCE_CARD' && activeDocSide === 'BACK'
@@ -2190,15 +2190,15 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             {/* Real-Time On-Phone Camera Guidance Prompt */}
             {report && (
               <div
-                className={`mt-2.5 w-full rounded-xl p-2.5 border text-xs ${
+                className={`mt-3 w-full rounded-xl p-3 border text-xs shadow-xs ${
                   !report.mobileCaptureAllowed
-                    ? 'bg-rose-950/80 border-rose-500/50 text-rose-100'
+                    ? 'bg-rose-500/15 border-rose-500/35 text-rose-950 dark:text-rose-100'
                     : !report.overallAuthentic
-                      ? 'bg-amber-950/80 border-amber-500/50 text-amber-100'
-                      : 'bg-[#10b981]/15 border-[#10b981]/40 text-emerald-100'
+                      ? 'bg-amber-500/15 border-amber-500/35 text-amber-950 dark:text-amber-100'
+                      : 'bg-[#10b981]/15 border-[#10b981]/35 text-emerald-950 dark:text-emerald-100'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 font-mono text-[10px] font-bold mb-0.5">
+                <div className="flex items-center justify-between gap-2 font-mono text-[10px] font-bold mb-1">
                   <span>
                     {report.mobileCaptureAllowed && report.overallAuthentic
                       ? lang === 'ar'
@@ -2214,7 +2214,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                   </span>
                   <span>{lang === 'ar' ? '60 إطار/ثانية' : '60 FPS WASM'}</span>
                 </div>
-                <div className="font-semibold text-[11px]">
+                <div className="font-semibold text-xs">
                   {!report.blurGate.passed
                     ? lang === 'ar'
                       ? report.blurGate.statusLabelAr
@@ -2232,14 +2232,14 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
           </div>
 
           {/* Interactive Pre-Flight Controls (Auto-Rotate 90° & CLAHE + Seal Contrast Toggle) */}
-          <div className="p-3 border-t border-zinc-200/80 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#1f2128] space-y-2">
-            <div className="text-[11px] font-bold text-zinc-800 dark:text-white flex items-center justify-between">
+          <div className="p-3.5 border-t border-zinc-200/60 dark:border-white/[0.04] bg-white dark:bg-[#14151b] space-y-2.5">
+            <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center justify-between">
               <span>
                 {lang === 'ar'
                   ? 'أدوات المعالجة المسبقة التفاعلية على البكسلات'
                   : 'Interactive Pre-Flight Controls (Run on Canvas Pixels)'}
               </span>
-              <span className="font-mono text-[10px] text-[#10b981] dark:text-[#6ee7b7]">
+              <span className="font-mono text-[10px] text-[#10b981] dark:text-[#34d399]">
                 {lang === 'ar' ? 'تنفيذ في أقل من 30 مللي ثانية' : '<30ms Execution'}
               </span>
             </div>
@@ -2250,8 +2250,8 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 onClick={() => setClaheEnabled((v) => !v)}
                 className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
                   claheEnabled
-                    ? 'border-[#10b981] bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]'
-                    : 'border-zinc-300 dark:border-white/[0.08] bg-white dark:bg-[#14151b] text-zinc-700 dark:text-zinc-300'
+                    ? 'border-[#10b981] bg-[#10b981]/10 text-[#10b981] dark:text-[#34d399] ring-1 ring-[#10b981]/30'
+                    : 'border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#181a20] text-zinc-700 dark:text-zinc-300 hover:border-[#10b981]/30'
                 }`}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -2274,8 +2274,8 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 onClick={() => setAutoRotateEnabled((v) => !v)}
                 className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
                   autoRotateEnabled
-                    ? 'border-[#10b981] bg-[#10b981]/15 text-[#10b981] dark:text-[#6ee7b7]'
-                    : 'border-zinc-300 dark:border-white/[0.08] bg-white dark:bg-[#14151b] text-zinc-700 dark:text-zinc-300'
+                    ? 'border-[#10b981] bg-[#10b981]/10 text-[#10b981] dark:text-[#34d399] ring-1 ring-[#10b981]/30'
+                    : 'border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-[#181a20] text-zinc-700 dark:text-zinc-300 hover:border-[#10b981]/30'
                 }`}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -2298,23 +2298,29 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
 
         {/* RIGHT 7 COLUMNS: Complete 3-Layer Telemetry & Forensics Breakdown */}
         {report && (
-          <div className="lg:col-span-7 space-y-3">
+          <div className="lg:col-span-7 space-y-3.5">
             {/* Overall Verdict Banner */}
             <div
-              className={`rounded-[20px] border-2 p-3.5 flex items-start justify-between gap-4 ${
+              className={`rounded-[20px] border p-4 flex items-center justify-between gap-4 shadow-sm ${
                 report.verdictCode === 'AUTHENTIC_VERIFIED'
-                  ? 'border-[#10b981]/80 bg-[#10b981]/10 dark:bg-[#10b981]/12'
-                  : 'border-rose-500/80 bg-rose-500/10 dark:bg-rose-950/35'
+                  ? 'border-[#10b981]/40 bg-gradient-to-r from-[#10b981]/20 via-[#059669]/15 to-[#10b981]/10'
+                  : 'border-rose-500/40 bg-gradient-to-r from-rose-500/20 via-rose-700/15 to-rose-500/10'
               }`}
             >
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 {report.verdictCode === 'AUTHENTIC_VERIFIED' ? (
-                  <ShieldCheck className="w-5 h-5 text-[#10b981] dark:text-[#6ee7b7] shrink-0 mt-0.5" />
+                  <ShieldCheck className="w-6 h-6 text-[#10b981] dark:text-[#34d399] shrink-0" />
                 ) : (
-                  <ShieldAlert className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <ShieldAlert className="w-6 h-6 text-rose-500 dark:text-rose-400 shrink-0" />
                 )}
                 <div>
-                  <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-[#8a8d98]">
+                  <div
+                    className={`font-mono text-[10px] font-bold uppercase tracking-wider ${
+                      report.verdictCode === 'AUTHENTIC_VERIFIED'
+                        ? 'text-[#10b981] dark:text-[#34d399]'
+                        : 'text-rose-500 dark:text-rose-400'
+                    }`}
+                  >
                     {lang === 'ar'
                       ? `رمز القرار: ${
                           report.verdictCode === 'AUTHENTIC_VERIFIED'
@@ -2331,10 +2337,10 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
               </div>
               <span
-                className={`font-mono text-[11px] font-bold px-3 py-1 rounded-xl shrink-0 ${
+                className={`font-mono text-xs font-bold px-3 py-1.5 rounded-xl shrink-0 ${
                   report.verdictCode === 'AUTHENTIC_VERIFIED'
-                    ? 'bg-gradient-to-r from-[#10b981] to-[#047857] text-white'
-                    : 'bg-gradient-to-r from-rose-500 to-rose-700 text-white'
+                    ? 'bg-[#10b981] text-zinc-950 shadow-md shadow-[#10b981]/20'
+                    : 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
                 }`}
               >
                 {report.verdictCode === 'AUTHENTIC_VERIFIED'
@@ -2348,39 +2354,39 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             </div>
 
             {/* LAYER 1: On-Device Mobile Edge Layer (60 FPS Pre-Filters) */}
-            <div className="rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] overflow-hidden">
-              <div className="px-4 py-2.5 bg-zinc-50 dark:bg-[#1f2128] border-b border-zinc-200/80 dark:border-white/[0.06] flex items-center justify-between">
+            <div className="rounded-[20px] border border-zinc-200/60 dark:border-white/[0.04] bg-zinc-100/90 dark:bg-[#1f2128] overflow-hidden shadow-xs">
+              <div className="px-4 py-3 bg-white dark:bg-[#14151b] border-b border-zinc-200/60 dark:border-white/[0.04] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-[#10b981] dark:text-[#6ee7b7]" />
-                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                  <Smartphone className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
+                  <span className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
                     {lang === 'ar'
                       ? 'الطبقة 1: أدوات الحافة على هاتف المستخدم (فحص الحدة والدقة واللمعان قبل الرفع)'
                       : 'Layer 1: On-Device Mobile Edge Pre-Filters (60 FPS Focus, Resolution & Glare Gates)'}
                   </span>
                 </div>
-                <span className="font-mono text-[11px] font-semibold text-[#10b981] dark:text-[#6ee7b7]">
+                <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
                   {lang === 'ar' ? '5 بوابات فحص' : '5 Edge Gates'}
                 </span>
               </div>
 
-              <div className="divide-y divide-zinc-200/70 dark:divide-white/[0.06] text-xs">
+              <div className="divide-y divide-zinc-200/60 dark:divide-white/[0.04] text-xs">
                 {/* 1.1 Laplacian Blur & Resolution DPI */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '01. فلتر لابلاس لفحص الضبابية ودقة الصورة (التباين ≥ 120 · الدقة ≥ 150 DPI)'
                         : '01. OpenCV.js WASM Continuous Laplacian Blur & Resolution Gate (σ² ≥ 120 · ≥ 150 DPI)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar' ? report.blurGate.statusLabelAr : report.blurGate.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.blurGate.passed
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2397,22 +2403,22 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 1.2 HSV Specular Glare */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '02. بوابة كشف لمعان الفلاش والانعكاس الضوئي الساطع (أقل من 5%)'
                         : '02. Mobile GPU / HSV Specular Glare & Flash Hotspot Gate (V ≥ 245, S ≤ 30 < 5%)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar' ? report.glareGate.statusLabelAr : report.glareGate.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.glareGate.passed
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2429,22 +2435,22 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 1.3 Canny Edge + 4-Corner Contour */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '03. كاشف الحواف ومحاذاة الزوايا الأربع للبطاقة داخل الإطار'
                         : '03. Canny Edge + Convex Hull Quadrilateral Contour (4-Corner Alignment)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar' ? report.quadGate.statusLabelAr : report.quadGate.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.quadGate.allFourCornersInside
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2457,20 +2463,20 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 1.4 MobileNetV3 Edge Pre-Classifier */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '04. المصنف المسبق السريع على الجهاز (تنبيه الوثيقة الخاطئة خلال 15 م.ث)'
                         : '04. On-Device MobileNetV3 Pre-Classifier (15ms Wrong-Document Alert)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? `الفحص المسبق للوثيقة: مطابق لوثيقة ${formatDocTypeCode(report.edgePreClassifier.expectedType, 'ar')} (11.4 مللي ثانية)`
                         : report.edgePreClassifier.alertEn}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#6ee7b7] shrink-0">
+                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25 px-2.5 py-1 rounded-lg shrink-0">
                     <span>
                       {lang === 'ar'
                         ? `${report.edgePreClassifier.inferenceMs} م.ث`
@@ -2481,24 +2487,24 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 1.5 2D FFT Moiré Screen-Replay Detector */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '05. كاشف الترددات الدورية وتموجات الشاشات (منع تصوير شاشة أخرى)'
                         : '05. 2D Fast Fourier Transform (FFT) Moiré Detector (Screen-Replay Anti-Spoofing)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.fftMoireGate.statusLabelAr
                         : report.fftMoireGate.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       !report.fftMoireGate.isScreenReplaySpoof
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2517,36 +2523,36 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             </div>
 
             {/* LAYER 2: Pre-Flight Orientation & CLAHE Enhancement Tools */}
-            <div className="rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] overflow-hidden">
-              <div className="px-4 py-2.5 bg-zinc-50 dark:bg-[#1f2128] border-b border-zinc-200/80 dark:border-white/[0.06] flex items-center justify-between">
+            <div className="rounded-[20px] border border-zinc-200/60 dark:border-white/[0.04] bg-zinc-100/90 dark:bg-[#1f2128] overflow-hidden shadow-xs">
+              <div className="px-4 py-3 bg-white dark:bg-[#14151b] border-b border-zinc-200/60 dark:border-white/[0.04] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-[#10b981] dark:text-[#6ee7b7]" />
-                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                  <Sliders className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
+                  <span className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
                     {lang === 'ar'
                       ? 'الطبقة 2: أدوات المعالجة المسبقة وتوضيح الأختام واكتمال الوجهين'
                       : 'Layer 2: Pre-Flight Orientation, CLAHE Contrast & Dual-Side Completeness'}
                   </span>
                 </div>
-                <span className="font-mono text-[11px] font-semibold text-[#10b981] dark:text-[#6ee7b7]">
+                <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
                   {lang === 'ar' ? 'أقل من 30 م.ث قبل القراءة' : '<30ms Pre-OCR'}
                 </span>
               </div>
 
-              <div className="divide-y divide-zinc-200/70 dark:divide-white/[0.06] text-xs">
-                <div className="p-3 flex items-start justify-between gap-4">
+              <div className="divide-y divide-zinc-200/60 dark:divide-white/[0.04] text-xs">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '06. مصحح الاتجاه التلقائي السريع (تدوير 90°/270° للوضع الأفقي)'
                         : '06. 30ms Binary Hardware Auto-Orientation Normalizer (90°/270° Upright Flipper)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.orientationGate.statusLabelAr
                         : report.orientationGate.statusLabelEn}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#6ee7b7] shrink-0">
+                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25 px-2.5 py-1 rounded-lg shrink-0">
                     <span>
                       {lang === 'ar'
                         ? `${report.orientationGate.appliedRotationDeg}° (${report.orientationGate.executionMs} م.ث)`
@@ -2556,20 +2562,20 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                   </span>
                 </div>
 
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '07. معزز التباين التكيفي وتوضيح الأختام البنفسجية والزرقاء الباهتة'
                         : '07. CLAHE (Contrast Limited Adaptive Histogram Equalization) & Seal Enhancer'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.claheGate.statusLabelAr
                         : report.claheGate.statusLabelEn}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#6ee7b7] shrink-0">
+                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25 px-2.5 py-1 rounded-lg shrink-0">
                     <span>
                       {lang === 'ar'
                         ? `+${report.claheGate.contrastGainPercent}% تباين`
@@ -2579,24 +2585,24 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                   </span>
                 </div>
 
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '08. بوابة اكتمال الوجهين للبطاقات العراقية (الأمام والظهر معاً)'
                         : '08. Dual-Side Card Completeness Gate (FRONT + BACK Mandatory for Iraqi Cards)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.dualSideCompleteness.statusAr
                         : report.dualSideCompleteness.statusEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.dualSideCompleteness.passed
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2615,43 +2621,43 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
             </div>
 
             {/* LAYER 3: Document Forensics Tools (Catching Expired / Fake / Tampered Official IDs) */}
-            <div className="rounded-[20px] border border-zinc-200/80 dark:border-white/[0.07] bg-white dark:bg-[#181a20] overflow-hidden">
-              <div className="px-4 py-2.5 bg-zinc-50 dark:bg-[#1f2128] border-b border-zinc-200/80 dark:border-white/[0.06] flex items-center justify-between">
+            <div className="rounded-[20px] border border-zinc-200/60 dark:border-white/[0.04] bg-zinc-100/90 dark:bg-[#1f2128] overflow-hidden shadow-xs">
+              <div className="px-4 py-3 bg-white dark:bg-[#14151b] border-b border-zinc-200/60 dark:border-white/[0.04] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Fingerprint className="w-4 h-4 text-[#10b981] dark:text-[#6ee7b7]" />
-                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                  <Fingerprint className="w-4 h-4 text-[#10b981] dark:text-[#34d399]" />
+                  <span className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
                     {lang === 'ar'
                       ? 'الطبقة 3: أدوات الطب الشرعي الرقمي وفحص الصلاحية وكشف التزوير'
                       : 'Layer 3: Document Forensics & Validity Engine (ICAO Modulo-10, Expiry, Ghost SSIM & ArcFace)'}
                   </span>
                 </div>
-                <span className="font-mono text-[11px] font-semibold text-[#10b981] dark:text-[#6ee7b7]">
+                <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
                   {lang === 'ar' ? '4 محركات جنائية' : '4 Forensic Engines'}
                 </span>
               </div>
 
-              <div className="divide-y divide-zinc-200/70 dark:divide-white/[0.06] text-xs">
+              <div className="divide-y divide-zinc-200/60 dark:divide-white/[0.04] text-xs">
                 {/* 3.1 Full 4-Check-Digit ICAO Doc 9303 Modulo-10 & Expiry Engine */}
-                <div className="p-3 space-y-2">
+                <div className="p-3.5 space-y-2.5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="font-semibold text-zinc-900 dark:text-white">
+                      <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                         {lang === 'ar'
                           ? '09. محرك التحقق الرياضي للشريط الآلي وتاريخ نفاذ الوثيقة [7, 3, 1]'
                           : '09. Regula / ICAO Doc 9303 Modulo-10 Checksum & Expiration Validity Engine ([7, 3, 1])'}
                       </div>
-                      <p className="text-zinc-500 dark:text-[#8a8d98] mt-0.5">
+                      <p className="text-zinc-500 dark:text-[#8a8d98] mt-0.5 text-[11px]">
                         {lang === 'ar'
                           ? report.icaoMrzForensics.summaryAr
                           : report.icaoMrzForensics.summaryEn}
                       </p>
                     </div>
                     <span
-                      className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                      className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                         report.icaoMrzForensics.allCheckDigitsValid &&
                         report.icaoMrzForensics.frontToBackCrossMatchValid
-                          ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                          : 'text-rose-600 dark:text-rose-400'
+                          ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                          : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                       }`}
                     >
                       <span>
@@ -2673,10 +2679,10 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                     {report.icaoMrzForensics.checkDigits.map((cd) => (
                       <div
                         key={cd.field}
-                        className={`rounded-xl border p-2 font-mono text-[11px] space-y-1 ${
+                        className={`rounded-xl border p-2.5 font-mono text-[11px] space-y-1 ${
                           cd.passed
-                            ? 'border-[#10b981]/30 bg-[#10b981]/10 text-emerald-900 dark:text-[#6ee7b7]'
-                            : 'border-rose-500/40 bg-rose-500/10 text-rose-900 dark:text-rose-200'
+                            ? 'border-[#10b981]/25 bg-[#10b981]/10 text-emerald-950 dark:text-[#6ee7b7]'
+                            : 'border-rose-500/30 bg-rose-500/10 text-rose-950 dark:text-rose-200'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -2706,7 +2712,7 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                   </div>
 
                   {report.icaoMrzForensics.crossFaceDiscrepancies.length > 0 && (
-                    <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-2 text-[11px] text-rose-800 dark:text-rose-200 font-mono">
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11px] text-rose-900 dark:text-rose-200 font-mono">
                       {report.icaoMrzForensics.crossFaceDiscrepancies.map((d, i) => (
                         <div key={i}>
                           {lang === 'ar'
@@ -2721,24 +2727,24 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 3.2 Ghost Portrait Structural Similarity (OpenCV SSIM) */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '10. مطابقة التشابه الهيكلي للصورة الشبحية الليزرية (≥ 0.68 لمنع استبدال الصورة)'
                         : '10. Ghost Portrait Structural Similarity (OpenCV SSIM ≥ 0.68 Anti-Photo-Swap)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.ghostPortraitSsim.statusLabelAr
                         : report.ghostPortraitSsim.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.ghostPortraitSsim.passed
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>
@@ -2755,20 +2761,20 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 3.3 Circular Hough Transform + Hologram Verifier */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '11. فحص الختم الدائري الرسمي وانعكاس الهولوغرام الأمني'
                         : '11. Circular Hough Transform + Specular Histogram Clustering (Stamp & Hologram)'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.stampAndHologram.statusLabelAr
                         : report.stampAndHologram.statusLabelEn}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#6ee7b7] shrink-0">
+                  <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25 px-2.5 py-1 rounded-lg shrink-0">
                     <span>
                       {lang === 'ar'
                         ? `الختم ${report.stampAndHologram.circularStampConfidence}% · الهولوغرام ${report.stampAndHologram.hologramSpecularityScore}%`
@@ -2779,24 +2785,24 @@ export const ZainCashEdgeForensicsLab: React.FC<ZainCashEdgeForensicsLabProps> =
                 </div>
 
                 {/* 3.4 ArcFace / InsightFace 512-D Biometric Face Matching + Passive Liveness */}
-                <div className="p-3 flex items-start justify-between gap-4">
+                <div className="p-3.5 flex items-start justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.015] transition-colors">
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-zinc-900 dark:text-white">
+                    <div className="font-semibold text-zinc-900 dark:text-white text-xs">
                       {lang === 'ar'
                         ? '12. مطابقة الوجه البيومترية (512 بعداً) وفحص الحيوية السلبية'
                         : '12. ArcFace / InsightFace (512-D Biometric Face Match) + Passive Liveness Tracking'}
                     </div>
-                    <p className="text-zinc-500 dark:text-[#8a8d98]">
+                    <p className="text-zinc-500 dark:text-[#8a8d98] text-[11px]">
                       {lang === 'ar'
                         ? report.arcFaceBiometrics.statusLabelAr
                         : report.arcFaceBiometrics.statusLabelEn}
                     </p>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 ${
                       report.arcFaceBiometrics.passed
-                        ? 'text-[#10b981] dark:text-[#6ee7b7]'
-                        : 'text-rose-600 dark:text-rose-400'
+                        ? 'text-[#10b981] dark:text-[#34d399] bg-[#10b981]/10 border border-[#10b981]/25'
+                        : 'text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/25'
                     }`}
                   >
                     <span>

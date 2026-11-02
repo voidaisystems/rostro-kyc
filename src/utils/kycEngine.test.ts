@@ -1183,7 +1183,6 @@ test('Kurdish Multi-Dialect Engine: parses Sorani & Badini addresses and transla
   const {
     parseIraqiStructuredAddress,
     buildKurdishDialectSimulationFields,
-    simulateKurdishRegionalDocument,
     analyzeAndTranslateKurdishDocument,
   } = await import('./kycEngine.ts');
 
@@ -1229,7 +1228,7 @@ test('Kurdish Multi-Dialect Engine: parses Sorani & Badini addresses and transla
       addressKurdish: 'گەڕەکی بەختیاری، کۆڵانی ١٤، خانووی ٢٨، سلێمانی',
     },
   };
-  const translated = analyzeAndTranslateKurdishDocument(sampleDoc as any, 'SULAYMANIYAH_SORANI_RESIDENCE');
+  const translated = analyzeAndTranslateKurdishDocument(sampleDoc as any);
   assert.equal(translated.hasKurdishContent, true);
   assert.equal(translated.dialectNameEn.includes('Sulaymaniyah'), true);
   assert.equal(translated.translatedFullNameAr, 'شيركو نوزاد قادر طالباني');

@@ -3,6 +3,7 @@ import {
   getDocumentSideRequirement,
   normalizeMultiScriptText,
   type DocumentType,
+  type OcrBoundingBox,
 } from './kycEngine.ts';
 
 export interface LaplacianBlurResult {

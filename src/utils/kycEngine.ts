@@ -120,6 +120,7 @@ export interface SlotExtractionSummary {
   bloodType?: string;
   ocrConfidence: number;
   boundingBoxes: OcrBoundingBox[];
+  cardBoundingBox?: [number, number, number, number];
   missingExpectedFields: MissingExpectedField[];
 }
 

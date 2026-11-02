@@ -104,7 +104,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
   }, [externalLoupeEnabled]);
 
   // Upgrade 1.1: Auto-Crop, Deskew & CLAHE Image Enhancement Pre-Processor
-  const [autoEnhanceEnabled, setAutoEnhanceEnabled] = useState<boolean>(false);
+  const [autoEnhanceEnabled, setAutoEnhanceEnabled] = useState<boolean>(true);
   const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
   const [enhanceResult, setEnhanceResult] = useState<AutoCropEnhanceResult | null>(null);
 
@@ -117,7 +117,18 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
     let cancelled = false;
     if (autoEnhanceEnabled && activeImageUrl) {
       setIsEnhancing(true);
-      autoCropDeskewAndEnhanceCardDataUrl(activeImageUrl)
+      const targetCardBox =
+        activeFace === 'BACK' ? document.backCardBoundingBox : document.cardBoundingBox;
+      const targetBoxes =
+        activeFace === 'BACK' && document.backBoundingBoxes && document.backBoundingBoxes.length > 0
+          ? document.backBoundingBoxes
+          : document.boundingBoxes;
+
+      autoCropDeskewAndEnhanceCardDataUrl(activeImageUrl, {
+        cardBoundingBox: targetCardBox,
+        boundingBoxes: targetBoxes,
+        docType: document.type,
+      })
         .then((res) => {
           if (!cancelled) {
             setEnhanceResult(res);
@@ -133,7 +144,16 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [autoEnhanceEnabled, activeImageUrl]);
+  }, [
+    autoEnhanceEnabled,
+    activeImageUrl,
+    activeFace,
+    document.cardBoundingBox,
+    document.backCardBoundingBox,
+    document.boundingBoxes,
+    document.backBoundingBoxes,
+    document.type,
+  ]);
 
   const getMicroPrintZoneLabel = (xPct: number, yPct: number) => {
     if (yPct < 22) {
@@ -204,6 +224,52 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
     activeFace === 'BACK' && document.backBoundingBoxes && document.backBoundingBoxes.length > 0
       ? document.backBoundingBoxes
       : document.boundingBoxes;
+
+  // Dynamically transform and scale bounding boxes so they "grow with it" on the cropped card,
+  // framing the text, numbers, and portrait tightly without staying clamped to raw uncropped space.
+  const displayedBoxes = useMemo(() => {
+    if (!activeBoxes || activeBoxes.length === 0) return [];
+    if (!autoEnhanceEnabled || !enhanceResult?.cropApplied || !enhanceResult.cropBoxPct) {
+      return activeBoxes;
+    }
+    const [cropTop, cropLeft, cropBottom, cropRight] = enhanceResult.cropBoxPct;
+    const cropH = Math.max(1, cropBottom - cropTop);
+    const cropW = Math.max(1, cropRight - cropLeft);
+
+    return activeBoxes
+      .map((box) => {
+        const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
+        const boxBottom = topPct + heightPct;
+        const boxRight = leftPct + widthPct;
+
+        // Prune boxes completely outside the cropped card boundary (e.g. background/shirt outliers)
+        if (
+          boxBottom < cropTop - 2 ||
+          topPct > cropBottom + 2 ||
+          boxRight < cropLeft - 2 ||
+          leftPct > cropRight + 2
+        ) {
+          return null;
+        }
+
+        // Project coordinate into cropped image view (0..100%)
+        const scaledTop = Math.max(0, Math.min(96, ((topPct - cropTop) / cropH) * 100));
+        const scaledLeft = Math.max(0, Math.min(96, ((leftPct - cropLeft) / cropW) * 100));
+        const scaledHeight = Math.max(2.8, Math.min(100 - scaledTop, (heightPct / cropH) * 100));
+        const scaledWidth = Math.max(3.5, Math.min(100 - scaledLeft, (widthPct / cropW) * 100));
+
+        return {
+          ...box,
+          box_2d: [
+            Math.round(scaledTop * 10),
+            Math.round(scaledLeft * 10),
+            Math.round((scaledTop + scaledHeight) * 10),
+            Math.round((scaledLeft + scaledWidth) * 10),
+          ] as [number, number, number, number],
+        };
+      })
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+  }, [activeBoxes, autoEnhanceEnabled, enhanceResult]);
 
   return (
     <div className="border border-zinc-200/80 dark:border-white/[0.07] rounded-[20px] bg-[#f6f5fc] dark:bg-[#1f2128] overflow-hidden shadow-sm">
@@ -623,8 +689,8 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
               )}
               {showOcrBoxes && (
                 <div className="absolute inset-0 pointer-events-none">
-                  {activeBoxes && activeBoxes.length > 0 ? (
-                    activeBoxes.map((box, idx) => {
+                  {displayedBoxes && displayedBoxes.length > 0 ? (
+                    displayedBoxes.map((box, idx) => {
                       const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
                       const isTarget =
                         highlightedField === box.field ||

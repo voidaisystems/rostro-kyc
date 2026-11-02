@@ -619,15 +619,9 @@ export function detectOptimalCardRotation(
     return 270;
   }
 
-  // Horizontal image: only flag 180° upside-down when there is a dark inverted header band at the bottom
-  if (
-    scores.bottomScore > scores.topScore * 2.2 &&
-    scores.bottomScore > 0.35 &&
-    scores.bottomBandLuminance + 22 < scores.topBandLuminance
-  ) {
-    return 180;
-  }
-
+  // Horizontal image: NEVER automatically flip 180° on raw camera/uploaded images.
+  // Dark clothing, shadows, beards, and desks at the bottom of the photo frequently trigger false inverted-header detections.
+  // The user has an explicit manual 180° button if a specimen is truly upside-down.
   return 0;
 }
 
@@ -1514,13 +1508,20 @@ export interface AutoCropEnhanceResult {
   summaryAr: string;
 }
 
+export interface AutoCropOptions {
+  cardBoundingBox?: [number, number, number, number]; // [ymin, xmin, ymax, xmax] in 0..1000
+  boundingBoxes?: OcrBoundingBox[];
+  docType?: DocumentType;
+}
+
 /**
  * 2.3 Auto-Crop, Deskew & CLAHE Image Enhancement Pre-Processor
  * Automatically detects the card boundary inside a camera/upload frame, crops surrounding clutter,
  * corrects slight rotational skew (-3.5° to +3.5°), and applies CLAHE adaptive contrast + circular ink seal boost.
  */
 export async function autoCropDeskewAndEnhanceCardDataUrl(
-  rawDataUrl: string
+  rawDataUrl: string,
+  options?: AutoCropOptions
 ): Promise<AutoCropEnhanceResult> {
   if (typeof document === 'undefined' || !rawDataUrl) {
     return {
@@ -1545,14 +1546,6 @@ export async function autoCropDeskewAndEnhanceCardDataUrl(
         const srcW = Math.max(1, img.naturalWidth || img.width);
         const srcH = Math.max(1, img.naturalHeight || img.height);
 
-        // Step 1: Analyze low-res luminance & edge gradient map to detect card bounding box and tilt angle
-        const probeW = Math.min(320, srcW);
-        const probeH = Math.max(1, Math.round((srcH / srcW) * probeW));
-        const probeCanvas = document.createElement('canvas');
-        probeCanvas.width = probeW;
-        probeCanvas.height = probeH;
-        const probeCtx = probeCanvas.getContext('2d');
-
         let topPct = 0;
         let leftPct = 0;
         let bottomPct = 100;
@@ -1560,11 +1553,69 @@ export async function autoCropDeskewAndEnhanceCardDataUrl(
         let deskewAngleDeg = 0;
         let cropApplied = false;
 
+        // Mode 1: Direct cardBoundingBox (from Gemini or card edge detector: [ymin, xmin, ymax, xmax] in 0..1000)
+        if (options?.cardBoundingBox && options.cardBoundingBox.length === 4) {
+          const [cMinY, cMinX, cMaxY, cMaxX] = options.cardBoundingBox;
+          if (cMaxY > cMinY + 120 && cMaxX > cMinX + 120) {
+            topPct = Math.max(0, Math.floor(cMinY / 10) - 2);
+            leftPct = Math.max(0, Math.floor(cMinX / 10) - 2);
+            bottomPct = Math.min(100, Math.ceil(cMaxY / 10) + 2);
+            rightPct = Math.min(100, Math.ceil(cMaxX / 10) + 2);
+            if (topPct > 2 || leftPct > 2 || bottomPct < 98 || rightPct < 98) {
+              cropApplied = true;
+            }
+          }
+        }
+
+        // Mode 2: Union of detected OCR boundingBoxes (all text & photo fields on the card interior)
+        if (!cropApplied && options?.boundingBoxes && options.boundingBoxes.length >= 2) {
+          let bMinY = 1000;
+          let bMinX = 1000;
+          let bMaxY = 0;
+          let bMaxX = 0;
+          let validCount = 0;
+
+          for (const b of options.boundingBoxes) {
+            if (!b.box_2d || b.box_2d.length < 4) continue;
+            const [y0, x0, y1, x1] = b.box_2d;
+            if (y1 - y0 < 8 || x1 - x0 < 8) continue;
+            bMinY = Math.min(bMinY, y0);
+            bMinX = Math.min(bMinX, x0);
+            bMaxY = Math.max(bMaxY, y1);
+            bMaxX = Math.max(bMaxX, x1);
+            validCount++;
+          }
+
+          if (validCount >= 2 && bMaxY > bMinY + 80 && bMaxX > bMinX + 80) {
+            const heightSpan = bMaxY - bMinY;
+            const widthSpan = bMaxX - bMinX;
+            const padY = Math.max(25, Math.round(heightSpan * 0.08));
+            const padX = Math.max(25, Math.round(widthSpan * 0.07));
+
+            topPct = Math.max(0, Math.floor((bMinY - padY) / 10));
+            leftPct = Math.max(0, Math.floor((bMinX - padX) / 10));
+            bottomPct = Math.min(100, Math.ceil((bMaxY + padY) / 10));
+            rightPct = Math.min(100, Math.ceil((bMaxX + padX) / 10));
+
+            if (topPct > 2 || leftPct > 2 || bottomPct < 98 || rightPct < 98) {
+              cropApplied = true;
+            }
+          }
+        }
+
+        // Mode 3: Visual edge gradient & contrast detection
+        const probeW = Math.min(320, srcW);
+        const probeH = Math.max(1, Math.round((srcH / srcW) * probeW));
+        const probeCanvas = document.createElement('canvas');
+        probeCanvas.width = probeW;
+        probeCanvas.height = probeH;
+        const probeCtx = probeCanvas.getContext('2d');
+
         if (probeCtx) {
           probeCtx.drawImage(img, 0, 0, probeW, probeH);
           const probeData = probeCtx.getImageData(0, 0, probeW, probeH).data;
 
-          // Compute row and column edge energy to locate card boundaries if surrounded by dark/uniform background
+          // Compute row and column edge energy
           const rowEnergy = new Float32Array(probeH);
           const colEnergy = new Float32Array(probeW);
           let leftEdgeCenterY = 0;
@@ -1594,35 +1645,37 @@ export async function autoCropDeskewAndEnhanceCardDataUrl(
             }
           }
 
-          const avgRow = rowEnergy.reduce((a, b) => a + b, 0) / probeH;
-          const avgCol = colEnergy.reduce((a, b) => a + b, 0) / probeW;
-          const rowThresh = avgRow * 0.42;
-          const colThresh = avgCol * 0.42;
+          if (!cropApplied) {
+            const avgRow = rowEnergy.reduce((a, b) => a + b, 0) / probeH;
+            const avgCol = colEnergy.reduce((a, b) => a + b, 0) / probeW;
+            const rowThresh = avgRow * 0.42;
+            const colThresh = avgCol * 0.42;
 
-          let minY = 0;
-          let maxY = probeH - 1;
-          let minX = 0;
-          let maxX = probeW - 1;
-          while (minY < probeH * 0.25 && rowEnergy[minY] < rowThresh) minY++;
-          while (maxY > probeH * 0.75 && rowEnergy[maxY] < rowThresh) maxY--;
-          while (minX < probeW * 0.25 && colEnergy[minX] < colThresh) minX++;
-          while (maxX > probeW * 0.75 && colEnergy[maxX] < colThresh) maxX--;
+            let minY = 0;
+            let maxY = probeH - 1;
+            let minX = 0;
+            let maxX = probeW - 1;
+            while (minY < probeH * 0.40 && rowEnergy[minY] < rowThresh) minY++;
+            while (maxY > probeH * 0.60 && rowEnergy[maxY] < rowThresh) maxY--;
+            while (minX < probeW * 0.42 && colEnergy[minX] < colThresh) minX++;
+            while (maxX > probeW * 0.58 && colEnergy[maxX] < colThresh) maxX--;
 
-          // Pad by 2.5% so card borders are never clipped
-          const padX = Math.round(probeW * 0.025);
-          const padY = Math.round(probeH * 0.025);
-          minX = Math.max(0, minX - padX);
-          maxX = Math.min(probeW - 1, maxX + padX);
-          minY = Math.max(0, minY - padY);
-          maxY = Math.min(probeH - 1, maxY + padY);
+            // Pad by 2.5% so card borders are never clipped
+            const padX = Math.round(probeW * 0.025);
+            const padY = Math.round(probeH * 0.025);
+            minX = Math.max(0, minX - padX);
+            maxX = Math.min(probeW - 1, maxX + padX);
+            minY = Math.max(0, minY - padY);
+            maxY = Math.min(probeH - 1, maxY + padY);
 
-          topPct = Math.round((minY / probeH) * 100);
-          leftPct = Math.round((minX / probeW) * 100);
-          bottomPct = Math.round((maxY / probeH) * 100);
-          rightPct = Math.round((maxX / probeW) * 100);
+            topPct = Math.round((minY / probeH) * 100);
+            leftPct = Math.round((minX / probeW) * 100);
+            bottomPct = Math.round((maxY / probeH) * 100);
+            rightPct = Math.round((maxX / probeW) * 100);
 
-          if (topPct >= 2 || leftPct >= 2 || bottomPct <= 98 || rightPct <= 98) {
-            cropApplied = true;
+            if (topPct >= 2 || leftPct >= 2 || bottomPct <= 98 || rightPct <= 98) {
+              cropApplied = true;
+            }
           }
 
           if (leftEdgeWeight > 0 && rightEdgeWeight > 0) {

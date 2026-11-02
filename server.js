@@ -672,14 +672,65 @@ const server = http.createServer(async (req, res) => {
             { field: 'dob', label: `DOB: ${dob}`, value: dob, box_2d: [530, 340, 710, 920], confidence: 0.98 }
           ];
 
-      // Ensure bottom-left family/serial code has a visible bounding box overlay
+      // Compute card isolation bounding box from Gemini or union of valid field boxes
+      let cardBoundingBox = (geminiDoc && Array.isArray(geminiDoc.card_bounding_box) && geminiDoc.card_bounding_box.length === 4)
+        ? geminiDoc.card_bounding_box
+        : null;
+
+      if (!cardBoundingBox && boundingBoxes.length >= 2) {
+        let bMinY = 1000, bMinX = 1000, bMaxY = 0, bMaxX = 0;
+        for (const b of boundingBoxes) {
+          bMinY = Math.min(bMinY, b.box_2d[0]);
+          bMinX = Math.min(bMinX, b.box_2d[1]);
+          bMaxY = Math.max(bMaxY, b.box_2d[2]);
+          bMaxX = Math.max(bMaxX, b.box_2d[3]);
+        }
+        if (bMaxY > bMinY + 60 && bMaxX > bMinX + 60) {
+          const padY = Math.max(20, Math.round((bMaxY - bMinY) * 0.08));
+          const padX = Math.max(20, Math.round((bMaxX - bMinX) * 0.07));
+          cardBoundingBox = [
+            Math.max(0, bMinY - padY),
+            Math.max(0, bMinX - padX),
+            Math.min(1000, bMaxY + padY),
+            Math.min(1000, bMaxX + padX),
+          ];
+        }
+      }
+
+      // Ensure bottom-left family/serial code has a visible bounding box placed safely INSIDE the card perimeter
       if (familyNumber && familyNumber !== '[غير موجود / MISSING]' && !boundingBoxes.some(b => b.field === 'familyNumber')) {
-        boundingBoxes.push({
-          field: 'familyNumber',
-          label: `Card Serial / الرقم التسلسلي: ${familyNumber}`,
-          value: familyNumber,
-          box_2d: [780, 200, 880, 430], // Coordinates corresponding to bottom-left corner under portrait
-          confidence: 0.99
+        if (cardBoundingBox) {
+          const [cY0, cX0, cY1, cX1] = cardBoundingBox;
+          const cH = cY1 - cY0;
+          const cW = cX1 - cX0;
+          boundingBoxes.push({
+            field: 'familyNumber',
+            label: `Card Serial / الرقم التسلسلي: ${familyNumber}`,
+            value: familyNumber,
+            box_2d: [
+              Math.round(cY0 + cH * 0.78),
+              Math.round(cX0 + cW * 0.04),
+              Math.round(cY0 + cH * 0.94),
+              Math.round(cX0 + cW * 0.40),
+            ],
+            confidence: 0.99
+          });
+        }
+      }
+
+      // Filter out any outlier boxes located far outside the physical card boundary (e.g. on clothes, background)
+      if (cardBoundingBox) {
+        const [cMinY, cMinX, cMaxY, cMaxX] = cardBoundingBox;
+        boundingBoxes = boundingBoxes.filter((b) => {
+          const [y0, x0, y1, x1] = b.box_2d;
+          const centerY = (y0 + y1) / 2;
+          const centerX = (x0 + x1) / 2;
+          return (
+            centerY >= cMinY - 40 &&
+            centerY <= cMaxY + 40 &&
+            centerX >= cMinX - 40 &&
+            centerX <= cMaxX + 40
+          );
         });
       }
 
@@ -738,6 +789,8 @@ const server = http.createServer(async (req, res) => {
           external_verification_status: 'EXTERNAL_VERIFICATION_UNAVAILABLE'
         },
         boundingBoxes,
+        cardBoundingBox,
+        rotationNeededClockwiseDeg: 0,
         missingExpectedFields,
         engineMode: isLive ? 'gemini-vlm-live' : 'deterministic-fallback'
       };

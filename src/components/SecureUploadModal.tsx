@@ -145,6 +145,8 @@ interface ServerExtractionResponse {
   nineSignals: NineVerificationSignals;
   boundingBoxes: OcrBoundingBox[];
   backBoundingBoxes?: OcrBoundingBox[];
+  cardBoundingBox?: [number, number, number, number];
+  backCardBoundingBox?: [number, number, number, number];
   missingExpectedFields?: MissingExpectedField[];
   slot1Summary?: SlotExtractionSummary;
   slot2Summary?: SlotExtractionSummary;
@@ -924,13 +926,14 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
         setLastExtraction(data);
 
-        // If Gemini VLM detected that the uploaded image is still upside-down (180°) or sideways (90°/270°),
-        // automatically rotate the preview image upright so it is never displayed upside-down!
+        // If Gemini VLM detected that the uploaded image is sideways (90°/270°),
+        // automatically rotate the preview image upright so it is never displayed sideways.
+        // Never auto-flip 180° blindly on horizontal photos (users have a dedicated 180° button).
         let finalFrontUrl = base64Data;
         if (
           base64Data &&
           data.rotationNeededClockwiseDeg &&
-          [90, 180, 270].includes(data.rotationNeededClockwiseDeg)
+          [90, 270].includes(data.rotationNeededClockwiseDeg)
         ) {
           const correctedFront = await rotateImageDataUrl(
             base64Data,
@@ -946,7 +949,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
         if (
           backBase64Data &&
           data.backRotationNeededClockwiseDeg &&
-          [90, 180, 270].includes(data.backRotationNeededClockwiseDeg)
+          [90, 270].includes(data.backRotationNeededClockwiseDeg)
         ) {
           const correctedBack = await rotateImageDataUrl(
             backBase64Data,
@@ -1459,7 +1462,13 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
   const handleAutoCropEnhanceSlot = async (slot: 1 | 2) => {
     const sourceUrl = slot === 1 ? frontPreviewRef.current : backPreviewRef.current;
     if (!sourceUrl) return;
-    const enhanced = await autoCropDeskewAndEnhanceCardDataUrl(sourceUrl);
+    const targetBoxes = slot === 1 ? lastExtraction?.boundingBoxes : lastExtraction?.backBoundingBoxes;
+    const targetCardBox = slot === 1 ? lastExtraction?.cardBoundingBox : lastExtraction?.backCardBoundingBox;
+    const enhanced = await autoCropDeskewAndEnhanceCardDataUrl(sourceUrl, {
+      cardBoundingBox: targetCardBox,
+      boundingBoxes: targetBoxes,
+      docType: activeDocType,
+    });
     if (slot === 1) {
       frontPreviewRef.current = enhanced.enhancedDataUrl;
       setCustomPreviewUrl(enhanced.enhancedDataUrl);
@@ -2082,6 +2091,8 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           customBackPreviewUrl,
           boundingBoxes: extracted?.boundingBoxes,
           backBoundingBoxes: extracted?.backBoundingBoxes,
+          cardBoundingBox: extracted?.cardBoundingBox,
+          backCardBoundingBox: extracted?.backCardBoundingBox,
           missingExpectedFields: missingFields,
           slot1Summary: extracted?.slot1Summary,
           slot2Summary: extracted?.slot2Summary,

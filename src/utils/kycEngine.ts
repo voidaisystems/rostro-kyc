@@ -212,6 +212,8 @@ export interface KYCDocument {
   customImageUrl?: string;
   boundingBoxes?: OcrBoundingBox[];
   backBoundingBoxes?: OcrBoundingBox[];
+  cardBoundingBox?: [number, number, number, number];
+  backCardBoundingBox?: [number, number, number, number];
   missingExpectedFields?: MissingExpectedField[];
   slot1Summary?: SlotExtractionSummary;
   slot2Summary?: SlotExtractionSummary;

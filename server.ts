@@ -232,6 +232,8 @@ interface ExtractedIdPayload {
   nineSignals: NineVerificationSignals;
   boundingBoxes: OcrBoundingBox[];
   backBoundingBoxes?: OcrBoundingBox[];
+  cardBoundingBox?: [number, number, number, number];
+  backCardBoundingBox?: [number, number, number, number];
   missingExpectedFields: MissingExpectedField[];
   slot1Summary?: SlotExtractionSummary;
   slot2Summary?: SlotExtractionSummary;
@@ -655,8 +657,11 @@ FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA IN BOTH ARABIC AND ENGLISH
      * Translate Kurdish directorate headers: Sorani "بەڕێوەبەرایەتی" or Badini "ڕێڤەبەریا" -> "مديرية"; "نوسینگەی زانیاری" or "نڤیسینگەها پێزانینان" -> "مكتب معلومات".
      * Normalize Kurdish letters in names (پ->ب, چ->ج, ژ->ج, ڤ->ف, گ->ك, ڵ->ل, ڕ->ر, ۆ->و, ێ->ي, ە) into standard Arabic in "fullNameAr" and English in "fullNameEn".
 14. mrzLine1, mrzLine2, mrzLine3: Exact MRZ lines if visibly printed on the document (e.g. 2-line 44-char TD3 MRZ on Passports starting with P<IRQ..., or 3-line 30-char TD1 MRZ on National IDs).
-15. boundingBoxes (ACCURATE COORDINATES FOR ALL VISIBLE FIELDS IN 0..1000 SCALE [ymin, xmin, ymax, xmax]):
-    Return accurate bounding boxes tightly wrapping the actual text/photo positions on THIS image for:
+15. cardBoundingBox (CARD ISOLATION BOUNDARY IN 0..1000 SCALE [ymin, xmin, ymax, xmax]):
+    - Detect and return the exact bounding box enclosing the physical outer perimeter of the ID card or passport bio-page.
+    - Tightly isolate the document boundary, EXCLUDING fingers, hands, clothing, background wallpaper, desks, or room surroundings.
+16. boundingBoxes (ACCURATE COORDINATES FOR ALL VISIBLE FIELDS IN 0..1000 SCALE [ymin, xmin, ymax, xmax]):
+    - Return accurate bounding boxes tightly wrapping the actual text/photo positions on THIS image for:
     - portraitPhoto (holder face photo on the left)
     - officialSeal (Republic of Iraq eagle emblem at top center)
     - docNumber (Passport No. e.g. A18083401 at top right, or 12-digit National ID under eagle)
@@ -667,6 +672,11 @@ FIELD EXTRACTION DIRECTIVES (EXTRACT ALL VISIBLE DATA IN BOTH ARABIC AND ENGLISH
     - expiryDate (Date of Expiry / تاريخ النفاذ)
     - governorate (Place of Birth / محل الميلاد or Issuing Authority / جهة الاصدار)
     - mrzLine1 & mrzLine2 (the machine readable zone lines at the bottom if visible)
+    - CRITICAL INVARIANT: All field boundingBoxes MUST be positioned strictly INSIDE the cardBoundingBox. NEVER place any bounding box outside the card perimeter (e.g. NEVER on clothing, shirts, hands, or background).
+17. rotationNeededClockwiseDeg:
+    - MUST be 0 if the text is horizontal and readable (right-side up).
+    - ONLY return 90 or 270 if the image was captured sideways in vertical orientation.
+    - NEVER return 180 unless the entire card text is upside down.
 
 RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
 {
@@ -709,6 +719,7 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
   "hasGlare": false,
   "hasBlur": false,
   "rotationNeededClockwiseDeg": 0,
+  "cardBoundingBox": [220, 150, 780, 850],
   "boundingBoxes": [
     {
       "field": "fullName",
@@ -1524,6 +1535,54 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       `${parsed.governorateKey || ''} ${governorateEn} ${governorateAr} ${address}`
     );
 
+    let cardBoundingBox: [number, number, number, number] | undefined = undefined;
+    if (Array.isArray(parsed.cardBoundingBox) && parsed.cardBoundingBox.length === 4) {
+      const [ymin, xmin, ymax, xmax] = parsed.cardBoundingBox.map(Number);
+      if (!isNaN(ymin) && !isNaN(xmin) && !isNaN(ymax) && !isNaN(xmax) && ymax > ymin + 80 && xmax > xmin + 80) {
+        cardBoundingBox = [
+          Math.max(0, Math.min(1000, Math.round(ymin))),
+          Math.max(0, Math.min(1000, Math.round(xmin))),
+          Math.max(0, Math.min(1000, Math.round(ymax))),
+          Math.max(0, Math.min(1000, Math.round(xmax))),
+        ];
+      }
+    }
+    if (!cardBoundingBox && validBoxes.length >= 2) {
+      let bMinY = 1000, bMinX = 1000, bMaxY = 0, bMaxX = 0;
+      for (const b of validBoxes) {
+        bMinY = Math.min(bMinY, b.box_2d[0]);
+        bMinX = Math.min(bMinX, b.box_2d[1]);
+        bMaxY = Math.max(bMaxY, b.box_2d[2]);
+        bMaxX = Math.max(bMaxX, b.box_2d[3]);
+      }
+      if (bMaxY > bMinY + 60 && bMaxX > bMinX + 60) {
+        const padY = Math.max(20, Math.round((bMaxY - bMinY) * 0.08));
+        const padX = Math.max(20, Math.round((bMaxX - bMinX) * 0.07));
+        cardBoundingBox = [
+          Math.max(0, bMinY - padY),
+          Math.max(0, bMinX - padX),
+          Math.min(1000, bMaxY + padY),
+          Math.min(1000, bMaxX + padX),
+        ];
+      }
+    }
+
+    // Filter out outlier boxes located far outside the card boundary (e.g. spurious boxes placed on clothing)
+    if (cardBoundingBox) {
+      const [cMinY, cMinX, cMaxY, cMaxX] = cardBoundingBox;
+      validBoxes = validBoxes.filter((b) => {
+        const [y0, x0, y1, x1] = b.box_2d;
+        const centerY = (y0 + y1) / 2;
+        const centerX = (x0 + x1) / 2;
+        return (
+          centerY >= cMinY - 45 &&
+          centerY <= cMaxY + 45 &&
+          centerX >= cMinX - 45 &&
+          centerX <= cMaxX + 45
+        );
+      });
+    }
+
     return {
       slotIndex,
       detectedSide,
@@ -1561,6 +1620,7 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
       mrzLine3: parsed.mrzLine3 && !isMissingOrUnclearValue(parsed.mrzLine3) ? String(parsed.mrzLine3).trim() : undefined,
       ocrConfidence: Math.min(99, Math.max(65, Math.round(Number(parsed.ocrConfidence) || 97))),
       boundingBoxes: validBoxes,
+      cardBoundingBox,
       missingExpectedFields: Array.isArray(parsed.missingExpectedFields)
         ? parsed.missingExpectedFields
         : [],
@@ -2050,6 +2110,8 @@ RETURN STRICTLY A SINGLE JSON OBJECT WITH THESE EXACT KEYS:
         },
         boundingBoxes: primarySlot.boundingBoxes,
         backBoundingBoxes: secondarySlot?.boundingBoxes,
+        cardBoundingBox: primarySlot.cardBoundingBox,
+        backCardBoundingBox: secondarySlot?.cardBoundingBox,
         missingExpectedFields,
         slot1Summary: slot1Result || undefined,
         slot2Summary: slot2Result || undefined,

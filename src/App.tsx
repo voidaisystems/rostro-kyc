@@ -27,7 +27,6 @@ import {
   FolderClosed,
   Layers,
   Sliders,
-  History,
   ChevronRight,
   ChevronLeft,
   PanelLeft,
@@ -52,9 +51,7 @@ import {
   evaluateApplicantWithRules,
   filterAndSortApplicants,
   runAutomatedBatchWorkflow,
-  verifyCryptographicAuditChain,
   type AntiSpoofSimulationPreset,
-  type AuditChainVerificationReport,
   type AutomationConfig,
   type DocumentType,
   type KurdishRegionalSimulationPreset,
@@ -92,8 +89,7 @@ type ActiveSection =
   | 'forensics'
   | 'challenge'
   | 'vault'
-  | 'automation'
-  | 'audit';
+  | 'automation';
 
 export default function App() {
   // Default to English or Arabic seamlessly; let's start in English to match the reference screenshot labels while keeping 1-click Arabic RTL switch in the top header
@@ -121,12 +117,6 @@ export default function App() {
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [focusedQueueIndex, setFocusedQueueIndex] = useState<number>(0);
-
-  // Cryptographic Audit Chain Verification state (Upgrade 3.2)
-  const [auditChainReport, setAuditChainReport] = useState<AuditChainVerificationReport | null>(
-    null
-  );
-  const [isVerifyingChain, setIsVerifyingChain] = useState<boolean>(false);
 
   // Batch Execution Notification Banner
   const [batchBannerMessage, setBatchBannerMessage] = useState<string | null>(null);
@@ -193,15 +183,6 @@ export default function App() {
     );
   }, [applicants, vaultSearchQuery]);
 
-  const allAuditEvents = useMemo(() => {
-    return applicants.flatMap((applicant) =>
-      applicant.auditTrail.map((evt) => ({
-        evt,
-        applicant,
-      }))
-    );
-  }, [applicants]);
-
   // Document category breakdown for the Donut Chart (Image 1 bottom-right card)
   const categoryBreakdown = useMemo(() => {
     const docs = applicants.flatMap((a) => a.documents);
@@ -251,36 +232,6 @@ export default function App() {
         : (currentIdx - 1 + filteredApplicants.length) % filteredApplicants.length;
     setFocusedQueueIndex(nextIdx);
     setSelectedApplicantId(filteredApplicants[nextIdx].id);
-  };
-
-  // Upgrade 3.2: Cryptographic Audit Chain Verifier handler (POST /api/kyc/verify-chain)
-  const handleVerifyCryptographicAuditChain = async () => {
-    setIsVerifyingChain(true);
-    const payloadEvents = allAuditEvents.map(({ evt, applicant }) => ({
-      id: evt.id,
-      timestamp: evt.timestamp,
-      actorEn: evt.actorEn,
-      actionEn: evt.actionEn,
-      applicantRef: applicant.referenceCode,
-      cbiLaw78HmacReceipt: evt.cbiLaw78HmacReceipt,
-    }));
-    try {
-      const resp = await fetch('/api/kyc/verify-chain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ events: payloadEvents }),
-      });
-      if (resp.ok) {
-        const data = (await resp.json()) as AuditChainVerificationReport;
-        setAuditChainReport(data);
-      } else {
-        setAuditChainReport(verifyCryptographicAuditChain(payloadEvents));
-      }
-    } catch {
-      setAuditChainReport(verifyCryptographicAuditChain(payloadEvents));
-    } finally {
-      setIsVerifyingChain(false);
-    }
   };
 
   // Upgrade 2.4: Global Rapid Compliance Officer Keyboard Shortcuts (when Drawer & Modals are closed)
@@ -875,7 +826,6 @@ export default function App() {
     challenge: { en: 'System Architecture', ar: 'هيكلة النظام والمسابقة' },
     vault: { en: 'Document Vault (44)', ar: 'خزنة الوثائق العراقية' },
     automation: { en: 'Automation & Rules', ar: 'قواعد الأتمتة والمخاطر' },
-    audit: { en: 'CBI Law 78 Ledger', ar: 'سجل التدقيق التشفيري' },
   };
 
   const getDocCategoryBadge = (docType?: DocumentType) => {
@@ -1359,12 +1309,6 @@ export default function App() {
                     icon: Users,
                     labelEn: 'Dossiers Queue',
                     labelAr: 'ملفات المتقدمين',
-                  },
-                  {
-                    id: 'audit' as ActiveSection,
-                    icon: History,
-                    labelEn: 'CBI Ledger',
-                    labelAr: 'سجل التدقيق',
                   },
                   {
                     id: 'challenge' as ActiveSection,
@@ -2229,179 +2173,6 @@ export default function App() {
                     onChangeConfig={setAutomationConfig}
                     onRunBatch={handleRunAutomatedBatch}
                   />
-                </section>
-              )}
-
-              {/* VIEW 4: SYSTEM AUDIT TRAIL & CRYPTOGRAPHIC CHAIN VERIFIER */}
-              {activeSection === 'audit' && (
-                <section
-                  className="rounded-[20px] bg-zinc-100/90 dark:bg-[#1f2128] p-5 border border-zinc-200/60 dark:border-white/[0.03] space-y-4"
-                  aria-label={t(lang, 'navAudit')}
-                >
-                  <div className="pb-3 border-b border-zinc-200 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-                        {t(lang, 'auditSectionTitle')}
-                      </h2>
-                      <p className="text-xs text-zinc-500 dark:text-[#8a8d98] mt-0.5">
-                        {t(lang, 'auditSectionSubtitle')}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleVerifyCryptographicAuditChain()}
-                      disabled={isVerifyingChain}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60 cursor-pointer shrink-0 ${primaryBtnClass}`}
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>
-                        {isVerifyingChain
-                          ? isAr
-                            ? 'جاري التحقق التشفيري من السلسلة...'
-                            : 'Verifying SHA-256 + HMAC Chain...'
-                          : isAr
-                            ? 'فحص سلامة سلسلة التدقيق التشفيرية (SHA-256)'
-                            : 'Verify Cryptographic Audit Chain (SHA-256)'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {auditChainReport && (
-                    <div
-                      className="rounded-2xl border border-[#10b981]/40 bg-[#10b981]/10 p-4 space-y-3"
-                      data-testid="audit-chain-verification-report"
-                    >
-                      <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[#10b981]/20 pb-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#6ee7b7]">
-                            <ShieldCheck className="w-4 h-4 shrink-0" />
-                            <span>
-                              {isAr
-                                ? 'نتيجة فحص عدم الإنكار والتسلسل التشفيري (قانون التوقيع الإلكتروني رقم 78 لسنة 2012)'
-                                : 'CRYPTOGRAPHIC HASH-CHAIN INTEGRITY VERIFIED · IRAQ LAW NO. 78 OF 2012'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-700 dark:text-zinc-300">
-                            {isAr ? auditChainReport.summaryAr : auditChainReport.summaryEn}
-                          </p>
-                        </div>
-                        <div className="text-end font-mono text-[11px]">
-                          <div className="font-bold text-[#34d399]">
-                            {auditChainReport.totalBlocks}/{auditChainReport.totalBlocks} BLOCKS
-                            VALID
-                          </div>
-                          <div className="text-zinc-500 dark:text-zinc-400">
-                            MERKLE ROOT: {auditChainReport.merkleRootHash.slice(0, 16)}…
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-[#14151b]">
-                        <table className="w-full text-[11px] font-mono text-start border-collapse">
-                          <thead className="bg-zinc-100 dark:bg-[#1a1c23] text-zinc-500 dark:text-zinc-400">
-                            <tr>
-                              <th className="py-2 px-3 text-start">#</th>
-                              <th className="py-2 px-3 text-start">
-                                {isAr ? 'المرجع والحدث' : 'Dossier & Action'}
-                              </th>
-                              <th className="py-2 px-3 text-start">
-                                {isAr ? 'هاش الكتلة السابقة' : 'Prev Block Hash'}
-                              </th>
-                              <th className="py-2 px-3 text-start">
-                                {isAr ? 'هاش الكتلة الحالية (SHA-256)' : 'Computed Block Hash'}
-                              </th>
-                              <th className="py-2 px-3 text-start">
-                                {isAr ? 'توقيع HMAC قانون 78' : 'CBI Law 78 HMAC'}
-                              </th>
-                              <th className="py-2 px-3 text-end">
-                                {isAr ? 'الحالة' : 'Status'}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-zinc-200 dark:divide-white/5">
-                            {auditChainReport.blocks.slice(0, 8).map((blk) => (
-                              <tr key={`${blk.blockIndex}-${blk.eventId}`}>
-                                <td className="py-1.5 px-3 font-bold text-[#34d399]">
-                                  #{blk.blockIndex}
-                                </td>
-                                <td className="py-1.5 px-3 font-sans text-zinc-800 dark:text-zinc-200">
-                                  <span className="font-mono font-semibold">
-                                    {blk.applicantRef || 'SYS'}
-                                  </span>{' '}
-                                  · {blk.actionEn}
-                                </td>
-                                <td className="py-1.5 px-3 text-zinc-500">
-                                  {blk.prevBlockHash.slice(0, 12)}…
-                                </td>
-                                <td className="py-1.5 px-3 text-cyan-600 dark:text-cyan-400 font-semibold">
-                                  {blk.computedBlockHash.slice(0, 14)}…
-                                </td>
-                                <td className="py-1.5 px-3 text-[#6ee7b7]">
-                                  {blk.hmacSignature.slice(0, 22)}…
-                                </td>
-                                <td className="py-1.5 px-3 text-end">
-                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold">
-                                    VERIFIED ✓
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border border-zinc-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#14151b] divide-y divide-zinc-200 dark:divide-white/5">
-                    {allAuditEvents.map(({ evt, applicant }) => (
-                      <div
-                        key={evt.id}
-                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-zinc-500 dark:text-[#8a8d98] flex-wrap">
-                            <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
-                              {formatReferenceCode(applicant.referenceCode, lang)}
-                            </span>
-                            <span aria-hidden="true">·</span>
-                            <span>
-                              {lang === 'ar' ? applicant.fullNameAr : applicant.fullNameEn}
-                            </span>
-                            <span aria-hidden="true">·</span>
-                            <span>{lang === 'ar' ? evt.actorAr : evt.actorEn}</span>
-                          </div>
-                          <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                            {lang === 'ar' ? evt.actionAr : evt.actionEn}
-                          </div>
-                          {(evt.noteEn || evt.noteAr) && (
-                            <div className="text-zinc-600 dark:text-[#8a8d98]">
-                              {lang === 'ar' ? evt.noteAr : evt.noteEn}
-                            </div>
-                          )}
-                          {evt.cbiLaw78HmacReceipt && (
-                            <div className="font-mono text-[10px] text-[#34d399]">
-                              {lang === 'ar'
-                                ? `توقيع قانون البنك المركزي رقم 78: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'ar')}`
-                                : `CBI Law No. 78 HMAC Signature: ${formatCryptoDigest(evt.cbiLaw78HmacReceipt, 'en')}`}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="font-mono tabular-nums text-zinc-500">
-                            {formatTimestamp(evt.timestamp, lang)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedApplicantId(applicant.id)}
-                            className="px-2.5 py-1 text-xs font-medium text-[#34d399] hover:bg-[#10b981]/15 rounded-lg transition-colors cursor-pointer"
-                          >
-                            {t(lang, 'inspectBtn')}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </section>
               )}
             </div>

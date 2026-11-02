@@ -177,9 +177,11 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
   };
 
   const sidePolicy = getDocumentSideRequirement(document.type);
-  const hasCardPairConflict =
+  const hasCardPairConflict = Boolean(
     document.cardPairValidation &&
-    document.cardPairValidation.issues.some((i) => i.severity === 'CRITICAL');
+    Array.isArray(document.cardPairValidation.issues) &&
+    document.cardPairValidation.issues.some((i) => i.severity === 'CRITICAL')
+  );
   const isMissingRequiredBack = sidePolicy.requiresBothSides && document.side !== 'BOTH';
 
   const isIdentityOrPassport =
@@ -228,15 +230,18 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
   // Dynamically transform and scale bounding boxes so they "grow with it" on the cropped card,
   // framing the text, numbers, and portrait tightly without staying clamped to raw uncropped space.
   const displayedBoxes = useMemo(() => {
-    if (!activeBoxes || activeBoxes.length === 0) return [];
+    if (!activeBoxes || !Array.isArray(activeBoxes) || activeBoxes.length === 0) return [];
+    const validBoxes = activeBoxes.filter(
+      (b) => b && Array.isArray(b.box_2d) && b.box_2d.length === 4
+    );
     if (!autoEnhanceEnabled || !enhanceResult?.cropApplied || !enhanceResult.cropBoxPct) {
-      return activeBoxes;
+      return validBoxes;
     }
     const [cropTop, cropLeft, cropBottom, cropRight] = enhanceResult.cropBoxPct;
     const cropH = Math.max(1, cropBottom - cropTop);
     const cropW = Math.max(1, cropRight - cropLeft);
 
-    return activeBoxes
+    return validBoxes
       .map((box) => {
         const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
         const boxBottom = topPct + heightPct;
@@ -493,40 +498,42 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
       {/* Specimen Canvas */}
       <div className="p-5 flex flex-col items-center justify-center min-h-[260px] overflow-auto bg-[#f1effa] dark:bg-[#14151b] gap-3">
         {/* Cross-Image Card Pair Conflict Banner */}
-        {document.cardPairValidation && document.cardPairValidation.issues.length > 0 && (
-          <div className="w-full max-w-lg rounded-lg border-2 border-rose-400 dark:border-rose-700 bg-rose-50/95 dark:bg-rose-950/60 p-3.5 text-start space-y-2">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-rose-800 dark:text-rose-200">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
-                <span>
-                  {lang === 'ar'
-                    ? `تعارض بين صورتي البطاقة (${document.cardPairValidation.issues.length})`
-                    : `CROSS-IMAGE CARD PAIR CONFLICT (${document.cardPairValidation.issues.length})`}
+        {document.cardPairValidation &&
+          Array.isArray(document.cardPairValidation.issues) &&
+          document.cardPairValidation.issues.length > 0 && (
+            <div className="w-full max-w-lg rounded-lg border-2 border-rose-400 dark:border-rose-700 bg-rose-50/95 dark:bg-rose-950/60 p-3.5 text-start space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-rose-800 dark:text-rose-200">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                  <span>
+                    {lang === 'ar'
+                      ? `تعارض بين صورتي البطاقة (${document.cardPairValidation.issues.length})`
+                      : `CROSS-IMAGE CARD PAIR CONFLICT (${document.cardPairValidation.issues.length})`}
+                  </span>
                 </span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-600 text-white">
-                {lang === 'ar' ? 'تصعيد المرحلتين 7 و 9' : 'STAGE 7 & 9 ESCALATED'}
-              </span>
-            </div>
-            <div className="space-y-1.5">
-              {document.cardPairValidation.issues.map((issue) => (
-                <div
-                  key={issue.code}
-                  className="rounded border border-rose-200 dark:border-rose-800 bg-white/90 dark:bg-slate-900/90 p-2 text-[11px]"
-                >
-                  <div className="font-bold text-rose-800 dark:text-rose-200">
-                    {lang === 'ar'
-                      ? sanitizeTextForLanguage(issue.titleAr, 'ar')
-                      : sanitizeTextForLanguage(issue.titleEn, 'en')}
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-600 text-white">
+                  {lang === 'ar' ? 'تصعيد المرحلتين 7 و 9' : 'STAGE 7 & 9 ESCALATED'}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {document.cardPairValidation.issues.map((issue) => (
+                  <div
+                    key={issue.code}
+                    className="rounded border border-rose-200 dark:border-rose-800 bg-white/90 dark:bg-slate-900/90 p-2 text-[11px]"
+                  >
+                    <div className="font-bold text-rose-800 dark:text-rose-200">
+                      {lang === 'ar'
+                        ? sanitizeTextForLanguage(issue.titleAr, 'ar')
+                        : sanitizeTextForLanguage(issue.titleEn, 'en')}
+                    </div>
+                    <p className="text-slate-700 dark:text-slate-300 mt-0.5">
+                      {lang === 'ar'
+                        ? sanitizeTextForLanguage(issue.detailAr, 'ar')
+                        : sanitizeTextForLanguage(issue.detailEn, 'en')}
+                    </p>
                   </div>
-                  <p className="text-slate-700 dark:text-slate-300 mt-0.5">
-                    {lang === 'ar'
-                      ? sanitizeTextForLanguage(issue.detailAr, 'ar')
-                      : sanitizeTextForLanguage(issue.detailEn, 'en')}
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
             {(document.slot1Summary || document.slot2Summary) && (
               <div className="grid grid-cols-2 gap-2 pt-1 text-[10px] font-mono">
                 {document.slot1Summary && (
@@ -596,7 +603,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
             </div>
           )}
         {/* Auto-Crop, Deskew & CLAHE Pre-Processor Telemetry Banner */}
-        {autoEnhanceEnabled && (
+        {autoEnhanceEnabled && Boolean(document.customPreviewUrl) && (
           <div className="w-full max-w-lg rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 flex items-center justify-between gap-2 flex-wrap text-[11px]">
             <div className="flex items-center gap-2 text-amber-300 font-mono">
               <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
@@ -691,6 +698,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                 <div className="absolute inset-0 pointer-events-none">
                   {displayedBoxes && displayedBoxes.length > 0 ? (
                     displayedBoxes.map((box, idx) => {
+                      if (!box || !Array.isArray(box.box_2d) || box.box_2d.length < 4) return null;
                       const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
                       const isTarget =
                         highlightedField === box.field ||
@@ -754,7 +762,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                               </div>
                               <div className="text-[9px] text-slate-400 mt-0.5">
                                 {lang === 'ar' ? 'الإحداثيات: ' : 'Bounds: '}[
-                                {box.box_2d.join(', ')}]
+                                {Array.isArray(box.box_2d) ? box.box_2d.join(', ') : '0, 0, 0, 0'}]
                               </div>
                               {box.point && (
                                 <div className="text-[9px] text-cyan-400 mt-0.5">

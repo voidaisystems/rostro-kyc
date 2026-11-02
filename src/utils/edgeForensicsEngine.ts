@@ -1107,13 +1107,30 @@ export function rotatePixels90Clockwise(
  * Normalizes bounding box coordinates into CSS top/left/height/width percentages.
  * Robustly handles [0, 1000] integer scale, [0, 100] percentage scale, and [0, 1] float scale.
  */
-export function normalizeBoxPercentages(box_2d: [number, number, number, number]): {
+export function normalizeBoxPercentages(
+  box_2d?: [number, number, number, number] | number[] | null
+): {
   topPct: number;
   leftPct: number;
   heightPct: number;
   widthPct: number;
 } {
+  if (!box_2d || !Array.isArray(box_2d) || box_2d.length < 4) {
+    return { topPct: 10, leftPct: 10, heightPct: 15, widthPct: 25 };
+  }
   let [ymin, xmin, ymax, xmax] = box_2d;
+  if (
+    typeof ymin !== 'number' ||
+    typeof xmin !== 'number' ||
+    typeof ymax !== 'number' ||
+    typeof xmax !== 'number' ||
+    isNaN(ymin) ||
+    isNaN(xmin) ||
+    isNaN(ymax) ||
+    isNaN(xmax)
+  ) {
+    return { topPct: 10, leftPct: 10, heightPct: 15, widthPct: 25 };
+  }
   const maxCoord = Math.max(ymin, xmin, ymax, xmax);
   if (maxCoord <= 1.0) {
     // 0..1 float scale -> convert to 0..100%

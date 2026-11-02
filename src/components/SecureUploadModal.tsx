@@ -1732,7 +1732,15 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     setUploadStage(2);
     setUploadStage(3);
 
-    const gInfo = govMap[govKey || extracted?.governorateKey || 'BGD'];
+    const gInfo =
+      (govKey && govMap[govKey as IraqiGovKey]) ||
+      (extracted?.governorateKey && govMap[extracted.governorateKey as IraqiGovKey]) ||
+      govMap.BGD || {
+        countryEn: 'Iraq',
+        countryAr: 'العراق',
+        govEn: 'Baghdad (Al-Karkh)',
+        govAr: 'بغداد (الكرخ)',
+      };
     let resolvedNameAr =
       fullNameAr.trim() ||
       (extracted?.engineMode === 'gemini-vlm-live'
@@ -1972,10 +1980,10 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
     const resolvedIssuingCountryEn = isForeignDoc
       ? extracted?.issuingCountryEn || issuingCountry || 'United Arab Emirates'
-      : gInfo.countryEn;
+      : (gInfo?.countryEn || 'Iraq');
     const resolvedIssuingCountryAr = isForeignDoc
       ? extracted?.issuingCountryAr || 'الإمارات العربية المتحدة'
-      : gInfo.countryAr;
+      : (gInfo?.countryAr || 'العراق');
     const resolvedHolderNationalityEn = isForeignDoc
       ? extracted?.holderNationalityEn || holderNationality || 'United States of America'
       : 'Iraqi';
@@ -1998,12 +2006,12 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
         ? `${resolvedIssuingCountryEn} (Resident Expat)`
         : (extracted?.governorateEn && !isMissingOrUnclearValue(extracted.governorateEn)
           ? extracted.governorateEn
-          : gInfo.govEn),
+          : (gInfo?.govEn || 'Baghdad (Al-Karkh)')),
       governorateAr: isForeignDoc
         ? `${resolvedIssuingCountryAr} (مقيم أجنبي)`
         : (extracted?.governorateAr && !isMissingOrUnclearValue(extracted.governorateAr)
           ? extracted.governorateAr
-          : gInfo.govAr),
+          : (gInfo?.govAr || 'بغداد (الكرخ)')),
       entityType,
       submittedAt: '2026-10-17 08:45 UTC',
       updatedAt: '2026-10-17 08:45 UTC',
@@ -2131,12 +2139,12 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                 : undefined,
             nationality: isForeignDoc
               ? `${resolvedHolderNationalityEn} · Issued by ${resolvedIssuingCountryEn}`
-              : `IRQ · ${extracted?.governorateEn || gInfo.govEn}`,
+              : `IRQ · ${extracted?.governorateEn || gInfo?.govEn || 'Baghdad (Al-Karkh)'}`,
             issueDate: resolvedIssueDate,
             expiryDate: resolvedExpiryDate,
             governorate: isForeignDoc
               ? resolvedIssuingCountryAr
-              : (extracted?.governorateAr || gInfo.govAr),
+              : (extracted?.governorateAr || gInfo?.govAr || 'بغداد (الكرخ)'),
             gender: gender.trim() || extracted?.gender,
             bloodType: bloodType.trim() || extracted?.bloodType,
             mrzLine1:
@@ -3955,7 +3963,9 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                                 confidence: 0.98,
                               },
                             ]
-                      ).map((box, idx) => {
+                      )
+                        .filter((b) => b && Array.isArray(b.box_2d) && b.box_2d.length === 4)
+                        .map((box, idx) => {
                         const { topPct, leftPct, heightPct, widthPct } = normalizeBoxPercentages(box.box_2d);
                         const isTarget =
                           activeBoxField === box.field ||

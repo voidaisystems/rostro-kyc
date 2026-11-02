@@ -677,15 +677,18 @@ const server = http.createServer(async (req, res) => {
         ? geminiDoc.card_bounding_box
         : null;
 
-      if (!cardBoundingBox && boundingBoxes.length >= 2) {
+      if (!cardBoundingBox && Array.isArray(boundingBoxes) && boundingBoxes.length >= 2) {
         let bMinY = 1000, bMinX = 1000, bMaxY = 0, bMaxX = 0;
+        let validCount = 0;
         for (const b of boundingBoxes) {
+          if (!b || !Array.isArray(b.box_2d) || b.box_2d.length < 4) continue;
           bMinY = Math.min(bMinY, b.box_2d[0]);
           bMinX = Math.min(bMinX, b.box_2d[1]);
           bMaxY = Math.max(bMaxY, b.box_2d[2]);
           bMaxX = Math.max(bMaxX, b.box_2d[3]);
+          validCount++;
         }
-        if (bMaxY > bMinY + 60 && bMaxX > bMinX + 60) {
+        if (validCount >= 2 && bMaxY > bMinY + 60 && bMaxX > bMinX + 60) {
           const padY = Math.max(20, Math.round((bMaxY - bMinY) * 0.08));
           const padX = Math.max(20, Math.round((bMaxX - bMinX) * 0.07));
           cardBoundingBox = [
@@ -698,7 +701,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Ensure bottom-left family/serial code has a visible bounding box placed safely INSIDE the card perimeter
-      if (familyNumber && familyNumber !== '[غير موجود / MISSING]' && !boundingBoxes.some(b => b.field === 'familyNumber')) {
+      if (familyNumber && familyNumber !== '[غير موجود / MISSING]' && Array.isArray(boundingBoxes) && !boundingBoxes.some(b => b?.field === 'familyNumber')) {
         if (cardBoundingBox) {
           const [cY0, cX0, cY1, cX1] = cardBoundingBox;
           const cH = cY1 - cY0;
@@ -719,9 +722,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Filter out any outlier boxes located far outside the physical card boundary (e.g. on clothes, background)
-      if (cardBoundingBox) {
+      if (cardBoundingBox && Array.isArray(boundingBoxes)) {
         const [cMinY, cMinX, cMaxY, cMaxX] = cardBoundingBox;
         boundingBoxes = boundingBoxes.filter((b) => {
+          if (!b || !Array.isArray(b.box_2d) || b.box_2d.length < 4) return false;
           const [y0, x0, y1, x1] = b.box_2d;
           const centerY = (y0 + y1) / 2;
           const centerX = (x0 + x1) / 2;

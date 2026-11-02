@@ -84,6 +84,7 @@ import { AutomationRulesPanel } from './components/AutomationRulesPanel';
 import { DocumentSpecimenViewer } from './components/DocumentSpecimenViewer';
 import { ZainCashEdgeForensicsLab } from './components/ZainCashEdgeForensicsLab';
 import { CompetitionShowcaseTab } from './components/CompetitionShowcaseTab';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type ActiveSection =
   | 'dashboard'
@@ -2468,28 +2469,42 @@ export default function App() {
       </div>
 
       {/* Slide-over Dossier Inspector */}
-      <ApplicantInspectorDrawer
-        applicant={selectedApplicant}
-        lang={lang}
-        onClose={() => setSelectedApplicantId(null)}
-        onUpdateStatus={handleUpdateApplicantStatus}
-        onRunSingleAutoEval={handleRunSingleAutoEval}
-        onRegisterCandidateDoc={handleRegisterCandidateDoc}
-        onAttachOrUpdatePacketResidenceCard={handleAttachOrUpdatePacketResidenceCard}
-        onApplyAntiSpoofPreset={handleApplyAntiSpoofPreset}
-        onApplyKurdishDialectTranslation={handleApplyKurdishDialectTranslation}
-        onNavigateApplicant={handleNavigateApplicant}
-        currentIndex={selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0}
-        totalQueueCount={filteredApplicants.length}
-      />
+      <ErrorBoundary
+        sectionName="Dossier Inspector"
+        fallbackTitleEn="An error occurred while inspecting this KYC dossier"
+        fallbackTitleAr="حدث خطأ أثناء فحص ملف التحقق هذا"
+        onReset={() => setSelectedApplicantId(null)}
+      >
+        <ApplicantInspectorDrawer
+          applicant={selectedApplicant}
+          lang={lang}
+          onClose={() => setSelectedApplicantId(null)}
+          onUpdateStatus={handleUpdateApplicantStatus}
+          onRunSingleAutoEval={handleRunSingleAutoEval}
+          onRegisterCandidateDoc={handleRegisterCandidateDoc}
+          onAttachOrUpdatePacketResidenceCard={handleAttachOrUpdatePacketResidenceCard}
+          onApplyAntiSpoofPreset={handleApplyAntiSpoofPreset}
+          onApplyKurdishDialectTranslation={handleApplyKurdishDialectTranslation}
+          onNavigateApplicant={handleNavigateApplicant}
+          currentIndex={selectedApplicantIndex >= 0 ? selectedApplicantIndex : 0}
+          totalQueueCount={filteredApplicants.length}
+        />
+      </ErrorBoundary>
 
       {/* Secure KYC Packet Upload Modal */}
-      <SecureUploadModal
-        isOpen={isUploadModalOpen}
-        lang={lang}
-        onClose={() => setIsUploadModalOpen(false)}
-        onIngestApplicant={handleIngestApplicant}
-      />
+      <ErrorBoundary
+        sectionName="KYC Packet Ingestion Modal"
+        fallbackTitleEn="An error occurred in the upload & ingestion modal"
+        fallbackTitleAr="حدث خطأ أثناء تحميل وتدقيق حزمة الوثائق"
+        onReset={() => setIsUploadModalOpen(false)}
+      >
+        <SecureUploadModal
+          isOpen={isUploadModalOpen}
+          lang={lang}
+          onClose={() => setIsUploadModalOpen(false)}
+          onIngestApplicant={handleIngestApplicant}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

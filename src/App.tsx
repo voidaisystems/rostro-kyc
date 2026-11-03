@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search,
   CheckCircle2,
@@ -126,6 +126,47 @@ export default function App() {
   const [vaultSearchQuery, setVaultSearchQuery] = useState<string>('');
   const [vaultZoomed, setVaultZoomed] = useState<boolean>(false);
   const [vaultRotation, setVaultRotation] = useState<number>(0);
+
+  // Engine telemetry & 100% On-Device AI detection (Apple Silicon M5 + Qwen2.5-VL)
+  const [engineStatus, setEngineStatus] = useState<{
+    localConnected: boolean;
+    activeEngine: string;
+    model: string;
+    acceleration: string;
+    chipset: string;
+    endpoint: string;
+  } | null>(null);
+  const [isCheckingEngine, setIsCheckingEngine] = useState<boolean>(false);
+
+  const checkEngineStatus = useCallback(async () => {
+    setIsCheckingEngine(true);
+    try {
+      const resp = await fetch('/api/kyc/engine-status');
+      if (resp.ok) {
+        const data = await resp.json();
+        setEngineStatus({
+          localConnected: Boolean(data.localAi?.connected),
+          activeEngine: data.activeEngine || 'UNKNOWN',
+          model: data.localAi?.detectedModel || data.cloudAi?.model || 'gemini-2.5-flash',
+          acceleration: data.localAi?.acceleration || 'Apple Silicon M5 Metal GPU',
+          chipset: data.localAi?.chipset || 'Apple M5 (10-Core / Metal GPU / 16GB Unified Memory)',
+          endpoint: data.localAi?.endpoint || 'http://127.0.0.1:1235/v1'
+        });
+      }
+    } catch (_) {
+      // Keep existing state on error
+    } finally {
+      setIsCheckingEngine(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkEngineStatus();
+    const timer = setInterval(() => {
+      void checkEngineStatus();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [checkEngineStatus]);
 
   // Sync HTML dir, lang, and dark mode class
   useEffect(() => {
@@ -1459,6 +1500,35 @@ export default function App() {
         <main className="flex-1 min-w-0 h-full min-h-0 flex flex-col gap-2.5 overflow-hidden">
           {/* Top Search Bar + 2 Notification/Action Badge Buttons (Exact match to Figma top row) */}
           <div className="shrink-0 flex items-center gap-2.5">
+            {/* 100% On-Device AI / Apple M5 Metal Badge */}
+            <button
+              type="button"
+              onClick={() => void checkEngineStatus()}
+              disabled={isCheckingEngine}
+              title={
+                engineStatus?.localConnected
+                  ? (isAr
+                      ? `🟢 ذكاء اصطناعي محلي 100% (معزول · سيادة عراقية كاملة)\nالمحرك: ${engineStatus.model}\nالتسريع: ${engineStatus.acceleration}\nالنقطة: ${engineStatus.endpoint}`
+                      : `🟢 100% On-Device AI (Air-Gapped Sovereign)\nModel: ${engineStatus.model}\nHardware: ${engineStatus.acceleration}\nEndpoint: ${engineStatus.endpoint}`)
+                  : (isAr
+                      ? 'محرك سحابي (Cloud VLM) · اضغط لإعادة فحص الاتصال المحلي'
+                      : 'Cloud VLM Mode · Click to probe local LM Studio on :1234/:1235')
+              }
+              className={`h-10 px-3 rounded-[14px] flex items-center gap-2 border text-xs font-mono font-medium shrink-0 transition-all cursor-pointer ${
+                engineStatus?.localConnected
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 shadow-xs'
+                  : 'bg-zinc-100/90 dark:bg-[#1f2128] border-zinc-200/60 dark:border-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${engineStatus?.localConnected ? 'bg-[#10b981] animate-pulse' : 'bg-amber-400'}`} />
+              <Cpu className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              <span className="hidden md:inline font-semibold">
+                {engineStatus?.localConnected
+                  ? (isAr ? 'ذكاء اصطناعي محلي (M5 Metal)' : '100% On-Device AI (M5)')
+                  : (isAr ? 'محرك سحابي (فحص)' : 'Cloud AI (Recheck)')}
+              </span>
+            </button>
+
             {/* Wide Rounded Search Input */}
             <div className="flex-1 h-10 rounded-[14px] bg-zinc-100/90 dark:bg-[#1f2128] px-3.5 flex items-center gap-2.5 border border-zinc-200/60 dark:border-white/[0.03] focus-within:border-[#10b981]/60 transition-colors">
               <Search className="w-4 h-4 text-zinc-400 dark:text-zinc-300 shrink-0" />

@@ -151,7 +151,9 @@ interface ServerExtractionResponse {
   slot1Summary?: SlotExtractionSummary;
   slot2Summary?: SlotExtractionSummary;
   cardPairValidation?: CardPairValidationResult;
-  engineMode: 'gemini-vlm-live' | 'deterministic-fallback';
+  engineMode: 'local-qwen-vl' | 'gemini-vlm-live' | 'deterministic-fallback';
+  modelUsed?: string;
+  isLocalOnDevice?: boolean;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -3450,16 +3452,27 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                     >
                       <Sparkles className="w-3.5 h-3.5 shrink-0" />
                       <span>
-                        {lang === 'ar'
-                          ? `الاستخراج الضوئي المباشر · ${formatDocTypeCode(lastExtraction.documentType, 'ar')} (${formatSideLabel(lastExtraction.side, 'ar')})`
-                          : `LIVE OPTICAL EXTRACTION · ${lastExtraction.documentType} (SIDE: ${lastExtraction.side})`}
+                        {lastExtraction.engineMode === 'local-qwen-vl'
+                          ? (lang === 'ar'
+                              ? `🟢 ذكاء اصطناعي محلي 100% (Apple M5 Metal · Qwen2.5-VL) · ${formatDocTypeCode(lastExtraction.documentType, 'ar')} (${formatSideLabel(lastExtraction.side, 'ar')})`
+                              : `🟢 100% ON-DEVICE AI (Apple M5 Metal · Qwen2.5-VL) · ${lastExtraction.documentType} (${lastExtraction.side})`)
+                          : (lang === 'ar'
+                              ? `الاستخراج الضوئي المباشر · ${formatDocTypeCode(lastExtraction.documentType, 'ar')} (${formatSideLabel(lastExtraction.side, 'ar')})`
+                              : `LIVE OPTICAL EXTRACTION · ${lastExtraction.documentType} (SIDE: ${lastExtraction.side})`)}
                       </span>
                     </span>
-                    <span className="text-[11px] font-mono text-[#10b981] font-semibold">
-                      {lang === 'ar'
-                        ? `دقة القراءة: ${lastExtraction.ocrConfidence}%`
-                        : `Confidence: ${lastExtraction.ocrConfidence}%`}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {lastExtraction.engineMode === 'local-qwen-vl' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40">
+                          {lang === 'ar' ? 'معزول / سيادة عراقية' : 'AIR-GAPPED SOVEREIGN'}
+                        </span>
+                      )}
+                      <span className="text-[11px] font-mono text-[#10b981] font-semibold">
+                        {lang === 'ar'
+                          ? `دقة القراءة: ${lastExtraction.ocrConfidence}%`
+                          : `Confidence: ${lastExtraction.ocrConfidence}%`}
+                      </span>
+                    </div>
                   </div>
 
                   {/* ZainCash On-Device Mobile Edge Pre-Filter Telemetry Strip */}

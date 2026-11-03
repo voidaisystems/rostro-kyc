@@ -219,7 +219,7 @@ export interface KYCDocument {
   slot1Summary?: SlotExtractionSummary;
   slot2Summary?: SlotExtractionSummary;
   cardPairValidation?: CardPairValidationResult;
-  engineMode?: 'gemini-vlm-live' | 'deterministic-fallback';
+  engineMode?: 'local-qwen-vl' | 'gemini-vlm-live' | 'deterministic-fallback';
   antiSpoofPreset?: AntiSpoofSimulationPreset;
   kurdishDialectPreset?: KurdishRegionalSimulationPreset;
 }

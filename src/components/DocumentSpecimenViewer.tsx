@@ -103,8 +103,8 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
     }
   }, [externalLoupeEnabled]);
 
-  // Upgrade 1.1: Auto-Crop, Deskew & CLAHE Image Enhancement Pre-Processor
-  const [autoEnhanceEnabled, setAutoEnhanceEnabled] = useState<boolean>(true);
+  // Upgrade 1.1: Auto-Crop, Deskew & CLAHE Image Enhancement Pre-Processor (Default false: preserves authentic original document scan)
+  const [autoEnhanceEnabled, setAutoEnhanceEnabled] = useState<boolean>(false);
   const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
   const [enhanceResult, setEnhanceResult] = useState<AutoCropEnhanceResult | null>(null);
 

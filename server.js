@@ -733,7 +733,8 @@ const server = http.createServer(async (req, res) => {
         ? geminiDoc.card_bounding_box
         : null;
 
-      if (!cardBoundingBox && Array.isArray(boundingBoxes) && boundingBoxes.length >= 2) {
+      const isPassportDoc = docType === 'IRQ_PASSPORT' || docType === 'FOREIGN_PASSPORT';
+      if (!isPassportDoc && !cardBoundingBox && Array.isArray(boundingBoxes) && boundingBoxes.length >= 2) {
         let bMinY = 1000, bMinX = 1000, bMaxY = 0, bMaxX = 0;
         let validCount = 0;
         for (const b of boundingBoxes) {
@@ -744,9 +745,12 @@ const server = http.createServer(async (req, res) => {
           bMaxX = Math.max(bMaxX, b.box_2d[3]);
           validCount++;
         }
-        if (validCount >= 2 && bMaxY > bMinY + 60 && bMaxX > bMinX + 60) {
-          const padY = Math.max(20, Math.round((bMaxY - bMinY) * 0.08));
-          const padX = Math.max(20, Math.round((bMaxX - bMinX) * 0.07));
+        const wSpan = bMaxX - bMinX;
+        const hSpan = bMaxY - bMinY;
+        // Never synthesize a card bounding box from narrow text columns (< 650 wide or < 450 high)
+        if (validCount >= 2 && wSpan >= 650 && hSpan >= 450) {
+          const padY = Math.max(20, Math.round(hSpan * 0.08));
+          const padX = Math.max(20, Math.round(wSpan * 0.07));
           cardBoundingBox = [
             Math.max(0, bMinY - padY),
             Math.max(0, bMinX - padX),

@@ -1707,6 +1707,23 @@ export async function autoCropDeskewAndEnhanceCardDataUrl(
           }
         }
 
+        // Strict Invariant Protection: Never allow destructive crops that slice documents into narrow slivers!
+        // Authentic ID cards and passports occupy the majority of the frame.
+        // A crop retaining less than 72% width or 65% height is a false-positive crop (e.g. text clustering or margin artifact).
+        const cropWidthPct = rightPct - leftPct;
+        const cropHeightPct = bottomPct - topPct;
+        const cropAreaPct = (cropWidthPct * cropHeightPct) / 100;
+        const isPassport = options?.docType === 'IRQ_PASSPORT' || options?.docType === 'FOREIGN_PASSPORT';
+
+        if (isPassport || cropWidthPct < 72 || cropHeightPct < 65 || cropAreaPct < 52) {
+          // Reject destructive crop: retain full authentic frame
+          topPct = 0;
+          leftPct = 0;
+          bottomPct = 100;
+          rightPct = 100;
+          cropApplied = false;
+        }
+
         // Step 2: Render cropped & deskewed card onto output canvas
         const cropX = Math.round((leftPct / 100) * srcW);
         const cropY = Math.round((topPct / 100) * srcH);
@@ -1765,8 +1782,12 @@ export async function autoCropDeskewAndEnhanceCardDataUrl(
           contrastGainPercent: clahe.contrastGainPercent,
           sealPixelsBoosted: clahe.sealPixelsBoosted,
           outputResolution: `${outW}×${outH}`,
-          summaryEn: `Auto-Cropped (${rightPct - leftPct}%×${bottomPct - topPct}%), Deskewed (${deskewAngleDeg >= 0 ? '+' : ''}${deskewAngleDeg}°), CLAHE +${clahe.contrastGainPercent}% Contrast`,
-          summaryAr: `قص تلقائي للحواف (${rightPct - leftPct}%×${bottomPct - topPct}%) · تعديل الميل (${deskewAngleDeg}°) · تحسين التباين +${clahe.contrastGainPercent}%`,
+          summaryEn: cropApplied
+            ? `Auto-Cropped (${rightPct - leftPct}%×${bottomPct - topPct}%), Deskewed (${deskewAngleDeg >= 0 ? '+' : ''}${deskewAngleDeg}°), CLAHE +${clahe.contrastGainPercent}% Contrast`
+            : `Original Frame Preserved (100%), Deskewed (${deskewAngleDeg >= 0 ? '+' : ''}${deskewAngleDeg}°), CLAHE +${clahe.contrastGainPercent}% Contrast`,
+          summaryAr: cropApplied
+            ? `قص تلقائي للحواف (${rightPct - leftPct}%×${bottomPct - topPct}%) · تعديل الميل (${deskewAngleDeg}°) · تحسين التباين +${clahe.contrastGainPercent}%`
+            : `الاحتفاظ بالإطار الأصلي بالكامل (100%) · تعديل الميل (${deskewAngleDeg}°) · تحسين التباين +${clahe.contrastGainPercent}%`,
         });
       } catch {
         resolve({

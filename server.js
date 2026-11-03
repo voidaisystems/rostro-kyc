@@ -715,13 +715,27 @@ const server = http.createServer(async (req, res) => {
 
       const cbiLaw78HmacReceipt = generateCbiHmacReceipt(`${sha256Hash}:${docNumber}:${fullNameAr}`);
       let boundingBoxes = (isLive && Array.isArray(geminiDoc.fields))
-        ? geminiDoc.fields.filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4).map(f => ({
-            field: f.key === 'full_name' || f.key === 'full_name_ar' ? 'fullName' : f.key === 'national_id' || f.key === 'national_id_number' ? 'docNumber' : f.key,
-            label: `${f.label_ar || f.key}: ${f.value}`,
-            value: f.value,
-            box_2d: f.box_2d,
-            confidence: f.confidence || 0.98
-          }))
+        ? geminiDoc.fields.filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4 && f.value).map(f => {
+            const fieldKey = f.key === 'full_name' || f.key === 'full_name_ar' ? 'fullName'
+              : f.key === 'national_id' || f.key === 'national_id_number' ? 'docNumber'
+              : f.key === 'family_number' || f.key === 'card_serial_number' ? 'familyNumber'
+              : f.key;
+            const labelKey = f.label_ar && f.label_ar.trim()
+              ? f.label_ar.trim()
+              : (fieldKey === 'docNumber' ? 'الرقم الوطني الموحد'
+                 : fieldKey === 'fullName' ? 'الاسم الكامل'
+                 : fieldKey === 'familyNumber' ? 'الرقم التسلسلي للبطاقة'
+                 : fieldKey === 'dob' ? 'تاريخ الولادة'
+                 : fieldKey === 'motherName' ? 'اسم الأم'
+                 : f.key);
+            return {
+              field: fieldKey,
+              label: `${labelKey}: ${f.value}`,
+              value: f.value,
+              box_2d: f.box_2d,
+              confidence: f.confidence || 0.98
+            };
+          })
         : [
             { field: 'fullName', label: `NAME: ${fullNameEn}`, value: fullNameEn, box_2d: [220, 340, 480, 920], confidence: 0.97 },
             { field: 'docNumber', label: `ID: ${docNumber}`, value: docNumber, box_2d: [740, 340, 910, 650], confidence: 0.99 },

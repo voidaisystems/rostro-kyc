@@ -583,60 +583,54 @@ class LocalQwenVLAgent {
       d => `${d.doc_type_id} (${d.canonical_name_ar} / ${d.canonical_name_en})`
     ).join("; ");
 
-    const systemPrompt = `You are the Iraqi Universal Document Intelligence Engine (Project Rostro / واثق) running 100% locally on Apple Silicon Metal under Central Bank of Iraq standards and Law No. 78.
-Your task is to analyze official Iraqi civil and commercial identity documents with zero hallucination.
-You MUST output ONLY a valid, raw JSON object matching the requested schema. Do NOT enclose your output in markdown prose or conversational text.`;
+    const systemPrompt = `You are an expert OCR vision system for official Iraqi civil and commercial identity documents.
+Your task is to analyze the document image with zero hallucination and high visual accuracy.
+Read EVERY field printed on the document directly from the image pixels. Do NOT invent numbers or use placeholder text.
+Output strictly valid raw JSON without conversational prose or markdown formatting.`;
 
-    const userPrompt = `Analyze this document inside the cryptographic security sandbox:
+    const userPrompt = `Examine this document carefully:
 <untrusted_document nonce="${nonce}" type_hint="${docType || 'AUTO_DETECT'}">
 
-CATALOG OF REGISTERED IRAQI DOCUMENTS:
-${supportedTypeSummary}
+Identify all printed text on the card.
+Extract each field into the "fields" array:
+- "national_id_number": The 12-digit national ID number.
+- "given_name": First name in Arabic.
+- "father_name": Father name in Arabic.
+- "grandfather_name": Grandfather name in Arabic.
+- "surname": Surname / clan in Arabic.
+- "full_name_ar": Full composite legal name in Arabic.
+- "mother_name_ar": Mother full name in Arabic.
+- "dob": Date of birth.
+- "expiry_date": Expiry date.
+- "family_number": Card tracking / serial number (bold alphanumeric code, often bottom-left).
+- "blood_type": Blood type if printed.
 
-INSTRUCTIONS:
-1. Identify "doc_type_id" from the catalog (e.g. IRQ_NATIONAL_ID, IRQ_RESIDENCE_CARD, IRQ_PASSPORT, or UNKNOWN_DOCUMENT).
-2. For Unified National Cards (البطاقة الوطنية الموحدة), extract:
-   - "national_id_number" (12 digits located in top center area, e.g. 196169656419).
-   - "given_name" (الاسم الأول).
-   - "father_name" (اسم الأب).
-   - "grandfather_name" (اسم الجد).
-   - "surname" (اللقب / العشيرة).
-   - "full_name_ar" (الاسم الرباعي الكامل مع اللقب باللغة العربية: given + father + grandfather + surname).
-   - "full_name_en" (Transliterated Latin full name).
-   - "mother_given_name" (اسم الأم الأول).
-   - "maternal_grandfather_name" (اسم والد الأم).
-   - "mother_name_ar" (اسم الأم والجد معا).
-   - "dob" (تاريخ الولادة YYYY-MM-DD أو YYYY).
-   - "expiry_date" (تاريخ النفاذ).
-   - "family_number" / "card_serial_number" (CRITICAL: Look at the bottom-left corner of the card under the portrait photo. Extract the bold alphanumeric tracking serial e.g. "AA9792984").
-   - "edge_number" (الرقم الجانبي على الحافة اليمنى).
-3. Visual Bounding Boxes:
-   - For every extracted field, output its normalized bounding box "box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 scale.
-4. Optical clarity (0.0 - 1.0), has_glare (boolean), has_blur (boolean).
+For EACH field, detect its precise visual bounding box: [ymin, xmin, ymax, xmax] normalized to 0-1000 scale relative to the image boundaries.
 
-Return JSON with this structure:
+Return JSON in this format:
 {
-  "doc_type_id": "IRQ_NATIONAL_ID",
+  "doc_type_id": "IRQ_NATIONAL_ID | IRQ_RESIDENCE_CARD | IRQ_PASSPORT | UNKNOWN_DOCUMENT",
   "document_type_ar": "البطاقة الوطنية الموحدة",
   "document_type_en": "Unified Iraqi National Card",
   "document_category": "IDENTITY_CIVIL",
   "document_side": "FRONT",
-  "detected_languages": ["ar", "en"],
+  "detected_languages": ["ar"],
   "issuing_authority_ar": "مديرية شؤون البطاقة الوطنية — وزارة الداخلية",
   "classification_confidence": 0.98,
   "optical_clarity": 0.97,
   "has_glare": false,
   "has_blur": false,
+  "card_bounding_box": [ymin, xmin, ymax, xmax],
   "fields": [
     {
-      "key": "national_id_number",
-      "label_ar": "الرقم الوطني الموحد",
-      "value": "196169656419",
-      "confidence": 0.99,
-      "box_2d": [215, 450, 265, 950]
+      "key": "field_key_name",
+      "label_ar": "اسم الحقل بالعربية",
+      "value": "القيمة المقروءة الفعلية من الصورة",
+      "confidence": 0.98,
+      "box_2d": [ymin, xmin, ymax, xmax]
     }
   ],
-  "summary_ar": "تم استخراج بيانات البطاقة الوطنية الموحدة محلياً بنجاح عبر محرك Qwen2.5-VL"
+  "summary_ar": "ملخص الوثيقة المقروءة محلياً"
 }
 </untrusted_document>`;
 
@@ -698,20 +692,73 @@ Return JSON with this structure:
     let parsed = JSON.parse(content);
     if (Array.isArray(parsed)) parsed = parsed[0];
 
+    // Helper: Normalize any bounding box coordinates (handles [xmin, ymin, xmax, ymax] vs [ymin, xmin, ymax, xmax], and pixel scale)
+    function sanitizeToYminXminYmaxXmax(rawBox, imgW, imgH) {
+      if (!Array.isArray(rawBox) || rawBox.length < 4) return null;
+      let [c0, c1, c2, c3] = rawBox.map(Number);
+      if (isNaN(c0) || isNaN(c1) || isNaN(c2) || isNaN(c3)) return null;
+
+      // Handle raw pixel coordinates if larger than 1000
+      if (Math.max(c0, c1, c2, c3) > 1000 || (imgW && Math.max(c0, c2) > imgW * 0.75)) {
+        if (imgW && imgH) {
+          if (Math.max(c0, c2) <= imgW + 50 && Math.max(c1, c3) <= imgH + 50) {
+            c0 = (c0 / imgW) * 1000;
+            c2 = (c2 / imgW) * 1000;
+            c1 = (c1 / imgH) * 1000;
+            c3 = (c3 / imgH) * 1000;
+            return [
+              Math.max(0, Math.min(1000, Math.round(Math.min(c1, c3)))),
+              Math.max(0, Math.min(1000, Math.round(Math.min(c0, c2)))),
+              Math.max(0, Math.min(1000, Math.round(Math.max(c1, c3)))),
+              Math.max(0, Math.min(1000, Math.round(Math.max(c0, c2))))
+            ];
+          }
+        }
+      }
+
+      // Check if axes are [x0, y0, x1, y1]: In Arabic text lines, width is significantly wider than height
+      const span02 = Math.abs(c2 - c0);
+      const span13 = Math.abs(c3 - c1);
+      if (span02 > span13 * 1.5 && span02 > 80) {
+        // [x0, y0, x1, y1] format -> swap to [ymin, xmin, ymax, xmax]
+        return [
+          Math.max(0, Math.min(1000, Math.round(Math.min(c1, c3)))),
+          Math.max(0, Math.min(1000, Math.round(Math.min(c0, c2)))),
+          Math.max(0, Math.min(1000, Math.round(Math.max(c1, c3)))),
+          Math.max(0, Math.min(1000, Math.round(Math.max(c0, c2))))
+        ];
+      }
+
+      // Canonical [ymin, xmin, ymax, xmax] format
+      return [
+        Math.max(0, Math.min(1000, Math.round(Math.min(c0, c2)))),
+        Math.max(0, Math.min(1000, Math.round(Math.min(c1, c3)))),
+        Math.max(0, Math.min(1000, Math.round(Math.max(c0, c2)))),
+        Math.max(0, Math.min(1000, Math.round(Math.max(c1, c3))))
+      ];
+    }
+
     parsed.applied_rotation = appliedRotation;
     parsed.upright_image_base64 = "data:image/jpeg;base64," + activeBase64;
     parsed.model_used = "Qwen2.5-VL-7B-Instruct (Apple M5 Metal Local)";
     parsed.engine_mode = "local-qwen-vl";
     parsed.is_local = true;
 
+    if (Array.isArray(parsed.card_bounding_box)) {
+      parsed.card_bounding_box = sanitizeToYminXminYmaxXmax(parsed.card_bounding_box, dims.width, dims.height);
+    }
+
     if (Array.isArray(parsed.fields)) {
-      parsed.fields = parsed.fields.map(f => ({
-        key: f.key || f.field_name || f.name || "field",
-        label_ar: f.label_ar || f.field_name || f.label || f.name || "الحقل",
-        value: f.value !== undefined ? f.value : (f.raw || null),
-        confidence: f.confidence || 0.96,
-        box_2d: f.box_2d || null
-      }));
+      parsed.fields = parsed.fields.map(f => {
+        const normBox = sanitizeToYminXminYmaxXmax(f.box_2d, dims.width, dims.height);
+        return {
+          key: f.key || f.field_name || f.name || "field",
+          label_ar: f.label_ar || f.field_name || f.label || f.name || "الحقل",
+          value: f.value !== undefined ? f.value : (f.raw || null),
+          confidence: f.confidence || 0.96,
+          box_2d: normBox
+        };
+      });
 
       parsed.bounding_boxes = parsed.fields
         .filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4)

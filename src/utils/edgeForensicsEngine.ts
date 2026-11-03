@@ -1157,6 +1157,18 @@ export function normalizeBoxPercentages(
     xmin = xmax;
     xmax = tmp;
   }
+
+  // Defensive Check: If coordinate axes are inverted ([x0, y0, x1, y1] where horizontal text appears as a vertical sliver)
+  const spanY = ymax - ymin;
+  const spanX = xmax - xmin;
+  if (spanY > spanX * 2.2 && spanY >= 14 && spanX <= 8) {
+    const origYmin = ymin;
+    const origYmax = ymax;
+    ymin = xmin;
+    ymax = xmax;
+    xmin = origYmin;
+    xmax = origYmax;
+  }
   // Clamp boundaries safely within 0-100%
   const top = Math.max(0, Math.min(94, Math.round(ymin * 10) / 10));
   const left = Math.max(0, Math.min(94, Math.round(xmin * 10) / 10));

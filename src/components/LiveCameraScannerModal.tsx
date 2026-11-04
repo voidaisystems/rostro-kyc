@@ -16,177 +16,64 @@ import {
 } from 'lucide-react';
 import type { Language } from '../utils/kycEngine';
 import {
-  computeLaplacianBlurVariance,
-  detectHsvSpecularGlare,
-} from '../utils/edgeForensicsEngine';
+  evaluateCameraFrameHeadless,
+  type CameraDiagnosticCheck,
+  type CameraFrameTelemetry,
+} from '../utils/rostroHeadlessSdk';
 
-export interface CameraDiagnosticCheck {
-  id:
-    | 'DOCUMENT_PRESENCE'
-    | 'SHARPNESS'
-    | 'GLARE_SPOT'
-    | 'LIGHTING'
-    | 'PERSPECTIVE'
-    | 'RESOLUTION';
-  labelEn: string;
-  labelAr: string;
-  passed: boolean;
-  detailEn: string;
-  detailAr: string;
-}
+export type { CameraDiagnosticCheck, CameraFrameTelemetry };
 
-export interface CameraFrameTelemetry {
-  status:
-    | 'INITIALIZING'
-    | 'WARMING_UP'
-    | 'HOLD_STEADY'
-    | 'ADJUST_FRAMING'
-    | 'TOO_BLURRY'
-    | 'TOO_GLARY'
-    | 'LIGHT_SPOT_GLARE'
-    | 'TOO_DARK'
-    | 'LOW_LIGHT'
-    | 'READY';
-  readyToSnap: boolean;
-  autoSnapProgressPct: number;
-  sharpnessVariance: number;
-  glarePercent: number;
-  meanLuminance: number;
-  moireRatio: number;
-  cornersDetected: number;
-  estimatedTiltDegrees: number;
-  glareHotspotBox: [number, number, number, number] | null;
-  feedbackEn: string;
-  feedbackAr: string;
-  actionHintEn: string;
-  actionHintAr: string;
-  steadyFramesCount: number;
-  diagnostics: CameraDiagnosticCheck[];
-}
+/**
+ * Computes the intrinsic video pixel rectangle `(sx, sy, sw, sh)` corresponding
+ * to the visual Guide Box borders inside an `object-cover` `<video>` viewport.
+ */
+function getGuideBoxVideoRegion(
+  video: HTMLVideoElement,
+  guideBox: HTMLElement | null,
+  paddingRatio = 0.08
+): { sx: number; sy: number; sw: number; sh: number } {
+  const srcW = video.videoWidth || 1280;
+  const srcH = video.videoHeight || 720;
+  const clientW = video.clientWidth;
+  const clientH = video.clientHeight;
 
-function evaluateCameraFrameHeadless(
-  rgba: Uint8ClampedArray,
-  width: number,
-  height: number,
-  prevSteadyCount: number,
-  hasRealVideoFeed: boolean,
-  sourceWidth = 1280,
-  sourceHeight = 720,
-  motionDiff = 0
-): CameraFrameTelemetry {
-  const blurRes = computeLaplacianBlurVariance(rgba, width, height, 65);
-  const glareRes = detectHsvSpecularGlare(rgba, width, height, 8.5);
-  const sharpnessVariance = blurRes.variance;
-  const glarePercent = glareRes.glareAreaPercent;
+  if (guideBox && clientW > 0 && clientH > 0) {
+    const videoRect = video.getBoundingClientRect();
+    const boxRect = guideBox.getBoundingClientRect();
+    if (boxRect.width > 20 && boxRect.height > 20) {
+      const scale = Math.max(clientW / srcW, clientH / srcH);
+      const dispW = srcW * scale;
+      const dispH = srcH * scale;
+      const offsetX = (clientW - dispW) / 2;
+      const offsetY = (clientH - dispH) / 2;
 
-  let lumaSum = 0;
-  const totalPixels = Math.max(1, width * height);
-  for (let i = 0; i < rgba.length; i += 4) {
-    lumaSum += 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+      const boxLeftInVideoCss = boxRect.left - videoRect.left - offsetX;
+      const boxTopInVideoCss = boxRect.top - videoRect.top - offsetY;
+
+      const rawX = boxLeftInVideoCss / scale;
+      const rawY = boxTopInVideoCss / scale;
+      const rawW = boxRect.width / scale;
+      const rawH = boxRect.height / scale;
+
+      const padX = rawW * paddingRatio;
+      const padY = rawH * paddingRatio;
+
+      const sx = Math.max(0, Math.round(rawX - padX));
+      const sy = Math.max(0, Math.round(rawY - padY));
+      const sw = Math.max(64, Math.min(srcW - sx, Math.round(rawW + padX * 2)));
+      const sh = Math.max(40, Math.min(srcH - sy, Math.round(rawH + padY * 2)));
+      return { sx, sy, sw, sh };
+    }
   }
-  const meanLuminance = Math.round(lumaSum / totalPixels);
 
-  const cornersDetected = sharpnessVariance >= 35 ? 4 : 2;
-  const estimatedTiltDegrees = 2.5;
-  const docPass = cornersDetected >= 3 && motionDiff < 18;
-  const sharpPass = blurRes.passed;
-  const glarePass = glareRes.passed;
-  const lightPass = meanLuminance >= 55 && meanLuminance <= 235;
-  const tiltPass = estimatedTiltDegrees <= 16;
-  const resPass = sourceWidth >= 640 && sourceHeight >= 400;
-
-  const diagnostics: CameraDiagnosticCheck[] = [
-    {
-      id: 'DOCUMENT_PRESENCE',
-      labelEn: 'Card Boundaries',
-      labelAr: 'حواف الوثيقة',
-      passed: docPass,
-      detailEn: `${cornersDetected}/4 corners locked`,
-      detailAr: `${cornersDetected}/4 زوايا محددة`,
-    },
-    {
-      id: 'SHARPNESS',
-      labelEn: 'Optical Focus',
-      labelAr: 'حدة التركيز',
-      passed: sharpPass,
-      detailEn: `Laplacian σ²=${sharpnessVariance}`,
-      detailAr: `التباين σ²=${sharpnessVariance}`,
-    },
-    {
-      id: 'GLARE_SPOT',
-      labelEn: 'Flash / Glare',
-      labelAr: 'انعكاس الإضاءة',
-      passed: glarePass,
-      detailEn: `${glarePercent}% specular`,
-      detailAr: `${glarePercent}% وهج`,
-    },
-    {
-      id: 'LIGHTING',
-      labelEn: 'Ambient Light',
-      labelAr: 'مستوى الإضاءة',
-      passed: lightPass,
-      detailEn: `Luma ${meanLuminance}/255`,
-      detailAr: `السطوع ${meanLuminance}/255`,
-    },
-    {
-      id: 'PERSPECTIVE',
-      labelEn: 'Flat Alignment',
-      labelAr: 'استقامة الزاوية',
-      passed: tiltPass,
-      detailEn: `${estimatedTiltDegrees}° tilt`,
-      detailAr: `ميلان ${estimatedTiltDegrees}°`,
-    },
-    {
-      id: 'RESOLUTION',
-      labelEn: 'Sensor HD',
-      labelAr: 'دقة الكاميرا',
-      passed: resPass,
-      detailEn: `${sourceWidth}×${sourceHeight}`,
-      detailAr: `${sourceWidth}×${sourceHeight}`,
-    },
-  ];
-
-  const allPassed = hasRealVideoFeed && docPass && sharpPass && glarePass && lightPass && tiltPass;
-  const steadyFramesCount = allPassed ? prevSteadyCount + 1 : Math.max(0, prevSteadyCount - 1);
-  const autoSnapProgressPct = Math.min(100, Math.round((steadyFramesCount / 5) * 100));
-  const readyToSnap = steadyFramesCount >= 5;
-
-  return {
-    status: readyToSnap
-      ? 'READY'
-      : allPassed
-        ? 'HOLD_STEADY'
-        : !lightPass
-          ? 'LOW_LIGHT'
-          : !glarePass
-            ? 'LIGHT_SPOT_GLARE'
-            : !sharpPass
-              ? 'TOO_BLURRY'
-              : 'ADJUST_FRAMING',
-    readyToSnap,
-    autoSnapProgressPct,
-    sharpnessVariance,
-    glarePercent,
-    meanLuminance,
-    moireRatio: 0,
-    cornersDetected,
-    estimatedTiltDegrees,
-    glareHotspotBox: glareRes.hotspotBox,
-    feedbackEn: readyToSnap
-      ? 'Optimal Lock — Capturing Document...'
-      : allPassed
-        ? `Hold Steady (${autoSnapProgressPct}%)...`
-        : 'Position Iraqi Document Inside Guide Box',
-    feedbackAr: readyToSnap
-      ? 'تركيز مثالي — جاري التقاط الوثيقة...'
-      : allPassed
-        ? `ثبّت يدك (${autoSnapProgressPct}%)...`
-        : 'ضع الوثيقة العراقية داخل الإطار الإرشادي',
-    actionHintEn: 'Ensure all 4 card corners are visible with no flash glare.',
-    actionHintAr: 'تأكد من ظهور زوايا البطاقة الأربع بوضوح وبدون انعكاس فلاش.',
-    steadyFramesCount,
-    diagnostics,
-  };
+  // Fallback centered card frame (76% width, 1.58:1 aspect ratio)
+  const targetW = Math.min(srcW * (0.76 + paddingRatio * 2), srcW);
+  const targetH = Math.min(targetW / 1.58, srcH * 0.88);
+  const sx = Math.max(0, Math.round((srcW - targetW) / 2));
+  const sy = Math.max(0, Math.round((srcH - targetH) / 2));
+  const sw = Math.max(64, Math.min(srcW - sx, Math.round(targetW)));
+  const sh = Math.max(40, Math.min(srcH - sy, Math.round(targetH)));
+  return { sx, sy, sw, sh };
 }
 
 interface LiveCameraScannerModalProps {
@@ -226,6 +113,7 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
   const isAr = lang === 'ar';
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const guideBoxRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [cameraActive, setCameraActive] = useState(false);
@@ -370,21 +258,23 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
     setFlashEffect(true);
     setTimeout(() => setFlashEffect(false), 220);
 
+    // Crop captured image specifically to the document Guide Box borders (with 6% margin)
+    const { sx, sy, sw, sh } = getGuideBoxVideoRegion(video, guideBoxRef.current, 0.06);
     const outCanvas = document.createElement('canvas');
-    outCanvas.width = video.videoWidth;
-    outCanvas.height = video.videoHeight;
+    outCanvas.width = sw;
+    outCanvas.height = sh;
     const ctx = outCanvas.getContext('2d');
     if (!ctx) return;
 
-    // Always capture un-mirrored pixels so Arabic/English text & MRZ on the card are never backwards
-    ctx.drawImage(video, 0, 0, outCanvas.width, outCanvas.height);
+    // Always capture un-mirrored pixels from the Guide Box region so Arabic/English text & MRZ are never backwards
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
     const dataUrl = outCanvas.toDataURL('image/png', 0.95);
     const timestamp = Date.now();
 
     const docPresenceDiag = latestTelemetryRef.current.diagnostics.find(
       (d) => d.id === 'DOCUMENT_PRESENCE'
     );
-    const cardWasDetected = docPresenceDiag ? docPresenceDiag.passed : true;
+    const cardWasDetected = docPresenceDiag ? docPresenceDiag.passed : false;
     setLastCaptureHadCard(cardWasDetected);
 
     if (scanStage === 'FRONT' && requiresBackSide) {
@@ -457,7 +347,10 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
 
-      ctx.drawImage(video, 0, 0, sampleW, sampleH);
+      // Sample specifically the Guide Box borders region so evaluateCameraFrameHeadless's
+      // 3x3 spatial grid inspects the exact area inside the visual guide borders
+      const { sx, sy, sw, sh } = getGuideBoxVideoRegion(video, guideBoxRef.current, 0.04);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sampleW, sampleH);
       const imgData = ctx.getImageData(0, 0, sampleW, sampleH);
       const rgba = imgData.data;
 
@@ -478,21 +371,40 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
       prevLumaBufferRef.current = curLuma;
       const motionDiff = diffCount > 0 ? diffSum / diffCount : 0;
 
-      // Check if we are still in the initial 3.5-second placement warm-up grace period
-      const remainingWarmupMs = Math.max(0, warmupUntilRef.current - Date.now());
-      const inWarmup = remainingWarmupMs > 0;
-      setWarmupSecondsLeft(inWarmup ? Math.ceil(remainingWarmupMs / 1000) : 0);
-
-      const nextTelemetry = evaluateCameraFrameHeadless(
+      const previewTelemetry = evaluateCameraFrameHeadless(
         rgba,
         sampleW,
         sampleH,
-        inWarmup ? 0 : steadyCountRef.current,
+        steadyCountRef.current,
         true,
         video.videoWidth,
         video.videoHeight,
         motionDiff
       );
+
+      // If a real card is already detected inside the guide box, skip any remaining placement warm-up immediately!
+      const cardAlreadyPresent =
+        previewTelemetry.diagnostics.find((d) => d.id === 'DOCUMENT_PRESENCE')?.passed ?? false;
+      if (cardAlreadyPresent && warmupUntilRef.current > Date.now()) {
+        warmupUntilRef.current = 0;
+      }
+
+      const remainingWarmupMs = Math.max(0, warmupUntilRef.current - Date.now());
+      const inWarmup = remainingWarmupMs > 0;
+      setWarmupSecondsLeft(inWarmup ? Math.ceil(remainingWarmupMs / 1000) : 0);
+
+      const nextTelemetry = inWarmup
+        ? evaluateCameraFrameHeadless(
+            rgba,
+            sampleW,
+            sampleH,
+            0,
+            true,
+            video.videoWidth,
+            video.videoHeight,
+            motionDiff
+          )
+        : previewTelemetry;
 
       if (inWarmup) {
         steadyCountRef.current = 0;
@@ -871,6 +783,7 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
           {cameraActive && scanStage !== 'FLIP_PROMPT' && scanStage !== 'REVIEW_FINAL' && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4 sm:p-6">
               <div
+                ref={guideBoxRef}
                 className={`w-[86%] sm:w-[76%] max-w-lg aspect-[1.58/1] rounded-2xl border-2 transition-all duration-200 relative ${
                   telemetry.readyToSnap
                     ? 'border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.52),0_0_30px_rgba(16,185,129,0.6)]'

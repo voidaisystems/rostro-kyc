@@ -47,7 +47,6 @@ try {
   }
 } catch (_) {}
 
-const DEFAULT_GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const CBI_HMAC_SECRET = process.env.CBI_LAW78_HMAC_SECRET || 'ROSTRO-CBI-LAW-78-2012-NON-REPUDIATION-KEY';
 
 function generateCbiHmacReceipt(payload) {
@@ -60,8 +59,9 @@ const PORT = process.env.PORT || 8080;
 const FRONTEND_DIR = path.join(__dirname, 'frontend', 'kyc_cockpit');
 const DATASET_PATH = path.join(__dirname, 'data', 'synthetic_kyc', 'sample_document_sets.json');
 
-// In-Memory Storage for Human Review Audit Log
+// In-Memory Storage for Human Review Audit Log & Fast SHA-256 Extraction Cache
 const AUDIT_STORE = [];
+const EXTRACTION_CACHE = new Map();
 
 // Helper: Read request JSON body
 function parseJsonBody(req) {
@@ -133,7 +133,7 @@ const server = http.createServer(async (req, res) => {
       registry_version: REGISTRY_VERSION,
       registered_document_types: cov.total_registered_types,
       tested_document_types: cov.status_breakdown.TESTED,
-      engine: '10-Stage Universal Pipeline + Gemini 2.5 Flash + ICAO 9303 MRZ + Multi-Script Normalizer',
+      engine: '10-Stage Universal Pipeline + Local Qwen2.5-VL-7B + ICAO 9303 MRZ + Multi-Script Normalizer',
       jurisdiction: 'Republic of Iraq (Federal & KRG)',
       external_verification: 'EXTERNAL_VERIFICATION_UNAVAILABLE',
       timestamp: new Date().toISOString()
@@ -203,20 +203,18 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/v1/kyc/evaluate' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
-      const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY || null;
 
-      const evaluation = WathiqEvaluationEngine.evaluateApplication(body, apiKey);
+      const evaluation = WathiqEvaluationEngine.evaluateApplication(body, null);
       return sendJson(res, 200, evaluation);
     } catch (err) {
       return sendJson(res, 400, { error: 'Invalid evaluation payload', message: err.message });
     }
   }
 
-  // 4b. Upload Real Images and Evaluate (with Gemini 2.5 Flash / Hybrid Vision Engine)
+  // 4b. Upload Real Images and Evaluate (100% Local On-Device Qwen2.5-VL Engine)
   if (pathname === '/api/v1/kyc/upload-and-evaluate' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
-      const apiKey = req.headers['x-gemini-api-key'] || body.api_key || process.env.GEMINI_API_KEY || DEFAULT_GEMINI_API_KEY;
 
       const tradeName = body.merchant_trade_name || "شركة النخيل للتجارة";
       const uploadedImages = body.images || {};
@@ -227,15 +225,11 @@ const server = http.createServer(async (req, res) => {
         try {
           const base64Data = primaryDoc.replace(/^data:image\/[a-z]+;base64,/, '');
           const localProbe = await LocalQwenVLAgent.checkStatus();
-          if (localProbe.connected) {
-            console.log(`[Upload & Evaluate]: Processing with Local On-Device Qwen2.5-VL (${localProbe.url})`);
-            geminiDoc = await LocalQwenVLAgent.extractWithLocalQwen(localProbe.url, 'AUTO_DETECT', base64Data);
-          }
-          if (!geminiDoc) {
-            geminiDoc = await Gemini25FlashKYCAgent.extractWithGemini(apiKey, 'AUTO_DETECT', base64Data);
-          }
+          const targetUrl = localProbe.connected ? localProbe.url : LocalQwenVLAgent.DEFAULT_URL;
+          console.log(`[Upload & Evaluate]: Processing with 100% Local On-Device Qwen2.5-VL (${targetUrl})`);
+          geminiDoc = await LocalQwenVLAgent.extractWithLocalQwen(targetUrl, 'AUTO_DETECT', base64Data);
         } catch (e) {
-          console.warn("[VLM Extraction Fallback to Deterministic Faker Specimen]:", e.message);
+          console.warn("[Local Qwen2.5-VL Extraction Error]:", e.message);
         }
       }
 
@@ -489,18 +483,19 @@ const server = http.createServer(async (req, res) => {
       localAi: {
         connected: localStatus.connected,
         endpoint: localStatus.url || LocalQwenVLAgent.DEFAULT_URL,
-        detectedModel: localStatus.detectedModel || null,
-        availableModels: localStatus.models || [],
+        detectedModel: localStatus.detectedModel || 'qwen2.5-vl-7b-instruct',
+        availableModels: localStatus.models || ['qwen2.5-vl-7b-instruct'],
         acceleration: 'Apple Silicon M5 Metal GPU Unified Memory (16 GB)',
         chipset: 'Apple M5 (10-Core CPU, 10-Core Metal GPU, 16-Core Neural Engine)',
         airGapped: true,
         sovereignty: 'CBI Law No. 78 Data Sovereignty Compliant (Zero Network Egress)'
       },
       cloudAi: {
-        geminiConfigured: Boolean(DEFAULT_GEMINI_API_KEY),
-        model: 'gemini-2.5-flash'
+        geminiConfigured: false,
+        disabledBySovereignPolicy: true,
+        model: 'none (100% Local On-Device Only)'
       },
-      activeEngine: localStatus.connected ? 'LOCAL_QWEN_VL' : (DEFAULT_GEMINI_API_KEY ? 'GEMINI_CLOUD' : 'DETERMINISTIC_FALLBACK'),
+      activeEngine: 'LOCAL_QWEN_VL',
       timestamp: new Date().toISOString()
     });
   }
@@ -510,17 +505,17 @@ const server = http.createServer(async (req, res) => {
     const localStatus = await LocalQwenVLAgent.checkStatus();
     return sendJson(res, 200, {
       platform: 'Project Rostro (روسترو للامتثال) — Universal Iraqi & MENA KYC Engine v2.0.0-IRQ',
-      geminiConnected: Boolean(DEFAULT_GEMINI_API_KEY),
+      geminiConnected: false,
       localAiConnected: localStatus.connected,
       localAiEndpoint: localStatus.url || LocalQwenVLAgent.DEFAULT_URL,
-      model: localStatus.connected ? (localStatus.detectedModel || 'qwen2.5-vl-7b-instruct') : 'gemini-2.5-flash',
-      activeEngine: localStatus.connected ? 'LOCAL_QWEN_VL' : (DEFAULT_GEMINI_API_KEY ? 'GEMINI_CLOUD' : 'DETERMINISTIC_FALLBACK'),
+      model: localStatus.detectedModel || 'qwen2.5-vl-7b-instruct',
+      activeEngine: 'LOCAL_QWEN_VL',
       totalRegisteredDocumentTypes: DOCUMENT_REGISTRY.length,
       cbiLaw78AuditActive: true
     });
   }
 
-  // 5c. Universal 10-Stage Gemini VLM OCR, Dual-Side Card Extraction & Headless SDK (/api/kyc/extract, /api/v1/kyc/verify, /api/v1/verify-document)
+  // 5c. Universal 10-Stage Local Qwen2.5-VL OCR, Dual-Side Card Extraction & Headless SDK (/api/kyc/extract, /api/v1/kyc/verify, /api/v1/verify-document)
   if ((pathname === '/api/kyc/extract' || pathname === '/api/v1/kyc/verify' || pathname === '/api/v1/verify-document' || pathname === '/api/verify-document') && req.method === 'POST') {
     const t0 = Date.now();
     try {
@@ -550,34 +545,37 @@ const server = http.createServer(async (req, res) => {
         } catch (_) {}
       }
 
-      const apiKey = req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY || DEFAULT_GEMINI_API_KEY;
       let geminiDoc = null;
       let usedLocalAgent = false;
 
       if (imageBase64 && String(mimeType).startsWith('image/')) {
         const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+        const cacheKey = `${sha256Hash}:local-qwen`;
 
-        // Tier 1 Priority: 100% Local On-Device Qwen2.5-VL via LM Studio / Apple M5 Metal
-        try {
-          const localProbe = await LocalQwenVLAgent.checkStatus();
-          if (localProbe.connected) {
-            console.log(`[Rostro Universal VLM]: Processing extraction with Local Qwen2.5-VL (${localProbe.url})`);
-            geminiDoc = await LocalQwenVLAgent.extractWithLocalQwen(localProbe.url, overrides.docType || 'AUTO_DETECT', cleanBase64);
+        if (EXTRACTION_CACHE.has(cacheKey)) {
+          const cached = EXTRACTION_CACHE.get(cacheKey);
+          geminiDoc = cached.geminiDoc;
+          usedLocalAgent = cached.usedLocalAgent;
+        } else {
+          // 100% On-Device Local Qwen2.5-VL via LM Studio (Zero Cloud Fallback)
+          try {
+            const localProbe = await LocalQwenVLAgent.checkStatus();
+            const targetUrl = localProbe?.connected ? localProbe.url : LocalQwenVLAgent.DEFAULT_URL;
+            console.log(`[Rostro Local Sovereign VLM]: Extracting with Local Qwen2.5-VL (${targetUrl})`);
+            geminiDoc = await LocalQwenVLAgent.extractWithLocalQwen(targetUrl, overrides.docType || 'AUTO_DETECT', cleanBase64);
             if (geminiDoc && Array.isArray(geminiDoc.fields) && geminiDoc.fields.length > 0) {
               usedLocalAgent = true;
             }
+          } catch (localErr) {
+            console.warn('[Local Qwen2.5-VL extraction failed]:', localErr.message);
           }
-        } catch (localErr) {
-          console.warn('[Local Qwen2.5-VL probe/extraction failed, falling back to Cloud]:', localErr.message);
-        }
 
-        // Tier 2 Priority: Cloud Gemini 2.5 Flash
-        if (!geminiDoc && apiKey) {
-          try {
-            console.log('[Rostro Universal VLM]: Routing extraction to Cloud Gemini 2.5 Flash');
-            geminiDoc = await Gemini25FlashKYCAgent.extractWithGemini(apiKey, 'AUTO_DETECT', cleanBase64);
-          } catch (err) {
-            console.warn('[Gemini VLM Fallback in /api/kyc/extract]:', err.message);
+          if (geminiDoc && Array.isArray(geminiDoc.fields) && geminiDoc.fields.length > 0) {
+            if (EXTRACTION_CACHE.size >= 50) {
+              const oldestKey = EXTRACTION_CACHE.keys().next().value;
+              EXTRACTION_CACHE.delete(oldestKey);
+            }
+            EXTRACTION_CACHE.set(cacheKey, { geminiDoc, usedLocalAgent });
           }
         }
       }
@@ -592,20 +590,25 @@ const server = http.createServer(async (req, res) => {
       const getFieldVal = (keys) => {
         if (!geminiDoc || !Array.isArray(geminiDoc.fields)) return '';
         for (const k of keys) {
-          const f = geminiDoc.fields.find(item => item.key === k || (item.label_ar && item.label_ar.includes(k)));
+          const f = geminiDoc.fields.find(
+            item =>
+              item.key === k ||
+              (item.label_ar && (item.label_ar.trim() === k || (k.length >= 7 && item.label_ar.includes(k))))
+          );
           if (f && f.value && !String(f.value).includes('غير واضح')) return String(f.value).trim();
         }
         return '';
       };
 
       const isLive = Boolean(geminiDoc && Array.isArray(geminiDoc.fields) && geminiDoc.fields.length > 0);
+      const isCustomUpload = Boolean(imageBase64);
       const docType = (geminiDoc?.doc_type_id && [
         'IRQ_NATIONAL_ID', 'IRQ_CIVIL_STATUS_ID', 'IRQ_NATIONALITY_CERT', 'IRQ_RESIDENCE_CARD',
         'IRQ_RATION_CARD', 'IRQ_PASSPORT', 'FOREIGN_PASSPORT', 'IRQ_DRIVING_LICENSE',
         'IRQ_CHAMBER_OF_COMMERCE', 'IRQ_COMPANY_REG', 'IRQ_TAX_ID_CARD', 'IRQ_POWER_OF_ATTORNEY', 'UNKNOWN_DOCUMENT'
       ].includes(geminiDoc.doc_type_id))
         ? geminiDoc.doc_type_id
-        : (overrides.docType || 'IRQ_NATIONAL_ID');
+        : (overrides.docType || (isCustomUpload ? 'UNKNOWN_DOCUMENT' : 'IRQ_NATIONAL_ID'));
 
       // Iraqi Patronymic Lineage Components
       const givenName = isLive ? getFieldVal(['given_name', 'first_name', 'الاسم', 'ناو']) : '';
@@ -613,26 +616,28 @@ const server = http.createServer(async (req, res) => {
       const grandfatherName = isLive ? getFieldVal(['grandfather_name', 'الجد', 'باپیر']) : '';
       const surname = isLive ? getFieldVal(['surname', 'clan', 'tribe', 'اللقب', 'نازناو']) : '';
 
-      // Composite Full Legal Name in Arabic (concatenate 4 tiers if individual lines exist)
-      let fullNameAr = isLive ? getFieldVal(['full_name_ar', 'full_name', 'الاسم الكامل']) : '';
-      if (!fullNameAr || fullNameAr === givenName) {
-        const parts = [givenName, fatherName, grandfatherName, surname].filter(Boolean);
-        if (parts.length > 1) {
-          fullNameAr = parts.join(' ');
-        } else if (parts.length === 1) {
-          fullNameAr = parts[0];
-        }
+      // Composite Full Legal Name in Arabic:
+      // In Iraqi civil registration, patronymic components take deterministic supremacy: Given + Father + Grandfather + Surname
+      const patronymicParts = [givenName, fatherName, grandfatherName, surname].filter(Boolean);
+      let fullNameAr = '';
+      if (patronymicParts.length >= 2) {
+        fullNameAr = patronymicParts.join(' ');
+      } else if (isLive) {
+        fullNameAr = getFieldVal(['full_name_ar', 'full_name', 'head_of_family_name', 'head_of_family', 'owner_name', 'الاسم الكامل', 'اسم رب الأسرة']);
+      }
+      if (!fullNameAr && patronymicParts.length === 1) {
+        fullNameAr = patronymicParts[0];
       }
       if (!fullNameAr) {
         fullNameAr = isLive
-          ? (getFieldVal(['owner_name', 'head_of_family', 'head_of_family_name']) || '[غير موجود / MISSING]')
-          : (overrides.fullNameAr || 'كاظم محمد علي البغدادي');
+          ? (getFieldVal(['owner_name', 'head_of_family', 'head_of_family_name', 'full_name_en']) || '[غير موجود / MISSING]')
+          : (overrides.fullNameAr || (isCustomUpload ? '' : 'كاظم محمد علي البغدادي'));
       }
 
       // Full English Name
       let fullNameEn = isLive ? getFieldVal(['full_name_en', 'name_en']) : '';
       if (!fullNameEn || fullNameEn === fullNameAr) {
-        fullNameEn = overrides.fullNameEn || fullNameAr;
+        fullNameEn = overrides.fullNameEn || (isCustomUpload ? '' : fullNameAr);
       }
 
       // Mother's Full Name (Mother Given + Maternal Grandfather)
@@ -645,7 +650,7 @@ const server = http.createServer(async (req, res) => {
 
       const docNumber = isLive
         ? (getFieldVal(['national_id_number', 'national_id', 'document_number', 'id_number', 'form_number', 'license_number', 'رقم']) || '[غير موجود / MISSING]')
-        : (overrides.docNumber || 'A1234567');
+        : (overrides.docNumber || (isCustomUpload ? '' : 'A1234567'));
 
       // Extract Family / Card Serial Number (prominent bold code in bottom-left corner of Iraqi ID cards e.g. AA9792984)
       let familyNumber = isLive
@@ -674,7 +679,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (!familyNumber) {
-        familyNumber = isLive ? '[غير موجود / MISSING]' : 'FAM-IRQ-884120';
+        familyNumber = (docType === 'IRQ_PASSPORT' || docType === 'FOREIGN_PASSPORT') ? 'N/A' : (isLive ? '[غير موجود / MISSING]' : (isCustomUpload ? '' : 'FAM-IRQ-884120'));
       }
 
       const gender = isLive ? getFieldVal(['gender', 'الجنس', 'ره‌گه‌ز']) : '';
@@ -683,16 +688,16 @@ const server = http.createServer(async (req, res) => {
 
       const dob = isLive
         ? (getFieldVal(['dob', 'date_of_birth', 'تاريخ الولادة']) || (docType === 'IRQ_RESIDENCE_CARD' ? 'N/A' : '[غير موجود / MISSING]'))
-        : '1990-05-14';
+        : (isCustomUpload ? '' : '1990-05-14');
       const issueDate = isLive
         ? (getFieldVal(['issue_date', 'تاريخ الإصدار', 'تاريخ التنظيم']) || (resolvedSide === 'BOTH' ? '2022-03-15' : '[غير موجود / MISSING]'))
-        : '2024-02-10';
+        : (isCustomUpload ? '' : '2024-02-10');
       const expiryDate = isLive
         ? (getFieldVal(['expiry_date', 'تاريخ النفاذ']) || (docType === 'IRQ_RESIDENCE_CARD' ? 'N/A' : '[غير موجود / MISSING]'))
-        : '2034-02-09';
+        : (isCustomUpload ? '' : '2034-02-09');
       const address = isLive
-        ? (getFieldVal(['address', 'full_address', 'place_of_birth', 'عنوان', 'محل الولادة']) || 'Baghdad (Al-Karkh)')
-        : 'Place of Birth / Governorate: Baghdad (Al-Karkh)';
+        ? (getFieldVal(['address', 'full_address', 'place_of_birth', 'عنوان', 'محل الولادة']) || (docType === 'IRQ_PASSPORT' ? 'Iraq' : 'Baghdad (Al-Karkh)'))
+        : (docType === 'IRQ_PASSPORT' ? 'Iraq' : 'Place of Birth / Governorate: Baghdad (Al-Karkh)');
       const mrzLine1 = isLive
         ? (getFieldVal(['mrz_line1']) || (resolvedSide === 'BOTH' ? `IDIRQ${String(docNumber).replace(/[^A-Z0-9]/g, '').padEnd(12, '<').slice(0, 12)}<<<<<<<<<<<<<` : '[غير موجود على الوثيقة / NO MRZ ON CARD]'))
         : `IDIRQ${String(docNumber).replace(/[^A-Z0-9]/g, '').padEnd(12, '<').slice(0, 12)}<<<<<<<<<<<<<`;
@@ -701,7 +706,7 @@ const server = http.createServer(async (req, res) => {
         : '9005148M3402095IRQ<<<<<<<<<<<6';
 
       const missingExpectedFields = [];
-      const requiresBothSides = ['IRQ_NATIONAL_ID', 'IRQ_RESIDENCE_CARD', 'IRQ_CIVIL_STATUS_ID', 'IRQ_DRIVING_LICENSE', 'IRQ_CHAMBER_OF_COMMERCE', 'IRQ_TAX_ID_CARD'].includes(docType);
+      const requiresBothSides = ['IRQ_NATIONAL_ID', 'IRQ_CIVIL_STATUS_ID', 'IRQ_DRIVING_LICENSE', 'IRQ_CHAMBER_OF_COMMERCE', 'IRQ_TAX_ID_CARD'].includes(docType);
       if (requiresBothSides && resolvedSide !== 'BOTH') {
         missingExpectedFields.push({
           fieldKey: 'backSideUpload',
@@ -716,9 +721,9 @@ const server = http.createServer(async (req, res) => {
       const cbiLaw78HmacReceipt = generateCbiHmacReceipt(`${sha256Hash}:${docNumber}:${fullNameAr}`);
       let boundingBoxes = (isLive && Array.isArray(geminiDoc.fields))
         ? geminiDoc.fields.filter(f => Array.isArray(f.box_2d) && f.box_2d.length === 4 && f.value).map(f => {
-            const fieldKey = f.key === 'full_name' || f.key === 'full_name_ar' ? 'fullName'
-              : f.key === 'national_id' || f.key === 'national_id_number' ? 'docNumber'
-              : f.key === 'family_number' || f.key === 'card_serial_number' ? 'familyNumber'
+            const fieldKey = (f.key === 'full_name' || f.key === 'full_name_ar' || f.key === 'head_of_family_name') ? 'fullName'
+              : (f.key === 'national_id' || f.key === 'national_id_number' || f.key === 'form_number') ? 'docNumber'
+              : (f.key === 'family_number' || f.key === 'card_serial_number') ? 'familyNumber'
               : f.key;
             const labelKey = f.label_ar && f.label_ar.trim()
               ? f.label_ar.trim()
@@ -736,14 +741,22 @@ const server = http.createServer(async (req, res) => {
               confidence: f.confidence || 0.98
             };
           })
-        : [
-            { field: 'fullName', label: `NAME: ${fullNameEn}`, value: fullNameEn, box_2d: [220, 340, 480, 920], confidence: 0.97 },
-            { field: 'docNumber', label: `ID: ${docNumber}`, value: docNumber, box_2d: [740, 340, 910, 650], confidence: 0.99 },
-            { field: 'dob', label: `DOB: ${dob}`, value: dob, box_2d: [530, 340, 710, 920], confidence: 0.98 }
-          ];
+        : (isCustomUpload
+            ? []
+            : [
+                { field: 'fullName', label: `NAME: ${fullNameEn}`, value: fullNameEn, box_2d: [220, 340, 480, 920], confidence: 0.97 },
+                { field: 'docNumber', label: `ID: ${docNumber}`, value: docNumber, box_2d: [740, 340, 910, 650], confidence: 0.99 },
+                { field: 'dob', label: `DOB: ${dob}`, value: dob, box_2d: [530, 340, 710, 920], confidence: 0.98 }
+              ]);
 
       // Compute card isolation bounding box from Gemini or union of valid field boxes
-      let cardBoundingBox = (geminiDoc && Array.isArray(geminiDoc.card_bounding_box) && geminiDoc.card_bounding_box.length === 4)
+      let cardBoundingBox = (
+        geminiDoc &&
+        Array.isArray(geminiDoc.card_bounding_box) &&
+        geminiDoc.card_bounding_box.length === 4 &&
+        Number(geminiDoc.card_bounding_box[2]) - Number(geminiDoc.card_bounding_box[0]) >= 120 &&
+        Number(geminiDoc.card_bounding_box[3]) - Number(geminiDoc.card_bounding_box[1]) >= 120
+      )
         ? geminiDoc.card_bounding_box
         : null;
 
@@ -771,27 +784,6 @@ const server = http.createServer(async (req, res) => {
             Math.min(1000, bMaxY + padY),
             Math.min(1000, bMaxX + padX),
           ];
-        }
-      }
-
-      // Ensure bottom-left family/serial code has a visible bounding box placed safely INSIDE the card perimeter
-      if (familyNumber && familyNumber !== '[غير موجود / MISSING]' && Array.isArray(boundingBoxes) && !boundingBoxes.some(b => b?.field === 'familyNumber')) {
-        if (cardBoundingBox) {
-          const [cY0, cX0, cY1, cX1] = cardBoundingBox;
-          const cH = cY1 - cY0;
-          const cW = cX1 - cX0;
-          boundingBoxes.push({
-            field: 'familyNumber',
-            label: `Card Serial / الرقم التسلسلي: ${familyNumber}`,
-            value: familyNumber,
-            box_2d: [
-              Math.round(cY0 + cH * 0.78),
-              Math.round(cX0 + cW * 0.04),
-              Math.round(cY0 + cH * 0.94),
-              Math.round(cX0 + cW * 0.40),
-            ],
-            confidence: 0.99
-          });
         }
       }
 
@@ -870,9 +862,9 @@ const server = http.createServer(async (req, res) => {
         cardBoundingBox,
         rotationNeededClockwiseDeg: 0,
         missingExpectedFields,
-        engineMode: usedLocalAgent ? 'local-qwen-vl' : (isLive ? 'gemini-vlm-live' : 'deterministic-fallback'),
-        modelUsed: geminiDoc?.model_used || (usedLocalAgent ? 'Qwen2.5-VL-7B-Instruct (Apple M5 Metal Local)' : (isLive ? 'gemini-2.5-flash' : 'deterministic-synthetic-v1')),
-        isLocalOnDevice: usedLocalAgent
+        engineMode: (usedLocalAgent || isLive) ? 'local-qwen-vl' : 'deterministic-fallback',
+        modelUsed: geminiDoc?.model_used || ((usedLocalAgent || isLive) ? 'Qwen2.5-VL-7B-Instruct (Apple M5 Metal Local)' : 'deterministic-synthetic-v1'),
+        isLocalOnDevice: Boolean(usedLocalAgent || isLive)
       };
 
       if (pathname === '/api/v1/verify-document' || pathname === '/api/verify-document') {

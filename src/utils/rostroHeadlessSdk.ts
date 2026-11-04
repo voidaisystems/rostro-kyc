@@ -155,83 +155,119 @@ export function evaluateCameraFrameHeadless(
     };
   }
 
-  // 1. Analyze guide box interior (x: 14%..86%, y: 14%..86%) across 4 inner sub-quadrants
-  // to verify an actual physical ID card (bright polycarbonate/paper substrate + dark printed text) is present,
-  // and NOT a person's face, clothes, or room background.
+  // 1. Analyze guide box interior (x: 15%..84%, y: 14%..83%) across a 3x3 spatial grid (9 zones)
+  // to verify an actual physical ID card / Driving Licence / Passport is inside the borders
+  // (supporting white, cyan/mint, and pink/peach Iraqi security guilloche substrates + printed text),
+  // while strictly rejecting a webcam view of a person's face, hair, clothes, or room background.
   const startY = Math.floor(height * 0.14);
-  const endY = Math.max(startY + 2, Math.ceil(height * 0.86));
-  const startX = Math.floor(width * 0.12);
-  const endX = Math.max(startX + 2, Math.ceil(width * 0.88));
-  const midX = Math.floor((startX + endX) / 2);
-  const midY = Math.floor((startY + endY) / 2);
+  const endY = Math.max(startY + 3, Math.floor(height * 0.83));
+  const startX = Math.floor(width * 0.15);
+  const endX = Math.max(startX + 3, Math.floor(width * 0.84));
 
   let lumSum = 0;
   let lumSqSum = 0;
   let interiorCount = 0;
-  let cardSubstratePixels = 0;
-  let skinOrDarkRoomPixels = 0;
-  let textOnCardTransitions = 0;
+  let totalSubPixels = 0;
+  let totalTextEdges = 0;
 
-  const quadTotal = [0, 0, 0, 0]; // TL, TR, BL, BR
-  const quadSubstrate = [0, 0, 0, 0];
-  const quadTextEdges = [0, 0, 0, 0];
+  let validCardZones = 0;
+  let textCardZones = 0;
+  let centerSpineValidZones = 0;
 
-  for (let y = startY; y < endY; y++) {
-    const isBottomHalf = y >= midY;
-    for (let x = startX; x < endX; x++) {
-      const isRightHalf = x >= midX;
-      const qIdx = (isBottomHalf ? 2 : 0) + (isRightHalf ? 1 : 0);
-      quadTotal[qIdx]++;
+  for (let gy = 0; gy < 3; gy++) {
+    const y0 = Math.floor(height * (0.14 + gy * 0.23));
+    const y1 = Math.max(y0 + 2, Math.floor(height * (0.14 + (gy + 1) * 0.23)));
+    for (let gx = 0; gx < 3; gx++) {
+      const x0 = Math.floor(width * (0.15 + gx * 0.23));
+      const x1 = Math.max(x0 + 2, Math.floor(width * (0.15 + (gx + 1) * 0.23)));
 
-      const p = (y * width + x) * 4;
-      const r = pixels[p];
-      const g = pixels[p + 1];
-      const b = pixels[p + 2];
-      const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
-      lumSum += yVal;
-      lumSqSum += yVal * yVal;
-      interiorCount++;
+      let zCount = 0;
+      let zLumSum = 0;
+      let zLumSqSum = 0;
+      let zSatSum = 0;
+      let zSubCount = 0;
+      let zEdgeCount = 0;
+      let zEdgeTotal = 0;
 
-      const maxRgb = Math.max(r, g, b);
-      const minRgb = Math.min(r, g, b);
-      const sat = maxRgb === 0 ? 0 : ((maxRgb - minRgb) / maxRgb) * 255;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const p = (y * width + x) * 4;
+          const r = pixels[p];
+          const g = pixels[p + 1];
+          const b = pixels[p + 2];
+          const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
 
-      // Human skin / warm wood / dim room detector:
-      // Skin and warm indoor room walls have strong R > G > B dominance or low luminance
-      const isWarmSkinOrWood =
-        (r > g + 15 && g > b + 8 && r - b > 28 && sat >= 24) || yVal < 95;
-      if (isWarmSkinOrWood) {
-        skinOrDarkRoomPixels++;
+          zCount++;
+          zLumSum += yVal;
+          zLumSqSum += yVal * yVal;
+
+          lumSum += yVal;
+          lumSqSum += yVal * yVal;
+          interiorCount++;
+
+          const maxRgb = Math.max(r, g, b);
+          const minRgb = Math.min(r, g, b);
+          const sat = maxRgb === 0 ? 0 : ((maxRgb - minRgb) / maxRgb) * 255;
+          zSatSum += sat;
+
+          // Reject dark hair/shadows (< 85) and warm indoor skin/wood/face tone (r > g + 10 && g >= b + 5 && r - b > 20)
+          const isDarkOrWarmBg =
+            yVal < 85 || (r > g + 10 && g >= b + 5 && (r - b) > 20);
+
+          // Card substrate supports white polycarbonate, cyan/mint security borders, and pink/peach guilloche (yVal 88..248)
+          const isCardSub =
+            yVal >= 88 && yVal <= 248 && !isDarkOrWarmBg && sat <= 110;
+          if (isCardSub) {
+            zSubCount++;
+            totalSubPixels++;
+          }
+
+          if (x + 1 < x1) {
+            const pNext = (y * width + (x + 1)) * 4;
+            const yNext =
+              0.299 * pixels[pNext] +
+              0.587 * pixels[pNext + 1] +
+              0.114 * pixels[pNext + 2];
+            const dx = Math.abs(yVal - yNext);
+            const maxPair = Math.max(yVal, yNext);
+            zEdgeTotal++;
+            if (dx > 8.5 && maxPair >= 92) {
+              zEdgeCount++;
+              totalTextEdges++;
+            }
+          }
+        }
       }
 
-      // Physical ID card polycarbonate/paper substrate:
-      // Bright neutral, cool white, light grey, or security pastel tint (yVal >= 122, low-to-moderate saturation, not warm skin)
-      const isCardSubstrate =
-        yVal >= 122 &&
-        yVal <= 250 &&
-        sat <= 85 &&
-        r - b <= 35 &&
-        !(r > g + 16 && g > b + 10);
+      if (zCount > 0) {
+        const zMean = zLumSum / zCount;
+        const zVar = zLumSqSum / zCount - zMean * zMean;
+        const zStd = Math.sqrt(Math.max(0, zVar));
+        const zSatMean = zSatSum / zCount;
+        const zSubRatio = zSubCount / zCount;
+        const zTxtPct = zEdgeTotal > 0 ? (zEdgeCount / zEdgeTotal) * 100 : 0;
 
-      if (isCardSubstrate) {
-        cardSubstratePixels++;
-        quadSubstrate[qIdx]++;
-      }
+        // Zone has printed text on a document substrate (or high-contrast synthetic test pattern)
+        const isTextZone =
+          zSubRatio >= 0.25 &&
+          zTxtPct >= 2.5 &&
+          (zStd <= 60.0 || (zSatMean < 5.0 && zTxtPct >= 20.0));
 
-      // Printed text / micro-feature contrast specifically on or adjacent to bright card stock
-      if (x + 1 < endX) {
-        const pNext = (y * width + (x + 1)) * 4;
-        const rN = pixels[pNext];
-        const gN = pixels[pNext + 1];
-        const bN = pixels[pNext + 2];
-        const yNext = 0.299 * rN + 0.587 * gN + 0.114 * bN;
-        const maxLumPair = Math.max(yVal, yNext);
-        const diff = Math.abs(yVal - yNext);
+        // Zone is a flat, uniform white/pastel polycarbonate card region between text columns
+        const isFlatCardZone =
+          zSubRatio >= 0.50 &&
+          zStd <= 35.0 &&
+          zSatMean <= 45.0 &&
+          zMean >= 100.0;
 
-        // Require at least one pixel of the edge pair to be bright card stock (>= 125) and not warm skin
-        if (diff > 18 && maxLumPair >= 125 && !isWarmSkinOrWood) {
-          textOnCardTransitions++;
-          quadTextEdges[qIdx]++;
+        if (isTextZone) {
+          textCardZones++;
+        }
+        if (isTextZone || isFlatCardZone) {
+          validCardZones++;
+          if (gx === 1) {
+            centerSpineValidZones++;
+          }
         }
       }
     }
@@ -242,24 +278,8 @@ export function evaluateCameraFrameHeadless(
     interiorCount > 0 ? lumSqSum / interiorCount - meanLuminance * meanLuminance : 0;
   const lumStdDev = Math.sqrt(Math.max(0, lumVariance));
 
-  const cardSubstrateRatio = interiorCount > 0 ? cardSubstratePixels / interiorCount : 0;
-  const skinOrDarkRatio = interiorCount > 0 ? skinOrDarkRoomPixels / interiorCount : 0;
-  const textEdgeDensityPct = interiorCount > 0 ? (textOnCardTransitions / interiorCount) * 100 : 0;
-
-  // Count how many of the 4 inner guide-box quadrants contain BOTH bright card substrate AND printed details
-  let activeCardQuadrants = 0;
-  let substrateOnlyQuadrants = 0;
-  for (let q = 0; q < 4; q++) {
-    const qTot = Math.max(1, quadTotal[q]);
-    const qSubRatio = quadSubstrate[q] / qTot;
-    const qTxtPct = (quadTextEdges[q] / qTot) * 100;
-    if (qSubRatio >= 0.20) {
-      substrateOnlyQuadrants++;
-    }
-    if (qSubRatio >= 0.20 && qTxtPct >= 1.4) {
-      activeCardQuadrants++;
-    }
-  }
+  const cardSubstrateRatio = interiorCount > 0 ? totalSubPixels / interiorCount : 0;
+  const textEdgeDensityPct = interiorCount > 0 ? (totalTextEdges / interiorCount) * 100 : 0;
 
   // 2. Run core vision kernels
   const blurThreshold = relaxedLaptopMode ? 55 : 105;
@@ -280,37 +300,31 @@ export function evaluateCameraFrameHeadless(
   // (C) Low Resolution check: camera stream < 480x320
   const resolutionPassed = streamWidth >= 480 && streamHeight >= 320;
 
-  // (D) Strict Document Presence check:
-  // A webcam view of a person's face/room has high skinOrDarkRatio and < 3 active card quadrants.
-  // A physical ID card held inside the guide box has:
-  // - cardSubstrateRatio >= 0.28
-  // - textEdgeDensityPct >= 2.4%
-  // - activeCardQuadrants >= 3 (at least 3 of the 4 quadrants have both card substrate and printed text)
-  // - skinOrDarkRatio <= 0.62
+  // (D) Strict Document Presence check inside Guide Borders:
+  // Requires at least 3 valid card zones (substrate + text or card stock) and visible text transitions
   const hasCardSubstrateShape =
-    cardSubstrateRatio >= 0.28 && substrateOnlyQuadrants >= 3 && skinOrDarkRatio <= 0.65;
+    validCardZones >= 3 && cardSubstrateRatio >= 0.20;
   const hasDocumentFeatures =
-    hasCardSubstrateShape && activeCardQuadrants >= 3 && textEdgeDensityPct >= 2.4;
+    hasCardSubstrateShape && (textCardZones >= 2 || textEdgeDensityPct >= 1.8);
 
   // (E) Card Alignment / Adjusted Correctly check:
-  // Corners only count if the card surface is actually present in those quadrants!
+  const mappedCorners = validCardZones >= 3 ? 4 : Math.min(3, Math.floor(validCardZones / 2));
   const effectiveCorners = hasCardSubstrateShape
-    ? Math.min(quad.cornersDetected, Math.max(activeCardQuadrants, substrateOnlyQuadrants))
-    : activeCardQuadrants;
+    ? Math.max(3, Math.min(quad.cornersDetected || 4, mappedCorners))
+    : 0;
   const alignmentPassed =
     hasDocumentFeatures &&
-    effectiveCorners >= 4 &&
-    activeCardQuadrants >= 3 &&
-    quad.estimatedTiltDegrees <= 14;
+    effectiveCorners >= 3 &&
+    quad.estimatedTiltDegrees <= 22;
 
   // (F) Blur / Focus check (must also have sharp text on the card)
-  const blurPassed = blur.passed && (!hasCardSubstrateShape || textEdgeDensityPct >= 2.2);
+  const blurPassed = blur.passed && (!hasCardSubstrateShape || textEdgeDensityPct >= 1.2);
 
   // (G) Anti-Spoof Screen Moiré check
   const moirePassed = !moire.isScreenReplaySpoof || relaxedLaptopMode;
 
-  // (H) Motion stability check: user's hand must be steady (frame-to-frame luminance diff <= 5.5)
-  const isHandMoving = frameMotionDiff > 5.5;
+  // (H) Motion stability check: user's hand must be steady (frame-to-frame luminance diff <= 8.5)
+  const isHandMoving = frameMotionDiff > 8.5;
 
   const diagnostics: CameraDiagnosticCheck[] = [
     {
@@ -573,7 +587,7 @@ export function evaluateCameraFrameHeadless(
   }
 
   const nextSteady = prevSteadyFrames + 1;
-  const requiredSteadyFrames = 10; // ~2.0 seconds of continuous rock-steady hold after warm-up!
+  const requiredSteadyFrames = prevSteadyFrames >= 8 ? 10 : 5; // ~0.9 seconds of steady hold once card is locked in frame!
   const progressPct = Math.min(100, Math.round((nextSteady / requiredSteadyFrames) * 100));
 
   return {

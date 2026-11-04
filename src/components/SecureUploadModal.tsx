@@ -897,27 +897,35 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
     const task = (async (): Promise<ServerExtractionResponse | null> => {
       try {
-        const response = await fetch('/api/kyc/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: base64Data,
-            mimeType,
-            fileName,
-            backImageBase64: backBase64Data,
-            backMimeType: backMime,
-            uploadedSideHint,
-            overrides: forceReplaceFields
-              ? {}
-              : {
-                  fullNameEn: fullNameEn.trim() || undefined,
-                  fullNameAr: fullNameAr.trim() || undefined,
-                  docNumber: docNumber.trim() || undefined,
-                  docType,
-                  govKey,
-                },
-          }),
-        });
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+        let response: Response;
+        try {
+          response = await fetch('/api/kyc/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              imageBase64: base64Data,
+              mimeType,
+              fileName,
+              backImageBase64: backBase64Data,
+              backMimeType: backMime,
+              uploadedSideHint,
+              overrides: forceReplaceFields
+                ? {}
+                : {
+                    fullNameEn: fullNameEn.trim() || undefined,
+                    fullNameAr: fullNameAr.trim() || undefined,
+                    docNumber: docNumber.trim() || undefined,
+                    docType,
+                    govKey,
+                  },
+            }),
+          });
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
         if (!response.ok) return null;
         const data: ServerExtractionResponse = await response.json();
 
@@ -1380,7 +1388,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
     } else if (targetSlot === 2) {
       await processSelectedBackFile(capturedFrontFile);
     } else {
-      await processSelectedFile(capturedFrontFile, false);
+      await processSelectedFile(capturedFrontFile, true);
     }
   };
 
@@ -1715,19 +1723,28 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
 
     const sideHint: 'FRONT' | 'BOTH' = backNameRef.current ? 'BOTH' : 'FRONT';
 
-    // Wait for any in-flight Gemini VLM OCR extraction to complete first!
+    // Wait for any in-flight Local Qwen2.5-VL OCR extraction to complete first (bounded by a 45s safety timeout)!
+    const withSafetyTimeout = <T,>(p: Promise<T>, ms = 45000): Promise<T | null> =>
+      Promise.race([
+        p,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), ms)),
+      ]);
+
     let extracted = lastExtraction;
     if (extractionPromiseRef.current) {
-      extracted = await extractionPromiseRef.current;
+      extracted = await withSafetyTimeout(extractionPromiseRef.current, 45000);
     } else if (!extracted) {
-      extracted = await runServerGeminiExtraction(
-        frontPreviewRef.current,
-        frontMimeRef.current,
-        frontNameRef.current || 'irq_specimen_upload.png',
-        false,
-        backPreviewRef.current,
-        backMimeRef.current,
-        sideHint
+      extracted = await withSafetyTimeout(
+        runServerGeminiExtraction(
+          frontPreviewRef.current,
+          frontMimeRef.current,
+          frontNameRef.current || 'irq_specimen_upload.png',
+          false,
+          backPreviewRef.current,
+          backMimeRef.current,
+          sideHint
+        ),
+        45000
       );
     }
 
@@ -1745,39 +1762,41 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
       };
     let resolvedNameAr =
       fullNameAr.trim() ||
-      (extracted?.engineMode === 'gemini-vlm-live'
+      ((extracted?.engineMode === 'local-qwen-vl' || extracted?.engineMode === 'gemini-vlm-live')
         ? extracted.fullNameAr
         : extracted?.fullNameAr || '');
     if (resolvedNameAr === '[غير موجود / MISSING]') resolvedNameAr = '';
 
     let resolvedNameEn =
       fullNameEn.trim() ||
-      (extracted?.engineMode === 'gemini-vlm-live'
+      ((extracted?.engineMode === 'local-qwen-vl' || extracted?.engineMode === 'gemini-vlm-live')
         ? extracted.fullNameEn
         : extracted?.fullNameEn || '');
     if (resolvedNameEn === 'Verified Record' || resolvedNameEn === '[غير موجود / MISSING]') {
       resolvedNameEn = '';
     }
 
+    const hasCustomUpload = Boolean(customPreviewUrl || customBackPreviewUrl || selectedFileName.trim() || selectedBackFileName.trim());
+
     // Bidirectional phonetic transliteration: if English name is missing, transliterate Arabic quad name
-    if (!resolvedNameEn && resolvedNameAr) {
+    if (!resolvedNameEn && resolvedNameAr && resolvedNameAr !== '[غير محدد / Unspecified]') {
       resolvedNameEn = transliterateArabicToLatin(resolvedNameAr);
     }
-    if (!resolvedNameAr && resolvedNameEn) {
+    if (!resolvedNameAr && resolvedNameEn && resolvedNameEn !== '[غير محدد / Unspecified]') {
       resolvedNameAr = resolvedNameEn;
     }
     if (!resolvedNameEn) {
-      resolvedNameEn = 'Kadhem Mohammad Ali Al-Baghdadi';
+      resolvedNameEn = hasCustomUpload ? '[غير محدد / Unspecified]' : 'Kadhem Mohammad Ali Al-Baghdadi';
     }
     if (!resolvedNameAr) {
-      resolvedNameAr = 'كاظم محمد علي البغدادي';
+      resolvedNameAr = hasCustomUpload ? '[غير محدد / Unspecified]' : 'كاظم محمد علي البغدادي';
     }
 
     const rawDocNum =
       docNumber.trim() ||
-      (extracted?.engineMode === 'gemini-vlm-live'
+      (extracted?.docNumber && !isMissingOrUnclearValue(extracted.docNumber)
         ? extracted.docNumber
-        : extracted?.docNumber || 'A1234567');
+        : (hasCustomUpload ? '[غير محدد / Unspecified]' : 'A1234567'));
 
     const normalizedDocNum = isMissingOrUnclearValue(rawDocNum)
       ? '[غير موجود / MISSING]'
@@ -2107,7 +2126,7 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           slot1Summary: extracted?.slot1Summary,
           slot2Summary: extracted?.slot2Summary,
           cardPairValidation: extracted?.cardPairValidation,
-          engineMode: extracted?.engineMode || 'gemini-vlm-live',
+          engineMode: extracted?.engineMode || 'local-qwen-vl',
           extractedFields: {
             fullName: upperName,
             fullNameArabic: resolvedNameAr,
@@ -2168,8 +2187,8 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
           timestamp: '2026-10-17 08:45 UTC',
           actorEn: isForeignDoc
             ? 'CBI Foreign Document & Dual-Jurisdiction Screening Engine'
-            : (extracted?.engineMode === 'gemini-vlm-live'
-              ? 'Optical Verification Engine + Dual-Side Gate'
+            : ((extracted?.engineMode === 'local-qwen-vl' || extracted?.engineMode === 'gemini-vlm-live')
+              ? 'Local Qwen2.5-VL Optical Engine + Dual-Side Gate'
               : 'Universal KYC Pipeline'),
           actorAr: isForeignDoc
             ? 'محرك فحص الوثائق الأجنبية وضوابط البنك المركزي العراقي'
@@ -3908,7 +3927,9 @@ export const SecureUploadModal: React.FC<SecureUploadModalProps> = ({
                         ? lastExtraction.backBoundingBoxes
                         : (lastExtraction?.boundingBoxes && lastExtraction.boundingBoxes.length > 0)
                           ? lastExtraction.boundingBoxes
-                          : [
+                          : (customPreviewUrl || customBackPreviewUrl || selectedFileName || selectedBackFileName || isExtractingOcr)
+                            ? []
+                            : [
                               {
                                 field: 'portraitPhoto',
                                 label: lang === 'ar' ? 'الصورة الشخصية' : 'Portrait Photo',

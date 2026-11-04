@@ -312,9 +312,9 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                     ? 'وجه واحد فقط · الظهر مفقود'
                     : `SIDE: ${document.side} ONLY · BACK MISSING`}
           </span>
-          {document.engineMode === 'gemini-vlm-live' && (
+          {(document.engineMode === 'local-qwen-vl' || document.engineMode === 'gemini-vlm-live') && (
             <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-[#059669]/15 text-[#9333ea] dark:text-[#d1fae5] border border-[#059669]/35">
-              {lang === 'ar' ? 'استخراج ذكي مباشر' : 'GEMINI VLM LIVE OCR'}
+              {lang === 'ar' ? 'استخراج محلي ذكي · Qwen2.5-VL' : 'LOCAL QWEN2.5-VL LIVE OCR'}
             </span>
           )}
           <span className="font-bold text-zinc-900 dark:text-white">
@@ -780,127 +780,7 @@ export const DocumentSpecimenViewer: React.FC<DocumentSpecimenViewerProps> = ({
                         </div>
                       );
                     })
-                  ) : (
-                    <>
-                      {/* Biometric Portrait Photo Box */}
-                      <div
-                        style={{ top: '11%', left: '4%', width: '20%', height: '34%' }}
-                        className="absolute border-2 rounded transition-colors border-rose-500 bg-rose-500/20"
-                      >
-                        <span className="bg-rose-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar' ? 'الصورة الشخصية' : 'PORTRAIT PHOTO'}
-                        </span>
-                        {showCentroids && (
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white ring-2 ring-rose-500/90" />
-                        )}
-                      </div>
-                      {/* Republic Emblem Box */}
-                      <div
-                        style={{ top: '3%', left: '44%', width: '12%', height: '10%' }}
-                        className="absolute border-2 rounded transition-colors border-emerald-500 bg-emerald-500/20"
-                      >
-                        <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar' ? 'الشعار الرسمي' : 'EMBLEM'}
-                        </span>
-                      </div>
-                      {/* Accurate Fallback Bounding Boxes covering all card fields */}
-                      <div
-                        style={{ top: '8%', left: '22%', width: '48%', height: '8%' }}
-                        className={`absolute border-2 rounded transition-colors ${
-                          highlightedField === 'docNumber'
-                            ? 'border-blue-500 bg-blue-500/25 z-10'
-                            : 'border-blue-400/80 bg-blue-400/10'
-                        }`}
-                      >
-                        <span className="bg-blue-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar'
-                            ? `الرقم: ${formatReferenceCode(document.docNumber, 'ar')}`
-                            : `ID: ${document.docNumber}`}
-                        </span>
-                        {showCentroids && (
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white ring-2 ring-blue-500/90" />
-                        )}
-                      </div>
-                      <div
-                        style={{ top: '16%', left: '22%', width: '68%', height: '11%' }}
-                        className={`absolute border-2 rounded transition-colors ${
-                          highlightedField === 'fullName' || highlightedField === 'normalizedName'
-                            ? 'border-blue-500 bg-blue-500/25 z-10'
-                            : 'border-emerald-400/80 bg-emerald-400/10'
-                        }`}
-                      >
-                        <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar'
-                            ? `الاسم: ${sanitizeTextForLanguage(document.extractedFields.normalizedName || document.extractedFields.fullName, 'ar')}`
-                            : `NAME: ${sanitizeTextForLanguage(document.extractedFields.fullName, 'en')}`}
-                        </span>
-                        {showCentroids && (
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white ring-2 ring-emerald-500/90" />
-                        )}
-                      </div>
-                      {document.extractedFields.motherName && (
-                        <div
-                          style={{ top: '28%', left: '22%', width: '48%', height: '7%' }}
-                          className={`absolute border-2 rounded transition-colors ${
-                            highlightedField === 'motherName'
-                              ? 'border-blue-500 bg-blue-500/25 z-10'
-                              : 'border-emerald-400/80 bg-emerald-400/10'
-                          }`}
-                        >
-                          <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                            {lang === 'ar'
-                              ? `الأم: ${sanitizeTextForLanguage(document.extractedFields.motherName, 'ar')}`
-                              : `MOTHER: ${sanitizeTextForLanguage(document.extractedFields.motherName, 'en')}`}
-                          </span>
-                        </div>
-                      )}
-                      <div
-                        style={{ top: '36%', left: '22%', width: '45%', height: '7%' }}
-                        className={`absolute border-2 rounded transition-colors ${
-                          highlightedField === 'dob'
-                            ? 'border-blue-500 bg-blue-500/25 z-10'
-                            : 'border-emerald-400/80 bg-emerald-400/10'
-                        }`}
-                      >
-                        <span className="bg-emerald-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar'
-                            ? `التولد: ${sanitizeTextForLanguage(document.extractedFields.dob, 'ar')}`
-                            : `DOB: ${sanitizeTextForLanguage(document.extractedFields.dob, 'en')}`}
-                        </span>
-                      </div>
-                      <div
-                        style={{ top: '44%', left: '22%', width: '45%', height: '7%' }}
-                        className={`absolute border-2 rounded transition-colors ${
-                          highlightedField === 'expiryDate'
-                            ? 'border-blue-500 bg-blue-500/25 z-10'
-                            : 'border-emerald-400/80 bg-emerald-400/10'
-                        }`}
-                      >
-                        <span className="bg-amber-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                          {lang === 'ar'
-                            ? `النفاذ: ${sanitizeTextForLanguage(document.expiryDate, 'ar')}`
-                            : `EXP: ${sanitizeTextForLanguage(document.expiryDate, 'en')}`}
-                        </span>
-                      </div>
-                      {/* Accurate Bottom-Left Corner Box for Family Number / Card Tracking Serial (AA9792984) */}
-                      {(document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber) && (
-                        <div
-                          style={{ top: '78%', left: '3%', width: '32%', height: '8%' }}
-                          className={`absolute border-2 rounded transition-colors ${
-                            highlightedField === 'familyNumber'
-                              ? 'border-blue-500 bg-blue-500/30 ring-2 ring-blue-400 z-10'
-                              : 'border-amber-400/80 bg-amber-400/10'
-                          }`}
-                        >
-                          <span className="bg-amber-600 text-white text-[8px] font-mono px-1 py-0.2 rounded-br">
-                            {lang === 'ar'
-                              ? `رقم البطاقة (أسفل اليسار): ${document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber}`
-                              : `CARD NO. (BOTTOM-LEFT): ${document.extractedFields.familyNumber || document.extractedFields.cardSerialNumber}`}
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>

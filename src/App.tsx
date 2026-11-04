@@ -146,8 +146,8 @@ export default function App() {
         const data = await resp.json();
         setEngineStatus({
           localConnected: Boolean(data.localAi?.connected),
-          activeEngine: data.activeEngine || 'UNKNOWN',
-          model: data.localAi?.detectedModel || data.cloudAi?.model || 'gemini-2.5-flash',
+          activeEngine: data.activeEngine || 'LOCAL_QWEN_VL',
+          model: data.localAi?.detectedModel || 'qwen2.5-vl-7b-instruct',
           acceleration: data.localAi?.acceleration || 'Apple Silicon M5 Metal GPU',
           chipset: data.localAi?.chipset || 'Apple M5 (10-Core / Metal GPU / 16GB Unified Memory)',
           endpoint: data.localAi?.endpoint || 'http://127.0.0.1:1235/v1'
